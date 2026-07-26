@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../../lib/useConfig";
 
@@ -64,6 +64,13 @@ describe("AppearanceSection", () => {
     expect(screen.getByRole("button", { name: "Sky" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Green" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Orange" })).toBeInTheDocument();
+  });
+
+  it("names the accent swatch group, matching the sibling Reading font row (32-REVIEW WR-03)", () => {
+    renderSection(makeConfig());
+    const group = screen.getByRole("group", { name: "Accent color" });
+    expect(group).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Purple" })).toBeInTheDocument();
   });
 
   it("clicking Sky calls saveConfig exactly once with accent sky, editor and dailyNotes unchanged", async () => {

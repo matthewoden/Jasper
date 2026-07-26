@@ -125,7 +125,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
           label="Accent color"
           description="Used for links, tags, highlights and selection"
         >
-          <div style={{ display: "flex", gap: 8 }}>
+          <div role="group" aria-label="Accent color" style={{ display: "flex", gap: 8 }}>
             {ACCENT_SWATCHES.map(({ id, label, hex }) => {
               const selected = config.accent === id;
               return (
