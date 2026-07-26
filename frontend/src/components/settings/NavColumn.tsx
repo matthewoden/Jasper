@@ -65,6 +65,10 @@ export function NavColumn({ activeSection, onSelect, vaultName, appVersion }: Na
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
+                // Inert with a single child (the leading label group). Kept
+                // for the trailing slot ADR-002 v2 emptied when the Server
+                // restart dot was removed 2026-07-26, and that Phase 36's
+                // restart signal will refill. Delete both if it does not.
                 justifyContent: "space-between",
                 gap: 8,
                 padding: "8px 16px",
