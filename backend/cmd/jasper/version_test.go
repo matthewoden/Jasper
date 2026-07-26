@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/buildinfo"
 )
 
 // TestVersionStringDefault asserts the output when no ldflags are injected
@@ -22,15 +24,15 @@ func TestVersionStringDefault(t *testing.T) {
 // TestVersionStringWithCommit asserts the full "jasper {ver} (commit {sha})"
 // format kicks in once ldflags inject a buildCommit value.
 func TestVersionStringWithCommit(t *testing.T) {
-	origV := buildVersion
-	origC := buildCommit
+	origV := buildinfo.Version
+	origC := buildinfo.Commit
 	t.Cleanup(func() {
-		buildVersion = origV
-		buildCommit = origC
+		buildinfo.Version = origV
+		buildinfo.Commit = origC
 	})
 
-	buildVersion = "1.2.3"
-	buildCommit = "abc1234"
+	buildinfo.Version = "1.2.3"
+	buildinfo.Commit = "abc1234"
 	got := versionString()
 	want := "jasper 1.2.3 (commit abc1234)"
 	if got != want {
@@ -42,15 +44,15 @@ func TestVersionStringWithCommit(t *testing.T) {
 // explicitly with a non-default buildVersion to confirm the formatter
 // doesn't print a literal "(commit )" / "(commit dev)" sentinel.
 func TestVersionStringEmptyCommitFallback(t *testing.T) {
-	origV := buildVersion
-	origC := buildCommit
+	origV := buildinfo.Version
+	origC := buildinfo.Commit
 	t.Cleanup(func() {
-		buildVersion = origV
-		buildCommit = origC
+		buildinfo.Version = origV
+		buildinfo.Commit = origC
 	})
 
-	buildVersion = "9.9.9"
-	buildCommit = ""
+	buildinfo.Version = "9.9.9"
+	buildinfo.Commit = ""
 	got := versionString()
 	want := "jasper 9.9.9"
 	if got != want {

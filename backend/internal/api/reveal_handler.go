@@ -29,12 +29,20 @@ func (s *Server) PostReveal(
 	if req.Body == nil {
 		return PostReveal400JSONResponse(newError("invalid_request", "missing body")), nil
 	}
-	relPath := req.Body.Path
-	if relPath == "" {
-		return PostReveal400JSONResponse(newError("invalid_path", "path is required")), nil
-	}
 
-	abs, errResp := s.resolveRevealPath(relPath)
+	var abs string
+	var errResp PostRevealResponseObject
+	if req.Body.Scope != nil && *req.Body.Scope == RevealRequestScopeVaultRoot {
+		// vaultRoot scope never reads req.Body.Path — resolveVaultRootRevealPath
+		// takes no arguments so there is nothing client-supplied to traverse.
+		abs, errResp = s.resolveVaultRootRevealPath()
+	} else {
+		relPath := req.Body.Path
+		if relPath == "" {
+			return PostReveal400JSONResponse(newError("invalid_path", "path is required")), nil
+		}
+		abs, errResp = s.resolveRevealPath(relPath)
+	}
 	if errResp != nil {
 		return errResp, nil
 	}
@@ -98,6 +106,29 @@ func (s *Server) resolveRevealPath(relPath string) (string, PostRevealResponseOb
 	}
 
 	return cleanFinal, nil
+}
+
+// resolveVaultRootRevealPath resolves the target for a vaultRoot-scope
+// reveal. It takes no arguments — there is no client-derived value to
+// validate because the target is s.dataDir, server configuration set at
+// boot, not request input (T-32-05: nothing here is attacker-controlled).
+// Mirrors resolveRevealPath's own existence + symlink checks so the two
+// code paths carry the same containment guarantees.
+func (s *Server) resolveVaultRootRevealPath() (string, PostRevealResponseObject) {
+	if s.dataDir == "" {
+		return "", PostReveal400JSONResponse(newError("invalid_path", "no vault open"))
+	}
+
+	clean := filepath.Clean(s.dataDir)
+	fi, err := os.Lstat(clean)
+	if err != nil {
+		return "", PostReveal400JSONResponse(newError("invalid_path", "target does not exist"))
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return "", PostReveal400JSONResponse(newError("invalid_path", "symlinks not permitted"))
+	}
+
+	return clean, nil
 }
 
 func revealOnDarwin(ctx context.Context, abs string) error {
