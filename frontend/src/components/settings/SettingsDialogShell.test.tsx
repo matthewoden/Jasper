@@ -6,9 +6,10 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Config } from "../../lib/useConfig";
 import { TooltipProvider } from "../Tooltip";
 
 const mockConfig = {
@@ -232,6 +233,102 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => {
       const marker = screen.getByLabelText("Restart required");
       expect(marker).toBeInTheDocument();
+    });
+  });
+
+  describe("per-section Reset", () => {
+    it("Editor: Cancel calls saveConfig 0 times", async () => {
+      renderShell();
+      fireEvent.click(screen.getByRole("button", { name: /Editor/ }));
+      await screen.findByLabelText("Autosave interval");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(within(dialog).getByText("Reset Editor to defaults?")).toBeInTheDocument();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(mockClient.PUT).not.toHaveBeenCalled();
+    });
+
+    it("Editor: confirming resets only autosaveMs, in exactly one saveConfig call", async () => {
+      renderShell();
+      fireEvent.click(screen.getByRole("button", { name: /Editor/ }));
+      await screen.findByLabelText("Autosave interval");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalledTimes(1));
+      const saved = mockClient.PUT.mock.calls[0][1].body as Config;
+      expect(saved.editor.autosaveMs).toBe(2000); // DEFAULT_CONFIG.editor.autosaveMs
+      expect(saved.editor.fontSize).toBe(mockConfig.editor.fontSize);
+      expect(saved.editor.lineHeight).toBe(mockConfig.editor.lineHeight);
+      expect(saved.accent).toBe(mockConfig.accent);
+      expect(saved.dailyNotes).toEqual(mockConfig.dailyNotes);
+      expect(saved.server).toEqual(mockConfig.server);
+    });
+
+    it("Appearance: one saveConfig call carries accent, readingFont, fontSize, and lineHeight; autosaveMs untouched", async () => {
+      renderShell();
+      await screen.findByText("Accent and typography");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(within(dialog).getByText("Reset Appearance to defaults?")).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalledTimes(1));
+      const saved = mockClient.PUT.mock.calls[0][1].body as Config;
+      expect(saved.accent).toBe("purple"); // DEFAULT_CONFIG.accent
+      expect(saved.readingFont).toBe("sans"); // DEFAULT_CONFIG.readingFont
+      expect(saved.editor.fontSize).toBe(15); // DEFAULT_CONFIG.editor.fontSize
+      expect(saved.editor.lineHeight).toBe(1.45); // DEFAULT_CONFIG.editor.lineHeight
+      expect(saved.editor.autosaveMs).toBe(mockConfig.editor.autosaveMs);
+
+      await waitFor(() => {
+        expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
+        expect(document.documentElement.style.getPropertyValue("--editor-line-height")).toBe(
+          "1.45",
+        );
+      });
+    });
+
+    it("Server: reset changes only bind, leaving port/dataDir/mcp byte-identical", async () => {
+      renderShell();
+      fireEvent.click(screen.getByRole("button", { name: /Server/ }));
+      await screen.findByLabelText("Bind address");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalledTimes(1));
+      const saved = mockClient.PUT.mock.calls[0][1].body as Config;
+      expect(saved.server?.bind).toBe("127.0.0.1"); // DEFAULT_CONFIG.server.bind
+      expect(saved.server?.port).toBe(mockConfig.server.port);
+      expect(saved.server?.dataDir).toBe(mockConfig.server.dataDir);
+      expect(saved.mcp).toEqual(mockConfig.mcp);
+    });
+
+    it("a failing reset renders the save-error banner", async () => {
+      mockClient.PUT.mockResolvedValueOnce({
+        error: { code: "invalid_request", message: "disk full" },
+        response: { status: 500 },
+      });
+
+      renderShell();
+      fireEvent.click(screen.getByRole("button", { name: /Editor/ }));
+      await screen.findByLabelText("Autosave interval");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent("disk full");
+      });
     });
   });
 });

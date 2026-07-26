@@ -8,15 +8,63 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  applyAccent,
+  applyReadingFont,
+  persistAccentBootstrap,
+  persistReadingFontBootstrap,
+} from "../../lib/useAccent";
 import { useConfig, type Config } from "../../lib/useConfig";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DailyNotesSection } from "./DailyNotesSection";
+import { DEFAULT_CONFIG } from "./defaults";
 import { EditorSection } from "./EditorSection";
 import { NavColumn } from "./NavColumn";
 import { PaneHeader } from "./PaneHeader";
+import { ResetConfirmDialog } from "./ResetConfirmDialog";
 import { SECTIONS, type SectionId } from "./sections";
 import { ServerSection } from "./ServerSection";
+
+// Fields a per-section Reset (D-07/D-10/D-12) is allowed to overwrite, built
+// from the CURRENT config with only the named fields swapped to
+// DEFAULT_CONFIG's values — never a wholesale DEFAULT_CONFIG spread, which
+// would silently wipe every section the user did not ask to reset.
+//
+// MCP write grants live in the `mcp_write_grants` SQLite table with no
+// representation in `Config` (D-09) — a Config-only write structurally
+// cannot reach them, so no defensive "skip grants" branch is needed here.
+function buildResetPatch(section: SectionId, config: Config): Partial<Config> {
+  switch (section) {
+    case "appearance":
+      return {
+        accent: DEFAULT_CONFIG.accent,
+        readingFont: DEFAULT_CONFIG.readingFont,
+        editor: {
+          ...config.editor,
+          fontSize: DEFAULT_CONFIG.editor.fontSize,
+          lineHeight: DEFAULT_CONFIG.editor.lineHeight,
+        },
+      };
+    case "editor":
+      return {
+        editor: { ...config.editor, autosaveMs: DEFAULT_CONFIG.editor.autosaveMs },
+      };
+    case "dailyNotes":
+      return {
+        dailyNotes: {
+          folder: DEFAULT_CONFIG.dailyNotes.folder,
+          template: DEFAULT_CONFIG.dailyNotes.template,
+        },
+      };
+    case "server":
+      return config.server
+        ? { server: { ...config.server, bind: DEFAULT_CONFIG.server.bind } }
+        : {};
+    default:
+      return {};
+  }
+}
 
 export interface SettingsDialogShellProps {
   open: boolean;
@@ -39,6 +87,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   const { config, saveConfig } = useConfig();
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
   // Boot-baseline capture: assigned once on first non-null config, never
   // updated again. Restart badges compare current values against this
@@ -67,6 +116,38 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
       onOpenChange(next);
     },
     [onOpenChange],
+  );
+
+  const handleResetSection = useCallback(
+    async (section: SectionId) => {
+      if (!config) return;
+      const patch = buildResetPatch(section, config);
+      const { error } = await saveConfig({ ...config, ...patch });
+      if (error) {
+        setSaveError(`Couldn't save your changes: ${error.message}.`);
+        return;
+      }
+      setSaveError(null);
+      // Live-apply fields (CSS vars + localStorage bootstrap keys) aren't
+      // covered by the config write alone — re-run the same apply/persist
+      // helpers AppearanceSection uses so the screen matches the reset
+      // config instead of waiting for a reload.
+      if (section === "appearance") {
+        applyAccent(DEFAULT_CONFIG.accent);
+        persistAccentBootstrap(DEFAULT_CONFIG.accent);
+        applyReadingFont(DEFAULT_CONFIG.readingFont);
+        persistReadingFontBootstrap(DEFAULT_CONFIG.readingFont);
+        document.documentElement.style.setProperty(
+          "--editor-font-size",
+          `${DEFAULT_CONFIG.editor.fontSize}px`,
+        );
+        document.documentElement.style.setProperty(
+          "--editor-line-height",
+          `${DEFAULT_CONFIG.editor.lineHeight}`,
+        );
+      }
+    },
+    [config, saveConfig],
   );
 
   const activeMeta = SECTIONS.find((s) => s.id === activeSection);
@@ -153,9 +234,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
               title={activeMeta?.label ?? ""}
               subtitle={activeMeta?.subtitle ?? ""}
               showReset={activeMeta?.hasReset ?? false}
-              onReset={() => {
-                /* wired in a later commit (per-section Reset orchestration) */
-              }}
+              onReset={() => setResetDialogOpen(true)}
               onClose={() => handleOpenChange(false)}
             />
 
@@ -202,6 +281,17 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
               {renderActivePane()}
             </div>
           </div>
+
+          {activeMeta && (
+            <ResetConfirmDialog
+              open={resetDialogOpen}
+              onOpenChange={setResetDialogOpen}
+              sectionLabel={activeMeta.label}
+              onConfirm={() => {
+                void handleResetSection(activeSection);
+              }}
+            />
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
