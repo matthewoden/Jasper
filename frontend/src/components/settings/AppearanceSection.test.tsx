@@ -78,7 +78,9 @@ describe("AppearanceSection", () => {
     const { saveConfig } = renderSection(config);
     fireEvent.click(screen.getByRole("button", { name: "Sky" }));
 
-    expect(saveConfig).toHaveBeenCalledTimes(1);
+    // Awaited, not asserted synchronously: the save resolves asynchronously
+    // and an unawaited resolution leaks a state update into the next test.
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     const saved = saveConfig.mock.calls[0][0] as Config;
     expect(saved.accent).toBe("sky");
     expect(saved.editor).toEqual(config.editor);
@@ -168,7 +170,7 @@ describe("AppearanceSection", () => {
     expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
-  it("releasing the font-size slider calls saveConfig exactly once, preserving editor.autosaveMs", () => {
+  it("releasing the font-size slider calls saveConfig exactly once, preserving editor.autosaveMs", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     const slider = screen.getByRole("slider", { name: "Font size" });
@@ -176,13 +178,13 @@ describe("AppearanceSection", () => {
     fireEvent.change(slider, { target: { value: "20" } });
     fireEvent.pointerUp(slider);
 
-    expect(saveConfig).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     const saved = saveConfig.mock.calls[0][0] as Config;
     expect(saved.editor.fontSize).toBe(20);
     expect(saved.editor.autosaveMs).toBe(config.editor.autosaveMs);
   });
 
-  it("drag events on the line-height slider update --editor-line-height without calling saveConfig, release commits once", () => {
+  it("drag events on the line-height slider update --editor-line-height without calling saveConfig, release commits once", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     const slider = screen.getByRole("slider", { name: "Line height" });
@@ -192,12 +194,12 @@ describe("AppearanceSection", () => {
     expect(saveConfig).toHaveBeenCalledTimes(0);
 
     fireEvent.pointerUp(slider);
-    expect(saveConfig).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     const saved = saveConfig.mock.calls[0][0] as Config;
     expect(saved.editor.lineHeight).toBe(1.5);
   });
 
-  it("TypePreviewPanel reflects the live just-committed font size before the persisted config catches up", () => {
+  it("TypePreviewPanel reflects the live just-committed font size before the persisted config catches up", async () => {
     const config = makeConfig({ editor: { ...makeConfig().editor, fontSize: 15 } });
     let resolveSave: (v: { error?: undefined }) => void = () => {};
     const saveConfig = vi.fn(
@@ -212,7 +214,10 @@ describe("AppearanceSection", () => {
     const preview = screen.getByText(/Type styling applies instantly/);
     expect(preview).toHaveStyle({ fontSize: "22px" });
 
+    // Settle the deferred save inside this test's act scope rather than
+    // letting its .then land during the next test.
     resolveSave({});
+    await waitFor(() => expect(preview).toHaveStyle({ fontSize: "22px" }));
   });
 
   it("reverts both the live preview value and --editor-font-size on a rejected font-size save", async () => {

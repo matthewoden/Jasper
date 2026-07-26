@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NavColumn } from "./NavColumn";
 import type { SectionId } from "./sections";
@@ -20,7 +20,9 @@ function renderNav(overrides: Partial<React.ComponentProps<typeof NavColumn>> = 
 describe("NavColumn", () => {
   it("renders exactly four nav rows", () => {
     renderNav();
-    expect(screen.getAllByRole("button")).toHaveLength(4);
+    // Scoped to the <nav>: an unscoped query would also count a future
+    // footer action and fail with a misleading "nav rows" message.
+    expect(within(screen.getByRole("navigation")).getAllByRole("button")).toHaveLength(4);
   });
 
   it("does not render a Templates row", () => {

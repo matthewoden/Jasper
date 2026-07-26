@@ -37,7 +37,12 @@ describe("ControlRow", () => {
       </ControlRow>,
     );
 
-    expect(screen.getByText("Font size").nextSibling).toBeNull();
+    // The label column must hold the label and nothing else. A nextSibling
+    // check would also pass if a description were rendered elsewhere in the
+    // row rather than not at all.
+    const column = screen.getByText("Font size").parentElement!;
+    expect(column.children).toHaveLength(1);
+    expect(column.children[0]).toBe(screen.getByText("Font size"));
   });
 
   it("renders the primary label as a <label> bound to htmlFor when supplied", () => {
