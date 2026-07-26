@@ -58,7 +58,6 @@ func TestSaveMerged_NestedUnknownKeySurvives(t *testing.T) {
 		"editor": {
 			"fontSize": 15,
 			"lineHeight": 1.6,
-			"vimMode": false,
 			"autosaveMs": 2000,
 			"spellCheck": true
 		},

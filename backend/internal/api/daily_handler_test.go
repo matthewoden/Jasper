@@ -338,7 +338,7 @@ func newDailyTestServer(t *testing.T, dailyNotesTemplate string) (*Server, strin
 	if dailyNotesTemplate != "" {
 		cfgJSON := `{"appName":"Jasper","theme":"dark","dailyNotes":{"folder":"daily","template":"` +
 			strings.ReplaceAll(dailyNotesTemplate, "\n", `\n`) +
-			`"},"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`
+			`"},"editor":{"fontSize":15,"lineHeight":1.6}}`
 		if err := os.WriteFile(vault.ConfigPath(dir), []byte(cfgJSON), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -512,7 +512,7 @@ func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Inde
 	if template != "" {
 		cfgJSON := `{"appName":"Jasper","theme":"dark","dailyNotes":{"folder":"daily","template":"` +
 			strings.ReplaceAll(template, "\n", `\n`) +
-			`"},"editor":{"fontSize":15,"lineHeight":1.6,"vimMode":false}}`
+			`"},"editor":{"fontSize":15,"lineHeight":1.6}}`
 		if err := os.WriteFile(vault.ConfigPath(dataDir), []byte(cfgJSON), 0o644); err != nil {
 			t.Fatalf("write config: %v", err)
 		}
