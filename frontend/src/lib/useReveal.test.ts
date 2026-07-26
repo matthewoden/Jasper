@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./revealApi", () => ({
   revealPath: vi.fn(),
+  revealVaultRoot: vi.fn(),
 }));
 
 
@@ -17,14 +18,16 @@ vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-import { revealPath } from "./revealApi";
+import { revealPath, revealVaultRoot } from "./revealApi";
 import { useReveal } from "./useReveal";
 
 const mockedRevealPath = vi.mocked(revealPath);
+const mockedRevealVaultRoot = vi.mocked(revealVaultRoot);
 
 describe("useReveal", () => {
   beforeEach(() => {
     mockedRevealPath.mockReset();
+    mockedRevealVaultRoot.mockReset();
     toastSpy.mockReset();
   });
 
@@ -142,5 +145,55 @@ describe("useReveal", () => {
 
     expect(toastSpy).toHaveBeenCalledTimes(1);
     expect(toastSpy.mock.calls[0][0].title).toBe("Opened in Finder");
+  });
+
+  it("REVEAL-HOOK-6: revealVaultRoot() success fires the same 'Opened in Finder' toast", async () => {
+    mockedRevealVaultRoot.mockResolvedValueOnce({
+      ok: true,
+      platform: "darwin",
+      status: 200,
+    });
+
+    const { result } = renderHook(() => useReveal());
+
+    await act(async () => {
+      await result.current.revealVaultRoot();
+    });
+
+    expect(mockedRevealVaultRoot).toHaveBeenCalledTimes(1);
+    expect(mockedRevealPath).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+    expect(toastSpy.mock.calls[0][0].title).toBe("Opened in Finder");
+  });
+
+  it("REVEAL-HOOK-7: revealVaultRoot() shares the re-entrancy guard with reveal()", async () => {
+    let resolve: (v: { ok: true; platform: "darwin"; status: 200 }) => void = () => {};
+    const pending = new Promise<{ ok: true; platform: "darwin"; status: 200 }>((r) => {
+      resolve = r;
+    });
+    mockedRevealVaultRoot.mockReturnValueOnce(pending);
+
+    const { result } = renderHook(() => useReveal());
+
+    act(() => {
+      void result.current.revealVaultRoot();
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.reveal("a.md");
+    });
+
+    expect(mockedRevealPath).not.toHaveBeenCalled();
+
+    act(() => {
+      resolve({ ok: true, platform: "darwin", status: 200 });
+    });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
   });
 });

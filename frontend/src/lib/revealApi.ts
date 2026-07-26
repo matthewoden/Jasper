@@ -35,10 +35,15 @@ export interface RevealResult {
  * the raw HTTP status, which openapi-fetch surfaces via the `response` object.
  *
  * @param path - Vault-relative path under notes/ (e.g. "projects/jasper/note.md")
+ * @param scope - "note" (default) resolves `path` under the vault; "vaultRoot"
+ *   ignores `path` server-side and reveals the vault's data directory.
  */
-export async function revealPath(path: string): Promise<RevealResult> {
+export async function revealPath(
+  path: string,
+  scope: "note" | "vaultRoot" = "note",
+): Promise<RevealResult> {
   const { data, error, response } = await client.POST("/reveal", {
-    body: { path, scope: "note" },
+    body: { path, scope },
   });
   if (error || !data) {
     const errObj = error as { message?: string } | undefined;
@@ -57,4 +62,14 @@ export async function revealPath(path: string): Promise<RevealResult> {
     platform: data.platform,
     status: response.status,
   };
+}
+
+/**
+ * Open the host OS file manager on the vault's own data directory (About
+ * pane). The server ignores the request path entirely in this scope, so
+ * `"."` is a placeholder, not a real path — see RevealRequest.scope in the
+ * OpenAPI schema.
+ */
+export async function revealVaultRoot(): Promise<RevealResult> {
+  return revealPath(".", "vaultRoot");
 }
