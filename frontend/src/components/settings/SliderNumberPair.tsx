@@ -55,6 +55,12 @@ export function SliderNumberPair({
   const pendingCommitRef = useRef<number | null>(null);
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
+  // Held in a ref, deliberately out of the sync effect's deps: the formatter
+  // only derives a string from `value`, so a fresh inline arrow from the
+  // parent must not re-run a *reset* effect that would wipe in-progress
+  // number input and clear the validation alert (32-REVIEW WR-01).
+  const formatCssValueRef = useRef(formatCssValue);
+  formatCssValueRef.current = formatCssValue;
 
   // A failed save reverts `value`; roll the live CSS var and both inputs back
   // in step so the preview never lags behind the persisted config.
@@ -62,8 +68,8 @@ export function SliderNumberPair({
     setSliderValue(value);
     setNumberInput(String(value));
     setLocalError(null);
-    document.documentElement.style.setProperty(cssVar, formatCssValue(value));
-  }, [value, cssVar, formatCssValue]);
+    document.documentElement.style.setProperty(cssVar, formatCssValueRef.current(value));
+  }, [value, cssVar]);
 
   // Flush (not drop) a pending debounced keyboard commit on unmount:
   // handleRangeChange already applied the value to document.documentElement

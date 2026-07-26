@@ -78,6 +78,11 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
     setLineHeight(config.editor.lineHeight);
   }, [config.editor.lineHeight]);
 
+  // Stable identities: SliderNumberPair keeps the formatter out of its sync
+  // effect's deps, but a memoized arrow also keeps the prop itself honest.
+  const formatPx = useCallback((v: number) => `${v}px`, []);
+  const formatUnitless = useCallback((v: number) => `${v}`, []);
+
   const commitFontSize = useCallback(
     async (value: number) => {
       setFontSize(value);
@@ -202,7 +207,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
           step={1}
           unit="px"
           cssVar="--editor-font-size"
-          formatCssValue={(v) => `${v}px`}
+          formatCssValue={formatPx}
           onCommit={(v) => {
             void commitFontSize(v);
           }}
@@ -225,7 +230,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
           step={0.05}
           unit=""
           cssVar="--editor-line-height"
-          formatCssValue={(v) => `${v}`}
+          formatCssValue={formatUnitless}
           onCommit={(v) => {
             void commitLineHeight(v);
           }}

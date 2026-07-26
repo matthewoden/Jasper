@@ -215,11 +215,11 @@ describe("SliderNumberPair", () => {
   });
 
   it("resets the CSS var to the prop-derived value when value prop changes (revert-on-failed-save)", () => {
-    const { rerender } = render(
+    const pair = (value: number) => (
       <SliderNumberPair
         id="settings-font-size"
         label="Font size"
-        value={15}
+        value={value}
         sliderMin={12}
         sliderMax={24}
         numberMin={8}
@@ -229,13 +229,26 @@ describe("SliderNumberPair", () => {
         cssVar="--editor-font-size"
         formatCssValue={(v) => `${v}px`}
         onCommit={vi.fn()}
-      />,
+      />
     );
+    const { rerender } = render(pair(15));
     const range = screen.getByRole("slider", { name: "Font size" });
     fireEvent.change(range, { target: { value: "22" } });
     expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("22px");
 
-    rerender(
+    // The parent commits optimistically (value 15 -> 22), then the save fails
+    // and it reverts (22 -> 15). Only the second transition is the revert.
+    rerender(pair(22));
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("22px");
+
+    rerender(pair(15));
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
+  });
+
+  it("a parent re-render with an unchanged value but a fresh formatCssValue identity preserves in-progress input and the validation alert (32-REVIEW WR-01)", () => {
+    // Every render passes a NEW inline arrow, exactly as an unmemoized call
+    // site would. The sync effect must not treat that as a value change.
+    const pair = () => (
       <SliderNumberPair
         id="settings-font-size"
         label="Font size"
@@ -249,8 +262,23 @@ describe("SliderNumberPair", () => {
         cssVar="--editor-font-size"
         formatCssValue={(v) => `${v}px`}
         onCommit={vi.fn()}
-      />,
+      />
     );
-    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
+    const { rerender } = render(pair());
+    const number = screen.getByRole("spinbutton", { name: "Font size" });
+
+    // In-progress, not yet blurred.
+    fireEvent.change(number, { target: { value: "22" } });
+    rerender(pair());
+    expect(number).toHaveValue(22);
+
+    // A surfaced validation alert must survive an unrelated parent re-render
+    // long enough to be read.
+    fireEvent.change(number, { target: { value: "40" } });
+    fireEvent.blur(number);
+    expect(screen.getByRole("alert").textContent).toMatch(/must be between 8 and 32/);
+
+    rerender(pair());
+    expect(screen.getByRole("alert").textContent).toMatch(/must be between 8 and 32/);
   });
 });
