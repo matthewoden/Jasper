@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Config } from "../../lib/useConfig";
+import type { Config, ConfigPatch } from "../../lib/useConfig";
 
 vi.mock("../../lib/useAccent", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/useAccent")>();
@@ -73,7 +73,7 @@ describe("AppearanceSection", () => {
     expect(within(group).getByRole("button", { name: "Purple" })).toBeInTheDocument();
   });
 
-  it("clicking Sky calls saveConfig exactly once with accent sky, editor and dailyNotes unchanged", async () => {
+  it("clicking Sky calls saveConfig exactly once with a bare { accent } partial", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     fireEvent.click(screen.getByRole("button", { name: "Sky" }));
@@ -81,10 +81,40 @@ describe("AppearanceSection", () => {
     // Awaited, not asserted synchronously: the save resolves asynchronously
     // and an unawaited resolution leaks a state update into the next test.
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
-    const saved = saveConfig.mock.calls[0][0] as Config;
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
     expect(saved.accent).toBe("sky");
-    expect(saved.editor).toEqual(config.editor);
-    expect(saved.dailyNotes).toEqual(config.dailyNotes);
+    expect(Object.keys(saved)).toEqual(["accent"]);
+    expect(saved.editor).toBeUndefined();
+    expect(saved.dailyNotes).toBeUndefined();
+  });
+
+  it("clicking the already-selected accent swatch calls saveConfig zero times and does not touch localStorage's bootstrap key", () => {
+    const { saveConfig } = renderSection(makeConfig({ accent: "purple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Purple" }));
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+    expect(persistAccentBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("clicking the already-active reading-font pill calls saveConfig zero times", () => {
+    const { saveConfig } = renderSection(makeConfig({ readingFont: "sans" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sans" }));
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+    expect(persistReadingFontBootstrap).not.toHaveBeenCalled();
+  });
+
+  it("tabbing through the font-size and line-height number inputs without changing any value issues zero saveConfig calls (WR-06)", () => {
+    const { saveConfig } = renderSection(makeConfig());
+    const fontSizeInput = screen.getByRole("spinbutton", { name: "Font size" });
+    const lineHeightInput = screen.getByRole("spinbutton", { name: "Line height" });
+
+    fireEvent.focus(fontSizeInput);
+    fireEvent.blur(fontSizeInput);
+    fireEvent.focus(lineHeightInput);
+    fireEvent.blur(lineHeightInput);
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
   it("reverts --color-accent on document.documentElement and calls onSaveError on a rejected save", async () => {
@@ -170,7 +200,7 @@ describe("AppearanceSection", () => {
     expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
-  it("releasing the font-size slider calls saveConfig exactly once, preserving editor.autosaveMs", async () => {
+  it("releasing the font-size slider calls saveConfig exactly once with a bare { editor: { fontSize } } partial", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     const slider = screen.getByRole("slider", { name: "Font size" });
@@ -179,12 +209,14 @@ describe("AppearanceSection", () => {
     fireEvent.pointerUp(slider);
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
-    const saved = saveConfig.mock.calls[0][0] as Config;
-    expect(saved.editor.fontSize).toBe(20);
-    expect(saved.editor.autosaveMs).toBe(config.editor.autosaveMs);
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
+    expect(Object.keys(saved)).toEqual(["editor"]);
+    expect(Object.keys(saved.editor!)).toEqual(["fontSize"]);
+    expect(saved.editor?.fontSize).toBe(20);
+    expect(saved.editor?.autosaveMs).toBeUndefined();
   });
 
-  it("drag events on the line-height slider update --editor-line-height without calling saveConfig, release commits once", async () => {
+  it("drag events on the line-height slider update --editor-line-height without calling saveConfig, release commits once with a bare { editor: { lineHeight } } partial", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     const slider = screen.getByRole("slider", { name: "Line height" });
@@ -195,8 +227,10 @@ describe("AppearanceSection", () => {
 
     fireEvent.pointerUp(slider);
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
-    const saved = saveConfig.mock.calls[0][0] as Config;
-    expect(saved.editor.lineHeight).toBe(1.5);
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
+    expect(Object.keys(saved)).toEqual(["editor"]);
+    expect(Object.keys(saved.editor!)).toEqual(["lineHeight"]);
+    expect(saved.editor?.lineHeight).toBe(1.5);
   });
 
   it("TypePreviewPanel reflects the live just-committed font size before the persisted config catches up", async () => {
