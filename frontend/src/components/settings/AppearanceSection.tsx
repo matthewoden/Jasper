@@ -8,7 +8,7 @@
  * which would create a second independent config state and make D-10's
  * single-write pane Reset silently partial.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eyebrow, ControlRow, controlDescriptionId } from "./shared";
 import { SliderNumberPair } from "./SliderNumberPair";
 import { TypePreviewPanel } from "./TypePreviewPanel";
@@ -86,6 +86,13 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
   const formatPx = useCallback((v: number) => `${v}px`, []);
   const formatUnitless = useCallback((v: number) => `${v}`, []);
 
+  // Rollback reads config through a ref rather than the closure: `config` can
+  // advance while a save is in flight (a Reset landing from the shell), and
+  // reverting to the render-time value would show a number that is no longer
+  // what is persisted.
+  const configRef = useRef(config);
+  configRef.current = config;
+
   // No dirty check here: SliderNumberPair already guards before invoking
   // onCommit, so a duplicate check would be dead code.
   const commitFontSize = useCallback(
@@ -93,13 +100,13 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
       setFontSize(value);
       const { error } = await saveConfig({ editor: { fontSize: value } });
       if (error) {
-        setFontSize(config.editor.fontSize);
+        setFontSize(configRef.current.editor.fontSize);
         onSaveError(`Couldn't save your changes: ${error.message}.`);
       } else {
         onSaveError(null);
       }
     },
-    [config, saveConfig, onSaveError],
+    [saveConfig, onSaveError],
   );
 
   const commitLineHeight = useCallback(
@@ -107,13 +114,13 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
       setLineHeight(value);
       const { error } = await saveConfig({ editor: { lineHeight: value } });
       if (error) {
-        setLineHeight(config.editor.lineHeight);
+        setLineHeight(configRef.current.editor.lineHeight);
         onSaveError(`Couldn't save your changes: ${error.message}.`);
       } else {
         onSaveError(null);
       }
     },
-    [config, saveConfig, onSaveError],
+    [saveConfig, onSaveError],
   );
 
   return (

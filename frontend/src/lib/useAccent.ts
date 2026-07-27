@@ -55,6 +55,14 @@ export function persistReadingFontBootstrap(rf: string): void {
   }
 }
 
+/**
+ * @deprecated Unused as of 2026-07-27 (Phase 32.1 review WR-01). Mounting this
+ * creates a SECOND independent `useConfig()` instance, which makes a pane Reset
+ * silently partial — the anti-pattern AppearanceSection's header warns against.
+ * Settings panes must use the non-hook helpers (`applyAccent`,
+ * `persistAccentBootstrap`) plus the shell's single `useConfig`. Kept rather
+ * than deleted pending confirmation that nothing external depends on it.
+ */
 export function useAccent(): {
   accent: string;
   setAccent: (a: string) => Promise<{ error?: { message: string } }>;
