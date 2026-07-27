@@ -463,3 +463,360 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		}
 	}
 }
+
+// TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged — RESEARCH Pitfall
+// 2's named warning-sign test: PATCH one nested field and prove every other
+// PUT-seeded field survives, rather than merely proving PATCH returns 200.
+func TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	putBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	putReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := http.DefaultClient.Do(putReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = putResp.Body.Close()
+	if putResp.StatusCode != 200 {
+		t.Fatalf("seed PUT status: got %d, want 200", putResp.StatusCode)
+	}
+
+	patchBody := []byte(`{"editor":{"lineHeight":1.5}}`)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Editor.LineHeight != 1.5 {
+		t.Errorf("editor.lineHeight: got %v, want 1.5 (the patched field)", got.Editor.LineHeight)
+	}
+	if got.Editor.FontSize != 15 {
+		t.Errorf("editor.fontSize: got %v, want 15 (unmentioned by PATCH)", got.Editor.FontSize)
+	}
+	if got.Editor.AutosaveMs != 2000 {
+		t.Errorf("editor.autosaveMs: got %v, want 2000 (unmentioned by PATCH)", got.Editor.AutosaveMs)
+	}
+	if got.AppName != "Jasper" {
+		t.Errorf("appName: got %q, want %q (unmentioned by PATCH)", got.AppName, "Jasper")
+	}
+	// GET reloads through config.Load, which pins Theme to "dark" (D-02) —
+	// consistent with the seed PUT's own value, so this doesn't prove much
+	// on its own but documents the field survived the PATCH regardless.
+	if string(got.Theme) != "dark" {
+		t.Errorf("theme: got %q, want %q (unmentioned by PATCH)", got.Theme, "dark")
+	}
+	if got.DailyNotes.Folder != "daily" {
+		t.Errorf("dailyNotes.folder: got %q, want %q (unmentioned by PATCH)", got.DailyNotes.Folder, "daily")
+	}
+}
+
+// TestPatchConfig_PreservesUnknownFields — mirrors
+// TestPutConfig_PreservesUnknownFields: a PATCH must preserve an unmanaged
+// top-level key and an unmanaged sub-key inside a managed nested object that
+// were already on disk.
+func TestPatchConfig_PreservesUnknownFields(t *testing.T) {
+	ts, dir := setupConfigServer(t)
+	defer ts.Close()
+
+	configPath := filepath.Join(dir, ".jasper", "config.json")
+	seed := []byte(`{
+		"appName":"Jasper","theme":"dark",
+		"_jasper_unmanaged":"preserve-me",
+		"dailyNotes":{"folder":"daily","template":""},
+		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,"_unmanaged_editor_key":"also-preserve"},
+		"server":{"port":6683,"dataDir":""},
+		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
+	}`)
+	if err := os.WriteFile(configPath, seed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"theme":"light"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", resp.StatusCode, respBody)
+	}
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var onDisk map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal disk: %v", err)
+	}
+	val, ok := onDisk["_jasper_unmanaged"]
+	if !ok {
+		t.Error("unmanaged top-level key '_jasper_unmanaged' was dropped by PATCH")
+	} else {
+		var s string
+		if err := json.Unmarshal(val, &s); err != nil || s != "preserve-me" {
+			t.Errorf("unmanaged key value: got %s, want \"preserve-me\"", val)
+		}
+	}
+
+	var editor map[string]json.RawMessage
+	if err := json.Unmarshal(onDisk["editor"], &editor); err != nil {
+		t.Fatalf("unmarshal editor: %v", err)
+	}
+	editorVal, ok := editor["_unmanaged_editor_key"]
+	if !ok {
+		t.Error("unmanaged nested key 'editor._unmanaged_editor_key' was dropped by PATCH")
+	} else {
+		var s string
+		if err := json.Unmarshal(editorVal, &s); err != nil || s != "also-preserve" {
+			t.Errorf("unmanaged nested key value: got %s, want \"also-preserve\"", editorVal)
+		}
+	}
+
+	theme, ok := onDisk["theme"]
+	if !ok {
+		t.Error("theme key missing after PATCH")
+	} else {
+		var themeStr string
+		if err := json.Unmarshal(theme, &themeStr); err != nil || themeStr != "light" {
+			t.Errorf("theme: got %s, want \"light\"", theme)
+		}
+	}
+}
+
+// TestPatchConfig_ClearsTemplateWithEmptyString — proves an explicit empty
+// string is a real write end-to-end, not just past the strict-body
+// validator: seed a non-empty dailyNotes.template, PATCH it to "", assert
+// the persisted value is "".
+func TestPatchConfig_ClearsTemplateWithEmptyString(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	seedBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": "# {{date}}\n\n"},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
+	seedReq.Header.Set("Content-Type", "application/json")
+	seedResp, err := http.DefaultClient.Do(seedReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = seedResp.Body.Close()
+	if seedResp.StatusCode != 200 {
+		t.Fatalf("seed PUT status: got %d, want 200", seedResp.StatusCode)
+	}
+
+	patchBody := []byte(`{"dailyNotes":{"template":""}}`)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.DailyNotes.Template != "" {
+		t.Errorf("dailyNotes.template: got %q, want empty string", got.DailyNotes.Template)
+	}
+}
+
+// TestPatchConfig_EchoesFullPersistedConfig — the 200 response body is a
+// complete Config document (every required key present), not merely the
+// patched field, and the patched field carries the new value.
+func TestPatchConfig_EchoesFullPersistedConfig(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	seedBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
+	seedReq.Header.Set("Content-Type", "application/json")
+	seedResp, err := http.DefaultClient.Do(seedReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = seedResp.Body.Close()
+	if seedResp.StatusCode != 200 {
+		t.Fatalf("seed PUT status: got %d, want 200", seedResp.StatusCode)
+	}
+
+	patchBody := []byte(`{"editor":{"fontSize":22}}`)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	var echoed Config
+	if err := json.Unmarshal(patchRespBody, &echoed); err != nil {
+		t.Fatalf("PATCH response unmarshal: %v", err)
+	}
+	if echoed.AppName == "" {
+		t.Error("PATCH response missing appName — not a full Config document")
+	}
+	if echoed.Theme == "" {
+		t.Error("PATCH response missing theme — not a full Config document")
+	}
+	if echoed.DailyNotes.Folder == "" {
+		t.Error("PATCH response missing dailyNotes.folder — not a full Config document")
+	}
+	if echoed.Editor.FontSize != 22 {
+		t.Errorf("editor.fontSize: got %d, want 22 (the patched field)", echoed.Editor.FontSize)
+	}
+}
+
+// TestPatchConfig_EmptyBodyObject_200 — an empty patch {} is a legal no-op,
+// not a 400, and leaves the persisted document semantically unchanged.
+func TestPatchConfig_EmptyBodyObject_200(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	seedBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
+	seedReq.Header.Set("Content-Type", "application/json")
+	seedResp, err := http.DefaultClient.Do(seedReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = seedResp.Body.Close()
+	if seedResp.StatusCode != 200 {
+		t.Fatalf("seed PUT status: got %d, want 200", seedResp.StatusCode)
+	}
+
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader([]byte(`{}`)))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("empty PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Editor.FontSize != 15 {
+		t.Errorf("editor.fontSize: got %d, want 15 (empty patch must be a no-op)", got.Editor.FontSize)
+	}
+	if got.DailyNotes.Folder != "daily" {
+		t.Errorf("dailyNotes.folder: got %q, want %q (empty patch must be a no-op)", got.DailyNotes.Folder, "daily")
+	}
+}
+
+// TestPatchConfig_DoesNotSyncAppJSON — the inverse of
+// TestPutConfig_SyncsAppJSONToDirBasename: pins the Task 1 decision that
+// PatchConfig performs no app.json write, so a future copy-paste of
+// PutConfig's body into PatchConfig fails CI. With JASPER_APP_HOME isolated,
+// PATCH one field and assert app.json is byte-identical before and after.
+func TestPatchConfig_DoesNotSyncAppJSON(t *testing.T) {
+	appHome := t.TempDir()
+	t.Setenv("JASPER_APP_HOME", appHome)
+
+	ts, dataDir := setupConfigServer(t)
+	defer ts.Close()
+
+	appJSONPath, err := vault.AppJSONPath()
+	if err != nil {
+		t.Fatalf("AppJSONPath: %v", err)
+	}
+	initialState := &vault.AppState{
+		CurrentVault: dataDir,
+		RecentVaults: []vault.RecentVaultEntry{
+			{Path: dataDir, DisplayName: "OldName"},
+		},
+	}
+	if err := vault.SaveAppJSON(appJSONPath, initialState); err != nil {
+		t.Fatalf("seed app.json: %v", err)
+	}
+	before, err := os.ReadFile(appJSONPath)
+	if err != nil {
+		t.Fatalf("read app.json before PATCH: %v", err)
+	}
+
+	patchBody := []byte(`{"appName":"Renamed"}`)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	after, err := os.ReadFile(appJSONPath)
+	if err != nil {
+		t.Fatalf("read app.json after PATCH: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("app.json changed after PATCH /config — PatchConfig must not sync app.json\nbefore: %s\nafter:  %s", before, after)
+	}
+}

@@ -217,6 +217,133 @@ func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
 	}
 }
 
+// TestConfigMiddleware_Patch_UnknownField_400 — an unknown top-level key on
+// PATCH is rejected exactly like PUT.
+func TestConfigMiddleware_Patch_UnknownField_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"unknownField":42}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("unknown field: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_FontSizeOutOfRange_400 — editor.fontSize outside
+// 8-32 is rejected with the same message text PUT uses.
+func TestConfigMiddleware_Patch_FontSizeOutOfRange_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"fontSize":999}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("fontSize=999: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+	if !bytes.Contains(respBody, []byte("editor.fontSize must be 8–32")) {
+		t.Errorf("fontSize=999: body missing expected message; body=%s", respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_ThemeEnum_400 — an invalid theme value on PATCH
+// is rejected exactly like PUT.
+func TestConfigMiddleware_Patch_ThemeEnum_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"theme":"solarized"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("theme=solarized: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_OmittedRequiredFields_200 — a PATCH body that
+// omits fields required on PUT (appName, theme, dailyNotes, etc.) passes the
+// middleware. This is the test that fails loudly if strictConfigPatchValidator
+// were built by reusing the value-typed strictConfigValidator (an omitted
+// fontSize would read as 0 and 400 as out-of-range).
+func TestConfigMiddleware_Patch_OmittedRequiredFields_200(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"lineHeight":1.5}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("sparse patch with omitted required fields: got %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_EmptyTemplateAccepted — an explicit empty
+// string for dailyNotes.template is a legitimate write (clearing the
+// template), not rejected as "empty means omitted."
+func TestConfigMiddleware_Patch_EmptyTemplateAccepted(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"dailyNotes":{"template":""}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("empty template: got %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_UnknownNestedField_400 — DisallowUnknownFields
+// reaches nested objects on the PATCH path too.
+func TestConfigMiddleware_Patch_UnknownNestedField_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"nope":1}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("unknown nested field: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
 // collectJSONPaths walks t (a struct type, following pointer indirection at
 // every level) and returns the set of dotted json-tag paths for every leaf
 // field, recursing into nested struct-typed fields regardless of whether
@@ -295,4 +422,49 @@ func TestStrictConfigValidatorMatchesConfigStruct(t *testing.T) {
 		b.WriteString(p + " present in strictConfigValidator but missing from config.Config\n")
 	}
 	t.Errorf("config.Config and strictConfigValidator have drifted:\n%s", b.String())
+}
+
+// TestStrictConfigPatchValidatorMatchesConfigStruct is T-32.1-05's safety
+// net: ConfigPatch can't $ref Config and subtract `required` (OpenAPI 3.1
+// has no such subtraction operator), so a hand-maintained twin schema is
+// unavoidable. This test enforces 1:1 JSON-path parity across all three
+// definitions of the patchable field set — config.Config,
+// strictConfigPatchValidator, and the generated ConfigPatch — turning "a
+// v1.5 field added to Config but forgotten in ConfigPatch" from a silent
+// runtime 400 into a CI failure. collectJSONPaths is reused unmodified: it
+// already dereferences pointers before recursing, so a value-typed struct
+// and an all-pointer struct produce identical path sets.
+func TestStrictConfigPatchValidatorMatchesConfigStruct(t *testing.T) {
+	t.Parallel()
+	cfgPaths := collectJSONPaths(reflect.TypeOf(config.Config{}), "")
+	validatorPaths := collectJSONPaths(reflect.TypeOf(strictConfigPatchValidator{}), "")
+	genPaths := collectJSONPaths(reflect.TypeOf(ConfigPatch{}), "")
+
+	report := func(a, b map[string]bool, aName, bName string) []string {
+		var missing []string
+		for p := range a {
+			if !b[p] {
+				missing = append(missing, p+" present in "+aName+" but missing from "+bName)
+			}
+		}
+		return missing
+	}
+
+	var problems []string
+	problems = append(problems, report(cfgPaths, validatorPaths, "config.Config", "strictConfigPatchValidator")...)
+	problems = append(problems, report(validatorPaths, cfgPaths, "strictConfigPatchValidator", "config.Config")...)
+	problems = append(problems, report(cfgPaths, genPaths, "config.Config", "generated ConfigPatch")...)
+	problems = append(problems, report(genPaths, cfgPaths, "generated ConfigPatch", "config.Config")...)
+	problems = append(problems, report(validatorPaths, genPaths, "strictConfigPatchValidator", "generated ConfigPatch")...)
+	problems = append(problems, report(genPaths, validatorPaths, "generated ConfigPatch", "strictConfigPatchValidator")...)
+
+	if len(problems) == 0 {
+		return
+	}
+	sort.Strings(problems)
+	var b strings.Builder
+	for _, p := range problems {
+		b.WriteString(p + "\n")
+	}
+	t.Errorf("config.Config, strictConfigPatchValidator, and generated ConfigPatch have drifted:\n%s", b.String())
 }

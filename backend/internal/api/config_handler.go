@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 
@@ -75,6 +76,68 @@ func (s *Server) PutConfig(
 	}
 
 	return PutConfig200JSONResponse(toWireConfig(cfg)), nil
+}
+
+// PatchConfig implements PATCH /api/v1/config. Writes only the keys present
+// in the request body through the serialised sparse-overlay primitive
+// (config.SaveMergedPartial); every other field on disk, including
+// unmanaged/hand-added keys, is left untouched.
+//
+// Deliberately does NOT sync app.json's display name the way PutConfig does:
+// that sync derives the name from filepath.Base(s.dataDir), not from any
+// Config field, so no patchable field can change it, and PUT /config (Reset,
+// first-run) still performs the sync — it is not lost by this handler
+// skipping it.
+//
+//nolint:revive // generated interface name
+func (s *Server) PatchConfig(
+	_ context.Context,
+	req PatchConfigRequestObject,
+) (PatchConfigResponseObject, error) {
+	if req.Body == nil {
+		return PatchConfig400JSONResponse(newError("invalid_request",
+			"request body required")), nil
+	}
+
+	overlay, err := fromWirePatch(*req.Body)
+	if err != nil {
+		return PatchConfig400JSONResponse(newError("invalid_request",
+			"could not decode request body")), nil
+	}
+
+	if err := config.SaveMergedPartial(s.dataDir, overlay, s.log); err != nil {
+		s.log.Error("PatchConfig: save failed",
+			"dataDir", s.dataDir, "err", err)
+		return nil, errors.New("could not save config")
+	}
+
+	cfg, err := config.Load(s.dataDir, s.log)
+	if err != nil {
+		s.log.Error("PatchConfig: reload after save failed",
+			"dataDir", s.dataDir, "err", err)
+		return nil, errors.New("could not load config")
+	}
+
+	return PatchConfig200JSONResponse(toWireConfig(cfg)), nil
+}
+
+// fromWirePatch builds a sparse write overlay from a ConfigPatch. Every
+// ConfigPatch field is an optional pointer (oapi-codegen's `,omitempty` on
+// every non-required property), so marshaling w drops every nil field and
+// keeps every present field — including pointer-to-zero-value ones — and the
+// marshal/unmarshal round-trip through a raw-message map *is* the sparse
+// overlay. Do not replace this with a hand-written nil-check ladder; the
+// round-trip already produces exactly the right shape.
+func fromWirePatch(w ConfigPatch) (map[string]json.RawMessage, error) {
+	data, err := json.Marshal(w)
+	if err != nil {
+		return nil, err
+	}
+	var overlay map[string]json.RawMessage
+	if err := json.Unmarshal(data, &overlay); err != nil {
+		return nil, err
+	}
+	return overlay, nil
 }
 
 func toWireConfig(c config.Config) Config {

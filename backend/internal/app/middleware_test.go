@@ -311,6 +311,73 @@ func TestCSRFOriginMiddleware_DeleteAllows(t *testing.T) {
 	}
 }
 
+// TestPatchConfig_ForeignOrigin_403 — T-32.1-03: proves (rather than
+// assumes) that csrfOriginMiddleware's method-agnostic design
+// (csrfSafeMethods = GET/HEAD/OPTIONS only) already covers the new PATCH
+// verb. Asserts PATCH-with-foreign-Origin 403 and PATCH-with-allowed-Origin
+// not-403, alongside the same two assertions for PUT as the control, so the
+// test documents parity rather than PATCH in isolation.
+func TestPatchConfig_ForeignOrigin_403(t *testing.T) {
+	h := csrfOriginMiddleware("127.0.0.1:6683")
+
+	t.Run("patch_foreign_origin_rejected", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/config", nil)
+		req.Header.Set("Origin", "http://evil.com")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if called {
+			t.Error("expected next handler NOT to be called for PATCH with foreign Origin")
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", rec.Code)
+		}
+	})
+
+	t.Run("patch_allowed_origin_passes", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/config", nil)
+		req.Header.Set("Origin", "http://127.0.0.1:6683")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if !called {
+			t.Error("expected next handler to be called for PATCH with same-origin loopback")
+		}
+		if rec.Code == http.StatusForbidden {
+			t.Errorf("expected non-403, got %d", rec.Code)
+		}
+	})
+
+	// Control: PUT parity with the PATCH assertions above.
+	t.Run("put_foreign_origin_rejected", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/config", nil)
+		req.Header.Set("Origin", "http://evil.com")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if called {
+			t.Error("expected next handler NOT to be called for PUT with foreign Origin")
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", rec.Code)
+		}
+	})
+
+	t.Run("put_allowed_origin_passes", func(t *testing.T) {
+		called := false
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/config", nil)
+		req.Header.Set("Origin", "http://127.0.0.1:6683")
+		rec := httptest.NewRecorder()
+		h(csrfSentinel(t, &called)).ServeHTTP(rec, req)
+		if !called {
+			t.Error("expected next handler to be called for PUT with same-origin loopback")
+		}
+		if rec.Code == http.StatusForbidden {
+			t.Errorf("expected non-403, got %d", rec.Code)
+		}
+	})
+}
+
 // TestCSRFOriginMiddleware_AllIfacesPortMatch: when bound to 0.0.0.0, a LAN
 // browser Origin whose port matches the configured port passes; a request
 // from the same IP with a wrong port is rejected.
