@@ -462,10 +462,12 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const box = await slider.boundingBox();
     if (!box) throw new Error("Font size slider has no bounding box");
 
-    const putConfigRequests: string[] = [];
+    // PATCH, not PUT: the slider commit path moved onto saveConfig(patch) in
+    // Phase 32.1. A PUT from this control would itself be a regression.
+    const configWriteRequests: string[] = [];
     page.on("request", (req) => {
-      if (req.method() === "PUT" && req.url().includes("/api/v1/config")) {
-        putConfigRequests.push(req.url());
+      if (req.method() === "PATCH" && req.url().includes("/api/v1/config")) {
+        configWriteRequests.push(req.url());
       }
     });
 
@@ -485,12 +487,12 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
 
     await page.mouse.up();
 
-    // "Exactly one PUT fired" only proves the request was SENT — poll the
+    // "Exactly one write fired" only proves the request was SENT — poll the
     // persisted config until it reflects the commit (the request event
     // fires before the response lands, so asserting the count alone risks
-    // reading GET /config before the PUT's write has completed).
+    // reading GET /config before the write has completed).
     await expect(async () => {
-      expect(putConfigRequests.length).toBe(1);
+      expect(configWriteRequests.length).toBe(1);
       const cfgResp = await page.request.get(`${baseURL}/api/v1/config`);
       const cfg = await cfgResp.json();
       const fontSizeAfter = await cmEditor.evaluate((el) => getComputedStyle(el).fontSize);
