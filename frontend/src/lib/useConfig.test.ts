@@ -157,6 +157,56 @@ describe("useConfig", () => {
     expect(result.current.config?.editor.fontSize).toBe(18);
   });
 
+  it("CR-01: a failing save does not revert an overlapping save that already succeeded", async () => {
+    // The CR-02 test above awaits each save, so the two never overlap. This one
+    // holds the first PATCH open, lets a second PATCH confirm while it is still
+    // in flight, and only then fails the first.
+    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
+
+    let failFirst: (v: unknown) => void = () => {};
+    const heldFirst = new Promise((resolve) => {
+      failFirst = resolve;
+    });
+    const afterSecond = { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } };
+
+    mockClient.PATCH
+      // First call (accent) — resolution withheld until we release it.
+      .mockImplementationOnce(() => heldFirst)
+      // Second call (fontSize) — confirms immediately, server echoes fontSize 18.
+      .mockResolvedValueOnce({ data: afterSecond, response: { status: 200 } });
+
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.config).not.toBeNull());
+
+    let firstSave: Promise<{ error?: unknown }> | undefined;
+    await act(async () => {
+      firstSave = result.current.saveConfig({ accent: "sky" });
+      await Promise.resolve();
+    });
+
+    // Second save confirms while the first is still unresolved.
+    await act(async () => {
+      await result.current.saveConfig({ editor: { fontSize: 18 } });
+    });
+    expect(result.current.config?.editor.fontSize).toBe(18);
+
+    // Now fail the first save.
+    await act(async () => {
+      failFirst({
+        error: { code: "invalid_request", message: "bad accent" },
+        response: { status: 400 },
+      });
+      await firstSave;
+    });
+
+    // The confirmed fontSize:18 must survive. Rolling back to the snapshot
+    // captured before the first save would restore fontSize:15 and silently
+    // discard a write the server already persisted.
+    expect(result.current.config?.editor.fontSize).toBe(18);
+    // The failed field must not be applied.
+    expect(result.current.config?.accent).toBe("purple");
+  });
+
   it("replaceConfig PUTs the whole document rebased on the freshest persisted config", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
     const afterFirstSave = { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } };

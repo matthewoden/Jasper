@@ -97,20 +97,22 @@ export function useConfig(): {
   const [config, setConfig] = useState<Config | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
 
-  // Track the last server-confirmed config so that saveConfig rollback
-  // always restores the true persisted value, not an optimistic intermediate.
-  // A closure over `config` would capture the optimistic value; a ref updated
-  // in a separate effect always holds the last committed state.
+  // Holds ONLY server-confirmed config: assigned from GET /config and from
+  // each PATCH/PUT response, never from an optimistic frame. Mirroring every
+  // `config` transition in an effect would also capture the optimistic frame
+  // saveConfig sets before its request resolves, which makes it the base for
+  // the next concurrent save and the rollback target for a failed one — a
+  // failing save could then revert a sibling save that already succeeded.
   const persistedConfigRef = useRef<Config | null>(null);
-  useEffect(() => {
-    persistedConfigRef.current = config;
-  }, [config]);
 
   useEffect(() => {
     let cancelled = false;
     getConfig().then(({ data, error: err }) => {
       if (cancelled) return;
-      if (data) setConfig(data);
+      if (data) {
+        setConfig(data);
+        persistedConfigRef.current = data;
+      }
       if (err) setError(err);
     });
     return () => {
@@ -118,19 +120,21 @@ export function useConfig(): {
     };
   }, []);
 
-  // saveConfig reads the rollback value from the ref, not a closure, so
-  // concurrent calls roll back to the last persisted state. The optimistic
-  // frame is the sparse patch merged into the last persisted config (not the
-  // patch alone) — this mirrors the server's own merge semantics, so the
-  // local frame and the eventual server echo agree, and rollback on error
-  // reverts the merged frame back to the last persisted document (merge-
-  // then-revert), never a per-field diff.
+  // The optimistic frame is the sparse patch merged into the last persisted
+  // config (not the patch alone) — this mirrors the server's own merge
+  // semantics, so the local frame and the eventual server echo agree.
+  //
+  // Rollback re-reads the ref AFTER the request settles rather than reusing
+  // the pre-request snapshot: a sibling save may have confirmed while this one
+  // was in flight, and reverting to the older snapshot would discard it. Since
+  // a failed PATCH never landed server-side, the newest confirmed document is
+  // already the correct post-failure state.
   const saveConfig = useCallback(async (patch: ConfigPatch) => {
-    const prev = persistedConfigRef.current;
-    if (prev) setConfig(mergePatch(prev, patch));
+    const base = persistedConfigRef.current;
+    if (base) setConfig(mergePatch(base, patch));
     const { data, error: err } = await patchConfig(patch);
     if (err) {
-      setConfig(prev);
+      setConfig(persistedConfigRef.current);
       setError(err);
       return { error: err };
     }
@@ -148,13 +152,13 @@ export function useConfig(): {
   // what stops Reset from clobbering a save that landed after the caller's
   // last render.
   const replaceConfig = useCallback(async (patch: ConfigPatch) => {
-    const prev = persistedConfigRef.current;
-    if (!prev) return {};
-    const next = mergePatch(prev, patch);
+    const base = persistedConfigRef.current;
+    if (!base) return {};
+    const next = mergePatch(base, patch);
     setConfig(next);
     const { data, error: err } = await putConfig(next);
     if (err) {
-      setConfig(prev);
+      setConfig(persistedConfigRef.current);
       setError(err);
       return { error: err };
     }
