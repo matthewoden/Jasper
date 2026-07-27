@@ -27,10 +27,10 @@ export function EditorSection({ config, saveConfig, onSaveError }: SectionProps)
       return;
     }
     setAutosaveMsError(null);
-    const { error } = await saveConfig({
-      ...config,
-      editor: { ...config.editor, autosaveMs: value },
-    });
+    // A corrected-back-to-current value still clears the error above, but
+    // must not issue a write.
+    if (value === config.editor.autosaveMs) return;
+    const { error } = await saveConfig({ editor: { autosaveMs: value } });
     if (error) {
       setAutosaveMsError(`Save failed: ${error.message}. Reverted.`);
       setAutosaveMsInput(String(config.editor.autosaveMs));

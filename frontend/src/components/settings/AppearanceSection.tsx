@@ -31,10 +31,12 @@ const ACCENT_SWATCHES = [
 export function AppearanceSection({ config, saveConfig, onSaveError }: SectionProps) {
   const handleAccentChange = useCallback(
     async (id: Config["accent"]) => {
+      // No-op the already-selected swatch before any DOM/localStorage work.
+      if (id === config.accent) return;
       const prev = config.accent;
       applyAccent(id);
       persistAccentBootstrap(id);
-      const { error } = await saveConfig({ ...config, accent: id });
+      const { error } = await saveConfig({ accent: id });
       if (error) {
         applyAccent(prev);
         persistAccentBootstrap(prev); // WR-01: revert the bootstrap key, else next reload flashes the rejected accent
@@ -48,10 +50,11 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
 
   const handleReadingFontChange = useCallback(
     async (rf: Config["readingFont"]) => {
+      if (rf === config.readingFont) return;
       const prev = config.readingFont;
       applyReadingFont(rf);
       persistReadingFontBootstrap(rf);
-      const { error } = await saveConfig({ ...config, readingFont: rf });
+      const { error } = await saveConfig({ readingFont: rf });
       if (error) {
         applyReadingFont(prev);
         persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key, else next reload flashes the rejected font
@@ -83,13 +86,12 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
   const formatPx = useCallback((v: number) => `${v}px`, []);
   const formatUnitless = useCallback((v: number) => `${v}`, []);
 
+  // No dirty check here: SliderNumberPair already guards before invoking
+  // onCommit, so a duplicate check would be dead code.
   const commitFontSize = useCallback(
     async (value: number) => {
       setFontSize(value);
-      const { error } = await saveConfig({
-        ...config,
-        editor: { ...config.editor, fontSize: value },
-      });
+      const { error } = await saveConfig({ editor: { fontSize: value } });
       if (error) {
         setFontSize(config.editor.fontSize);
         onSaveError(`Couldn't save your changes: ${error.message}.`);
@@ -103,10 +105,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
   const commitLineHeight = useCallback(
     async (value: number) => {
       setLineHeight(value);
-      const { error } = await saveConfig({
-        ...config,
-        editor: { ...config.editor, lineHeight: value },
-      });
+      const { error } = await saveConfig({ editor: { lineHeight: value } });
       if (error) {
         setLineHeight(config.editor.lineHeight);
         onSaveError(`Couldn't save your changes: ${error.message}.`);
