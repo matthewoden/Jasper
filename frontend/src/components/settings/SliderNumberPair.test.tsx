@@ -245,6 +245,48 @@ describe("SliderNumberPair", () => {
     expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
   });
 
+  it("pointerUp without moving the slider never calls onCommit", () => {
+    const { onCommit } = renderPair({ value: 15 });
+    const range = screen.getByRole("slider", { name: "Font size" });
+
+    fireEvent.pointerUp(range);
+
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("blurring the number input with an unchanged value never calls onCommit and clears any alert", () => {
+    const { onCommit } = renderPair({ value: 15 });
+    const number = screen.getByRole("spinbutton", { name: "Font size" });
+
+    fireEvent.change(number, { target: { value: "40" } });
+    fireEvent.blur(number);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    fireEvent.change(number, { target: { value: "15" } });
+    fireEvent.blur(number);
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("an arrow-key excursion that returns to the starting value commits nothing", () => {
+    vi.useFakeTimers();
+    try {
+      const { onCommit } = renderPair({ value: 15 });
+      const range = screen.getByRole("slider", { name: "Font size" });
+
+      fireEvent.change(range, { target: { value: "16" } });
+      fireEvent.keyUp(range, { key: "ArrowRight" });
+      fireEvent.change(range, { target: { value: "15" } });
+      fireEvent.keyUp(range, { key: "ArrowLeft" });
+
+      vi.advanceTimersByTime(300);
+      expect(onCommit).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a parent re-render with an unchanged value but a fresh formatCssValue identity preserves in-progress input and the validation alert (32-REVIEW WR-01)", () => {
     // Every render passes a NEW inline arrow, exactly as an unmemoized call
     // site would. The sync effect must not treat that as a value change.
