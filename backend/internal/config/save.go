@@ -5,9 +5,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 )
+
+// mu serialises every exported read/write against config.json (T-32.1-04).
+// A plain Mutex, not RWMutex: Load's first-run branch writes the default
+// config, so it must be able to reach the write path without releasing and
+// re-acquiring the lock. An RWMutex's RLock->Lock is neither reentrant nor
+// upgradable and would deadlock there; every exported function instead
+// delegates to an unexported *Locked helper that assumes mu is already held.
+var mu sync.Mutex
 
 // Save writes c to <dataDir>/.jasper/config.json atomically via
 // fsstore.AtomicWrite (temp+rename+fsync(parent)).
@@ -16,6 +25,15 @@ import (
 // Caller is responsible for ensuring <dataDir>/.jasper exists.
 // lifecycle.EnsureDataDir creates it during boot.
 func Save(dataDir string, c Config) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return saveLocked(dataDir, c)
+}
+
+// saveLocked is Save's body, callable from other functions in this package
+// that already hold mu (e.g. loadLocked's first-run default emit). Never
+// call this without mu held, and never have it acquire mu itself.
+func saveLocked(dataDir string, c Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("config marshal: %w", err)
@@ -71,14 +89,8 @@ func deepMergeRawMaps(base, overlay map[string]json.RawMessage) map[string]json.
 //     Top-level unknown keys are also preserved (unchanged from before).
 //  4. MarshalIndent merged map and AtomicWrite to disk.
 func SaveMerged(dataDir string, updates Config, log *slog.Logger) error {
-	existing := map[string]json.RawMessage{}
-	if raw, err := os.ReadFile(configPath(dataDir)); err == nil {
-		if err := json.Unmarshal(raw, &existing); err != nil {
-			log.Warn("SaveMerged: could not parse existing config; starting from scratch",
-				"err", err)
-			existing = map[string]json.RawMessage{}
-		}
-	}
+	mu.Lock()
+	defer mu.Unlock()
 
 	managed, err := json.Marshal(updates)
 	if err != nil {
@@ -88,6 +100,36 @@ func SaveMerged(dataDir string, updates Config, log *slog.Logger) error {
 	var overlay map[string]json.RawMessage
 	if err := json.Unmarshal(managed, &overlay); err != nil {
 		return fmt.Errorf("config overlay parse: %w", err)
+	}
+
+	return saveMergedRawLocked(dataDir, overlay, log)
+}
+
+// SaveMergedPartial reads the raw on-disk JSON and overlays only the keys
+// present in overlay (a sparse PATCH body), preserving every key overlay
+// does not mention — including managed keys not sent in this request and
+// unknown/hand-added keys. A key present in overlay is always applied
+// (including "", 0, false); absence from the map is the only thing that
+// means "leave untouched".
+func SaveMergedPartial(dataDir string, overlay map[string]json.RawMessage, log *slog.Logger) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return saveMergedRawLocked(dataDir, overlay, log)
+}
+
+// saveMergedRawLocked performs the read -> deep-merge -> atomic-write
+// sequence shared by SaveMerged and SaveMergedPartial. The whole sequence
+// must run inside one critical section — locking only around AtomicWrite
+// would relocate the lost-update race instead of closing it. Never call
+// this without mu held, and never have it acquire mu itself.
+func saveMergedRawLocked(dataDir string, overlay map[string]json.RawMessage, log *slog.Logger) error {
+	existing := map[string]json.RawMessage{}
+	if raw, err := os.ReadFile(configPath(dataDir)); err == nil {
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			log.Warn("SaveMerged: could not parse existing config; starting from scratch",
+				"err", err)
+			existing = map[string]json.RawMessage{}
+		}
 	}
 
 	existing = deepMergeRawMaps(existing, overlay)

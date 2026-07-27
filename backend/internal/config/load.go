@@ -256,11 +256,22 @@ func decodeTemplates(raw map[string]json.RawMessage, path string, log *slog.Logg
 // reasons (permission denied, I/O error). The caller logs and continues;
 // startup is not gated on config.
 func Load(dataDir string, log *slog.Logger) (Config, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	return loadLocked(dataDir, log)
+}
+
+// loadLocked is Load's body. Takes the exclusive lock (via Load), not a
+// read lock, because its first-run branch writes: it calls saveLocked
+// directly instead of the exported Save, since mu is already held and Save
+// would re-acquire it and deadlock (see mu's doc comment in save.go). Never
+// call this without mu held, and never have it acquire mu itself.
+func loadLocked(dataDir string, log *slog.Logger) (Config, error) {
 	path := configPath(dataDir)
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		cfg := DefaultConfig()
-		if writeErr := Save(dataDir, cfg); writeErr != nil {
+		if writeErr := saveLocked(dataDir, cfg); writeErr != nil {
 			log.Warn("config: default emit failed",
 				"path", path, "err", writeErr)
 		} else {
