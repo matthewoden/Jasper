@@ -217,6 +217,133 @@ func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
 	}
 }
 
+// TestConfigMiddleware_Patch_UnknownField_400 — an unknown top-level key on
+// PATCH is rejected exactly like PUT.
+func TestConfigMiddleware_Patch_UnknownField_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"unknownField":42}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("unknown field: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_FontSizeOutOfRange_400 — editor.fontSize outside
+// 8-32 is rejected with the same message text PUT uses.
+func TestConfigMiddleware_Patch_FontSizeOutOfRange_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"fontSize":999}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("fontSize=999: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+	if !bytes.Contains(respBody, []byte("editor.fontSize must be 8–32")) {
+		t.Errorf("fontSize=999: body missing expected message; body=%s", respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_ThemeEnum_400 — an invalid theme value on PATCH
+// is rejected exactly like PUT.
+func TestConfigMiddleware_Patch_ThemeEnum_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"theme":"solarized"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("theme=solarized: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_OmittedRequiredFields_200 — a PATCH body that
+// omits fields required on PUT (appName, theme, dailyNotes, etc.) passes the
+// middleware. This is the test that fails loudly if strictConfigPatchValidator
+// were built by reusing the value-typed strictConfigValidator (an omitted
+// fontSize would read as 0 and 400 as out-of-range).
+func TestConfigMiddleware_Patch_OmittedRequiredFields_200(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"lineHeight":1.5}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("sparse patch with omitted required fields: got %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_EmptyTemplateAccepted — an explicit empty
+// string for dailyNotes.template is a legitimate write (clearing the
+// template), not rejected as "empty means omitted."
+func TestConfigMiddleware_Patch_EmptyTemplateAccepted(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"dailyNotes":{"template":""}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("empty template: got %d, want 200; body=%s", resp.StatusCode, respBody)
+	}
+}
+
+// TestConfigMiddleware_Patch_UnknownNestedField_400 — DisallowUnknownFields
+// reaches nested objects on the PATCH path too.
+func TestConfigMiddleware_Patch_UnknownNestedField_400(t *testing.T) {
+	ts := setupValidateServer(t)
+	defer ts.Close()
+
+	body := []byte(`{"editor":{"nope":1}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("unknown nested field: got %d, want 400; body=%s", resp.StatusCode, respBody)
+	}
+}
+
 // collectJSONPaths walks t (a struct type, following pointer indirection at
 // every level) and returns the set of dotted json-tag paths for every leaf
 // field, recursing into nested struct-typed fields regardless of whether
