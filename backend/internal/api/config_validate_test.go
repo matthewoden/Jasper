@@ -423,3 +423,48 @@ func TestStrictConfigValidatorMatchesConfigStruct(t *testing.T) {
 	}
 	t.Errorf("config.Config and strictConfigValidator have drifted:\n%s", b.String())
 }
+
+// TestStrictConfigPatchValidatorMatchesConfigStruct is T-32.1-05's safety
+// net: ConfigPatch can't $ref Config and subtract `required` (OpenAPI 3.1
+// has no such subtraction operator), so a hand-maintained twin schema is
+// unavoidable. This test enforces 1:1 JSON-path parity across all three
+// definitions of the patchable field set — config.Config,
+// strictConfigPatchValidator, and the generated ConfigPatch — turning "a
+// v1.5 field added to Config but forgotten in ConfigPatch" from a silent
+// runtime 400 into a CI failure. collectJSONPaths is reused unmodified: it
+// already dereferences pointers before recursing, so a value-typed struct
+// and an all-pointer struct produce identical path sets.
+func TestStrictConfigPatchValidatorMatchesConfigStruct(t *testing.T) {
+	t.Parallel()
+	cfgPaths := collectJSONPaths(reflect.TypeOf(config.Config{}), "")
+	validatorPaths := collectJSONPaths(reflect.TypeOf(strictConfigPatchValidator{}), "")
+	genPaths := collectJSONPaths(reflect.TypeOf(ConfigPatch{}), "")
+
+	report := func(a, b map[string]bool, aName, bName string) []string {
+		var missing []string
+		for p := range a {
+			if !b[p] {
+				missing = append(missing, p+" present in "+aName+" but missing from "+bName)
+			}
+		}
+		return missing
+	}
+
+	var problems []string
+	problems = append(problems, report(cfgPaths, validatorPaths, "config.Config", "strictConfigPatchValidator")...)
+	problems = append(problems, report(validatorPaths, cfgPaths, "strictConfigPatchValidator", "config.Config")...)
+	problems = append(problems, report(cfgPaths, genPaths, "config.Config", "generated ConfigPatch")...)
+	problems = append(problems, report(genPaths, cfgPaths, "generated ConfigPatch", "config.Config")...)
+	problems = append(problems, report(validatorPaths, genPaths, "strictConfigPatchValidator", "generated ConfigPatch")...)
+	problems = append(problems, report(genPaths, validatorPaths, "generated ConfigPatch", "strictConfigPatchValidator")...)
+
+	if len(problems) == 0 {
+		return
+	}
+	sort.Strings(problems)
+	var b strings.Builder
+	for _, p := range problems {
+		b.WriteString(p + "\n")
+	}
+	t.Errorf("config.Config, strictConfigPatchValidator, and generated ConfigPatch have drifted:\n%s", b.String())
+}
