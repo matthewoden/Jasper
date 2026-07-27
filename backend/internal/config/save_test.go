@@ -2,8 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -304,5 +307,203 @@ func TestSave_OverwritesExisting(t *testing.T) {
 	}
 	if got.Theme != "light" {
 		t.Errorf("Theme: got %q, want %q", got.Theme, "light")
+	}
+}
+
+// concurrentPartialWriter names one goroutine's contribution to
+// TestConcurrentPartialSaves_NoLostUpdate: a single-field overlay and the
+// raw JSON path/value it must produce on disk once every writer has landed.
+type concurrentPartialWriter struct {
+	name    string
+	overlay map[string]json.RawMessage
+	path    []string
+	want    string
+}
+
+// buildConcurrentPartialWriters returns 24 structurally independent
+// single-field overlays: 8 real Config fields (including two pairs that
+// share the same top-level nested object — editor and dailyNotes — so the
+// test also proves concurrent writers converging on one nested section
+// don't clobber each other's sibling keys) plus 16 unmanaged top-level
+// probe keys, which deepMergeRawMaps preserves unconditionally.
+func buildConcurrentPartialWriters() []concurrentPartialWriter {
+	writers := []concurrentPartialWriter{
+		{"appName", map[string]json.RawMessage{"appName": json.RawMessage(`"probe-appName"`)}, []string{"appName"}, `"probe-appName"`},
+		{"editor.fontSize", map[string]json.RawMessage{"editor": json.RawMessage(`{"fontSize":21}`)}, []string{"editor", "fontSize"}, `21`},
+		{"editor.lineHeight", map[string]json.RawMessage{"editor": json.RawMessage(`{"lineHeight":1.9}`)}, []string{"editor", "lineHeight"}, `1.9`},
+		{"editor.autosaveMs", map[string]json.RawMessage{"editor": json.RawMessage(`{"autosaveMs":4242}`)}, []string{"editor", "autosaveMs"}, `4242`},
+		{"editor.lineWidth", map[string]json.RawMessage{"editor": json.RawMessage(`{"lineWidth":888}`)}, []string{"editor", "lineWidth"}, `888`},
+		{"dailyNotes.folder", map[string]json.RawMessage{"dailyNotes": json.RawMessage(`{"folder":"probe-daily"}`)}, []string{"dailyNotes", "folder"}, `"probe-daily"`},
+		{"dailyNotes.template", map[string]json.RawMessage{"dailyNotes": json.RawMessage(`{"template":"probe-template"}`)}, []string{"dailyNotes", "template"}, `"probe-template"`},
+		{"templates.folder", map[string]json.RawMessage{"templates": json.RawMessage(`{"folder":"probe-templates"}`)}, []string{"templates", "folder"}, `"probe-templates"`},
+	}
+	for i := range 16 {
+		key := fmt.Sprintf("probe_%02d", i)
+		val := fmt.Sprintf("%d", i)
+		writers = append(writers, concurrentPartialWriter{
+			name:    key,
+			overlay: map[string]json.RawMessage{key: json.RawMessage(val)},
+			path:    []string{key},
+			want:    val,
+		})
+	}
+	return writers
+}
+
+// rawValueAtPath navigates a decoded map[string]json.RawMessage document
+// along path, returning the raw bytes at the leaf and whether every segment
+// was present. Used to check a specific writer's field landed on disk
+// without decoding the whole document into a typed Config (a typed decode
+// would silently pass through the DefaultConfig() zero value for a field
+// that never actually landed, masking exactly the bug this test exists to
+// catch).
+func rawValueAtPath(doc map[string]json.RawMessage, path []string) (json.RawMessage, bool) {
+	cur := doc
+	for depth, key := range path {
+		v, ok := cur[key]
+		if !ok {
+			return nil, false
+		}
+		if depth == len(path)-1 {
+			return v, true
+		}
+		var nested map[string]json.RawMessage
+		if err := json.Unmarshal(v, &nested); err != nil {
+			return nil, false
+		}
+		cur = nested
+	}
+	return nil, false
+}
+
+// TestConcurrentPartialSaves_NoLostUpdate — D-06's Go half. 24 goroutines
+// call SaveMergedPartial simultaneously (barrier-gated on a single closed
+// channel, no sleeps — [no-flaky-tests]), each writing one distinct field.
+// The package mutex serialises every writer's read->merge->write cycle, so
+// no interleaving can drop a write: every one of the 24 fields must be
+// present on disk with its expected value after wg.Wait().
+//
+// Pre-lock RED evidence (mu.Lock()/defer mu.Unlock() commented out of
+// SaveMergedPartial): `go test ./internal/config/ -run
+// TestConcurrentPartialSaves_NoLostUpdate -count=5` failed 5/5 runs, each
+// naming several lost probe_NN and editor.* keys — see 32.1-01-SUMMARY.md
+// for the captured output. Restored before this commit.
+func TestConcurrentPartialSaves_NoLostUpdate(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	log := newTestLogger()
+
+	seed := DefaultConfig()
+	if err := Save(dir, seed); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	writers := buildConcurrentPartialWriters()
+	if len(writers) != 24 {
+		t.Fatalf("test setup: got %d writers, want 24", len(writers))
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, len(writers))
+	for i, w := range writers {
+		wg.Add(1)
+		go func(i int, w concurrentPartialWriter) {
+			defer wg.Done()
+			<-start
+			errs[i] = SaveMergedPartial(dir, w.overlay, log)
+		}(i, w)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("writer %d (%s): SaveMergedPartial error: %v", i, writers[i].name, err)
+		}
+	}
+
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read final config: %v", err)
+	}
+	var onDisk map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("unmarshal final config: %v", err)
+	}
+
+	var lost []string
+	for _, w := range writers {
+		val, ok := rawValueAtPath(onDisk, w.path)
+		if !ok || string(val) != w.want {
+			lost = append(lost, fmt.Sprintf("%s: got %q (present=%v), want %q", w.name, val, ok, w.want))
+		}
+	}
+	if len(lost) > 0 {
+		t.Errorf("lost updates (%d/%d writes missing or wrong):\n%s", len(lost), len(writers), strings.Join(lost, "\n"))
+	}
+}
+
+// TestConcurrentPartialSaves_LoadInterleaved — the same 24-writer fan-out,
+// plus 4 concurrent Load calls. Guards the Load->saveLocked re-entrancy
+// contract from load.go: a future regression that makes loadLocked call
+// the exported Save (which itself acquires mu) deadlocks every goroutine
+// here, so this test times out rather than silently passing.
+func TestConcurrentPartialSaves_LoadInterleaved(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	log := newTestLogger()
+
+	seed := DefaultConfig()
+	if err := Save(dir, seed); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	writers := buildConcurrentPartialWriters()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	writeErrs := make([]error, len(writers))
+	for i, w := range writers {
+		wg.Add(1)
+		go func(i int, w concurrentPartialWriter) {
+			defer wg.Done()
+			<-start
+			writeErrs[i] = SaveMergedPartial(dir, w.overlay, log)
+		}(i, w)
+	}
+
+	const numLoaders = 4
+	loadErrs := make([]error, numLoaders)
+	loadAppNames := make([]string, numLoaders)
+	for i := range numLoaders {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			cfg, err := Load(dir, log)
+			loadErrs[i] = err
+			loadAppNames[i] = cfg.AppName
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+
+	for i, err := range writeErrs {
+		if err != nil {
+			t.Errorf("writer %d (%s): SaveMergedPartial error: %v", i, writers[i].name, err)
+		}
+	}
+	for i, err := range loadErrs {
+		if err != nil {
+			t.Errorf("loader %d: Load error: %v", i, err)
+		}
+		if loadAppNames[i] == "" {
+			t.Errorf("loader %d: Load returned empty AppName (should always resolve to a non-zero Config)", i)
+		}
 	}
 }
