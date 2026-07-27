@@ -79,6 +79,13 @@ export function SliderNumberPair({
   // handleRangeChange already applied the value to document.documentElement
   // as a whole-app restyle, so dropping the write leaves the app rendering a
   // value the persisted config does not have until the next reload.
+  // Deliberately UNGUARDED by the value-unchanged check used elsewhere: the
+  // `[]` dep array means a `value` comparison here would read a first-render
+  // stale closure, and this path only fires while a debounced commit is
+  // genuinely pending. Worst case is one redundant PATCH when a user
+  // arrow-keys back to the original value and closes Settings within the
+  // debounce window -- a real correctness risk (32-REVIEW CR-01) traded for
+  // a marginal saving is not worth it.
   useEffect(() => {
     return () => {
       if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);
@@ -95,7 +102,10 @@ export function SliderNumberPair({
     document.documentElement.style.setProperty(cssVar, formatCssValue(next));
   };
 
+  // Never write an unchanged value: covers a click-without-drag pointerUp
+  // and an arrow-key excursion that lands back on the starting value.
   const commitSlider = () => {
+    if (sliderValue === value) return;
     onCommit(sliderValue);
   };
 
@@ -140,6 +150,9 @@ export function SliderNumberPair({
       return;
     }
     setLocalError(null);
+    // Never write an unchanged value: a corrected-back-to-current entry must
+    // still clear the alert (above), but must not issue a write.
+    if (next === value) return;
     setSliderValue(next);
     document.documentElement.style.setProperty(cssVar, formatCssValue(next));
     onCommit(next);

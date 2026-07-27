@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Config } from "../../lib/useConfig";
+import type { Config, ConfigPatch } from "../../lib/useConfig";
 import { DailyNotesSection } from "./DailyNotesSection";
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
@@ -31,7 +31,7 @@ function renderSection(config: Config, saveConfig = vi.fn().mockResolvedValue({}
 }
 
 describe("DailyNotesSection", () => {
-  it("renders the folder input with the config value and commits on blur, preserving the template", async () => {
+  it("renders the folder input with the config value and commits a bare { dailyNotes: { folder } } partial on blur", async () => {
     const config = makeConfig({ dailyNotes: { folder: "journal", template: "custom template" } });
     const { saveConfig } = renderSection(config);
     const folderInput = screen.getByLabelText("Daily notes folder");
@@ -41,12 +41,24 @@ describe("DailyNotesSection", () => {
     fireEvent.blur(folderInput);
 
     expect(saveConfig).toHaveBeenCalledTimes(1);
-    const saved = saveConfig.mock.calls[0][0] as Config;
-    expect(saved.dailyNotes.folder).toBe("logs");
-    expect(saved.dailyNotes.template).toBe("custom template");
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
+    expect(Object.keys(saved)).toEqual(["dailyNotes"]);
+    expect(Object.keys(saved.dailyNotes!)).toEqual(["folder"]);
+    expect(saved.dailyNotes?.folder).toBe("logs");
   });
 
-  it("commits the template textarea on blur", async () => {
+  it("blurring the folder input without editing it calls saveConfig zero times", () => {
+    const config = makeConfig({ dailyNotes: { folder: "journal", template: "custom template" } });
+    const { saveConfig } = renderSection(config);
+    const folderInput = screen.getByLabelText("Daily notes folder");
+
+    fireEvent.focus(folderInput);
+    fireEvent.blur(folderInput);
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+  });
+
+  it("commits a bare { dailyNotes: { template } } partial on blur", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
     const textarea = screen.getByLabelText("Daily note template");
@@ -55,19 +67,34 @@ describe("DailyNotesSection", () => {
     fireEvent.blur(textarea);
 
     expect(saveConfig).toHaveBeenCalledTimes(1);
-    const saved = saveConfig.mock.calls[0][0] as Config;
-    expect(saved.dailyNotes.template).toBe("## {{date}}\n");
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
+    expect(Object.keys(saved)).toEqual(["dailyNotes"]);
+    expect(Object.keys(saved.dailyNotes!)).toEqual(["template"]);
+    expect(saved.dailyNotes?.template).toBe("## {{date}}\n");
   });
 
-  it("resets the template to the exact default string and calls saveConfig once", async () => {
+  it("blurring the template textarea without editing it calls saveConfig zero times", () => {
+    const config = makeConfig();
+    const { saveConfig } = renderSection(config);
+    const textarea = screen.getByLabelText("Daily note template");
+
+    fireEvent.focus(textarea);
+    fireEvent.blur(textarea);
+
+    expect(saveConfig).toHaveBeenCalledTimes(0);
+  });
+
+  it("resets the template to the exact default string via a bare { dailyNotes: { template } } partial", async () => {
     const config = makeConfig({ dailyNotes: { folder: "daily", template: "something else" } });
     const { saveConfig } = renderSection(config);
 
     fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
 
     expect(saveConfig).toHaveBeenCalledTimes(1);
-    const saved = saveConfig.mock.calls[0][0] as Config;
-    expect(saved.dailyNotes.template).toBe("# {{date}}\n\n");
+    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
+    expect(Object.keys(saved)).toEqual(["dailyNotes"]);
+    expect(Object.keys(saved.dailyNotes!)).toEqual(["template"]);
+    expect(saved.dailyNotes?.template).toBe("# {{date}}\n\n");
   });
 
   it("surfaces a rejected saveConfig through onSaveError", async () => {

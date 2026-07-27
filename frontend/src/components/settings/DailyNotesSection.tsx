@@ -23,10 +23,13 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
   }, [config.dailyNotes.template]);
 
   const handleDailyFolderCommit = useCallback(async () => {
-    const { error } = await saveConfig({
-      ...config,
-      dailyNotes: { ...config.dailyNotes, folder: dailyFolder },
-    });
+    // WR-06's reproduction site: without this guard, blurring an unedited
+    // folder input writes a stale-base copy back over an in-flight save.
+    if (dailyFolder === config.dailyNotes.folder) {
+      onSaveError(null);
+      return;
+    }
+    const { error } = await saveConfig({ dailyNotes: { folder: dailyFolder } });
     if (error) {
       onSaveError(error.message);
     } else {
@@ -35,10 +38,11 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
   }, [config, dailyFolder, saveConfig, onSaveError]);
 
   const handleDailyTemplateCommit = useCallback(async () => {
-    const { error } = await saveConfig({
-      ...config,
-      dailyNotes: { ...config.dailyNotes, template: dailyTemplate },
-    });
+    if (dailyTemplate === config.dailyNotes.template) {
+      onSaveError(null);
+      return;
+    }
+    const { error } = await saveConfig({ dailyNotes: { template: dailyTemplate } });
     if (error) {
       onSaveError(error.message);
     } else {
@@ -46,18 +50,18 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
     }
   }, [config, dailyTemplate, saveConfig, onSaveError]);
 
+  // No dirty check: this is an explicit button press, not blur drift.
+  // Writing the default when the template is already the default is
+  // harmless and keeps "calls saveConfig once" honest for that case.
   const handleResetTemplateToDefault = useCallback(async () => {
     setDailyTemplate(DEFAULT_TEMPLATE);
-    const { error } = await saveConfig({
-      ...config,
-      dailyNotes: { ...config.dailyNotes, template: DEFAULT_TEMPLATE },
-    });
+    const { error } = await saveConfig({ dailyNotes: { template: DEFAULT_TEMPLATE } });
     if (error) {
       onSaveError(error.message);
     } else {
       onSaveError(null);
     }
-  }, [config, saveConfig, onSaveError]);
+  }, [saveConfig, onSaveError]);
 
   return (
     <section>
