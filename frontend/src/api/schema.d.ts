@@ -506,14 +506,25 @@ export interface paths {
          * @description Writes config.json atomically via fsstore.AtomicWrite
          *     (DATA-13: temp + fsync + rename + fsync(parent)).
          *     Strict (D-40): unknown fields → 400 invalid_request.
-         *     The whole document is replaced — there is no PATCH semantic.
+         *     Replaces the whole document — retained for whole-document writes
+         *     (per-section Reset, first-run fixtures). For partial writes that
+         *     should leave every other field untouched, use PATCH /config.
          */
         put: operations["putConfig"];
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Partially update user configuration
+         * @description Writes only the keys present in the request body via
+         *     config.SaveMergedPartial; fields absent from the body are left
+         *     untouched on disk (including unmanaged/hand-added keys). Writes
+         *     are serialised server-side (T-32.1-04) so concurrent PATCH/PUT
+         *     requests never lose an update. Strict (D-40): unknown fields →
+         *     400 invalid_request, same as PUT.
+         */
+        patch: operations["patchConfig"];
         trace?: never;
     };
     "/ws": {
@@ -1470,6 +1481,52 @@ export interface components {
             templates?: {
                 /** @default Templates */
                 folder: string;
+            };
+        };
+        /**
+         * @description Sparse partial-update body for PATCH /config. Every property is
+         *     optional at every nesting level (no `required` anywhere in this
+         *     schema) — that is the entire mechanism for distinguishing "key
+         *     omitted, leave untouched" from "key present with value 0/false/
+         *     empty-string, write it". Only the keys present in the request body
+         *     are written; every other key already on disk (including
+         *     unmanaged/hand-added keys) is preserved.
+         */
+        ConfigPatch: {
+            appName?: string;
+            /** @enum {string} */
+            theme?: "dark" | "light";
+            dailyNotes?: {
+                folder?: string;
+                template?: string;
+            };
+            editor?: {
+                fontSize?: number;
+                /** Format: double */
+                lineHeight?: number;
+                autosaveMs?: number;
+                showProperties?: boolean;
+                autoPair?: boolean;
+                foldGutter?: boolean;
+                lineNumbers?: boolean;
+                lineWidth?: number;
+            };
+            /** @enum {string} */
+            accent?: "purple" | "sky" | "green" | "orange";
+            /** @enum {string} */
+            readingFont?: "sans" | "serif";
+            server?: {
+                port?: number;
+                dataDir?: string;
+                bind?: string;
+            };
+            mcp?: {
+                port?: number;
+                bind?: string;
+                auditLog?: boolean;
+            };
+            templates?: {
+                folder?: string;
             };
         };
         Error: {
@@ -3235,6 +3292,48 @@ export interface operations {
         };
         responses: {
             /** @description Config saved; echoes the persisted document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Config"];
+                };
+            };
+            /** @description Invalid request (malformed body, unknown field, out-of-range numeric) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Save failed (filesystem error) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Config saved; echoes the full persisted document */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -463,3 +463,73 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		}
 	}
 }
+
+// TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged — RESEARCH Pitfall
+// 2's named warning-sign test: PATCH one nested field and prove every other
+// PUT-seeded field survives, rather than merely proving PATCH returns 200.
+func TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged(t *testing.T) {
+	ts, _ := setupConfigServer(t)
+	defer ts.Close()
+
+	putBody := []byte(`{
+		"appName": "Jasper", "theme": "dark",
+		"dailyNotes": {"folder": "daily", "template": ""},
+		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
+	}`)
+	putReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(putBody))
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := http.DefaultClient.Do(putReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = putResp.Body.Close()
+	if putResp.StatusCode != 200 {
+		t.Fatalf("seed PUT status: got %d, want 200", putResp.StatusCode)
+	}
+
+	patchBody := []byte(`{"editor":{"lineHeight":1.5}}`)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", bytes.NewReader(patchBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchRespBody, _ := io.ReadAll(patchResp.Body)
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != 200 {
+		t.Fatalf("PATCH status: got %d, want 200; body: %s", patchResp.StatusCode, patchRespBody)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	getBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	var got Config
+	if err := json.Unmarshal(getBody, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Editor.LineHeight != 1.5 {
+		t.Errorf("editor.lineHeight: got %v, want 1.5 (the patched field)", got.Editor.LineHeight)
+	}
+	if got.Editor.FontSize != 15 {
+		t.Errorf("editor.fontSize: got %v, want 15 (unmentioned by PATCH)", got.Editor.FontSize)
+	}
+	if got.Editor.AutosaveMs != 2000 {
+		t.Errorf("editor.autosaveMs: got %v, want 2000 (unmentioned by PATCH)", got.Editor.AutosaveMs)
+	}
+	if got.AppName != "Jasper" {
+		t.Errorf("appName: got %q, want %q (unmentioned by PATCH)", got.AppName, "Jasper")
+	}
+	// GET reloads through config.Load, which pins Theme to "dark" (D-02) —
+	// consistent with the seed PUT's own value, so this doesn't prove much
+	// on its own but documents the field survived the PATCH regardless.
+	if string(got.Theme) != "dark" {
+		t.Errorf("theme: got %q, want %q (unmentioned by PATCH)", got.Theme, "dark")
+	}
+	if got.DailyNotes.Folder != "daily" {
+		t.Errorf("dailyNotes.folder: got %q, want %q (unmentioned by PATCH)", got.DailyNotes.Folder, "daily")
+	}
+}

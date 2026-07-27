@@ -985,7 +985,9 @@ paths:
         Writes config.json atomically via fsstore.AtomicWrite
         (DATA-13: temp + fsync + rename + fsync(parent)).
         Strict (D-40): unknown fields → 400 invalid_request.
-        The whole document is replaced — there is no PATCH semantic.
+        Replaces the whole document — retained for whole-document writes
+        (per-section Reset, first-run fixtures). For partial writes that
+        should leave every other field untouched, use PATCH /config.
       requestBody:
         required: true
         content:
@@ -994,6 +996,38 @@ paths:
       responses:
         "200":
           description: Config saved; echoes the persisted document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+        "400":
+          description: Invalid request (malformed body, unknown field, out-of-range numeric)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Save failed (filesystem error)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      tags: [config]
+      operationId: patchConfig
+      summary: Partially update user configuration
+      description: |
+        Writes only the keys present in the request body via
+        config.SaveMergedPartial; fields absent from the body are left
+        untouched on disk (including unmanaged/hand-added keys). Writes
+        are serialised server-side (T-32.1-04) so concurrent PATCH/PUT
+        requests never lose an update. Strict (D-40): unknown fields →
+        400 invalid_request, same as PUT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfigPatch" }
+      responses:
+        "200":
+          description: Config saved; echoes the full persisted document
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Config" }
@@ -2305,6 +2339,103 @@ components:
               type: string
               maxLength: 64
               default: "Templates"
+    ConfigPatch:
+      type: object
+      additionalProperties: false   # D-40 strict — unknown keys → 400
+      description: |
+        Sparse partial-update body for PATCH /config. Every property is
+        optional at every nesting level (no `required` anywhere in this
+        schema) — that is the entire mechanism for distinguishing "key
+        omitted, leave untouched" from "key present with value 0/false/
+        empty-string, write it". Only the keys present in the request body
+        are written; every other key already on disk (including
+        unmanaged/hand-added keys) is preserved.
+      properties:
+        appName:
+          type: string
+          minLength: 1
+          maxLength: 64
+        theme:
+          type: string
+          enum: [dark, light]
+        dailyNotes:
+          type: object
+          additionalProperties: false
+          properties:
+            folder:
+              type: string
+              minLength: 1
+              maxLength: 64
+            template:
+              type: string
+              maxLength: 1024
+        editor:
+          type: object
+          additionalProperties: false
+          properties:
+            fontSize:
+              type: integer
+              minimum: 8
+              maximum: 32
+            lineHeight:
+              type: number
+              format: double
+              minimum: 1
+              maximum: 3
+            autosaveMs:
+              type: integer
+              minimum: 250
+              maximum: 10000
+            showProperties:
+              type: boolean
+            autoPair:
+              type: boolean
+            foldGutter:
+              type: boolean
+            lineNumbers:
+              type: boolean
+            lineWidth:
+              type: integer
+              minimum: 400
+              maximum: 2000
+        accent:
+          type: string
+          enum: [purple, sky, green, orange]
+        readingFont:
+          type: string
+          enum: [sans, serif]
+        server:
+          type: object
+          additionalProperties: false
+          properties:
+            port:
+              type: integer
+              minimum: 1
+              maximum: 65535
+            dataDir:
+              type: string
+              minLength: 1
+            bind:
+              type: string
+        mcp:
+          type: object
+          additionalProperties: false
+          properties:
+            port:
+              type: integer
+              minimum: 1
+              maximum: 65535
+            bind:
+              type: string
+            auditLog:
+              type: boolean
+        templates:
+          type: object
+          additionalProperties: false
+          properties:
+            folder:
+              type: string
+              maxLength: 64
     Error:
       type: object
       required: [code, message]
