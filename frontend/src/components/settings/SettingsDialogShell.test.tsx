@@ -59,6 +59,7 @@ vi.mock("../../api/client", () => ({
       response: { status: 200 },
     }),
     PUT: vi.fn(),
+    PATCH: vi.fn(),
   },
 }));
 
@@ -90,6 +91,7 @@ import { SettingsDialogShell } from "./SettingsDialogShell";
 const mockClient = client as unknown as {
   GET: ReturnType<typeof vi.fn>;
   PUT: ReturnType<typeof vi.fn>;
+  PATCH: ReturnType<typeof vi.fn>;
 };
 
 // Harness gives the test control over remounting the dialog open/closed —
@@ -123,6 +125,10 @@ beforeEach(() => {
   mockClient.PUT.mockImplementation((_path: string, opts: { body: unknown }) =>
     Promise.resolve({ data: opts.body, response: { status: 200 } }),
   );
+  // Panes call saveConfig -> PATCH during shell tests (not exercised by the
+  // per-section Reset tests below, which assert on PUT); an undefined
+  // client.PATCH throws, so every shell test needs this wired.
+  mockClient.PATCH.mockResolvedValue({ data: mockConfig, response: { status: 200 } });
 });
 
 describe("<SettingsDialogShell />", () => {
@@ -230,7 +236,8 @@ describe("<SettingsDialogShell />", () => {
   });
 
   it("renders exactly one save-error banner when a pane reports an error, and it dismisses", async () => {
-    mockClient.PUT.mockResolvedValueOnce({
+    // Panes call saveConfig -> PATCH (D-05); Reset is the only PUT caller.
+    mockClient.PATCH.mockResolvedValueOnce({
       error: { code: "invalid_request", message: "offline" },
       response: { status: 400 },
     });
@@ -253,7 +260,8 @@ describe("<SettingsDialogShell />", () => {
   });
 
   it("clears a stale save-error banner on close so a still-mounted reopen starts clean (32-REVIEW IN-03)", async () => {
-    mockClient.PUT.mockResolvedValueOnce({
+    // Panes call saveConfig -> PATCH (D-05); Reset is the only PUT caller.
+    mockClient.PATCH.mockResolvedValueOnce({
       error: { code: "invalid_request", message: "offline" },
       response: { status: 400 },
     });
@@ -309,6 +317,8 @@ describe("<SettingsDialogShell />", () => {
       expect(saved.accent).toBe(mockConfig.accent);
       expect(saved.dailyNotes).toEqual(mockConfig.dailyNotes);
       expect(saved.server).toEqual(mockConfig.server);
+      // Reset must not fan out into a PATCH — it stays on the PUT verb (D-07).
+      expect(mockClient.PATCH).not.toHaveBeenCalled();
     });
 
     it("Appearance: one saveConfig call carries accent, readingFont, fontSize, and lineHeight; autosaveMs untouched", async () => {

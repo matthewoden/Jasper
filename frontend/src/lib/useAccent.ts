@@ -81,8 +81,7 @@ export function useAccent(): {
       const prev = config.accent ?? "purple";
       applyAccent(a);
       persistAccentBootstrap(a);
-      const next: Config = { ...config, accent: a as Config["accent"] };
-      const { error } = await saveConfig(next);
+      const { error } = await saveConfig({ accent: a as Config["accent"] });
       if (error) {
         applyAccent(prev);
         persistAccentBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected accent
@@ -99,8 +98,7 @@ export function useAccent(): {
       const prev = config.readingFont ?? "sans";
       applyReadingFont(rf);
       persistReadingFontBootstrap(rf);
-      const next: Config = { ...config, readingFont: rf as Config["readingFont"] };
-      const { error } = await saveConfig(next);
+      const { error } = await saveConfig({ readingFont: rf as Config["readingFont"] });
       if (error) {
         applyReadingFont(prev);
         persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected font

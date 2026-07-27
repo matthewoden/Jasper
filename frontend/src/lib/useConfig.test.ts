@@ -1,6 +1,8 @@
 /**
- * useConfig.test — verifies the hook fetches GET /config on mount
- * and saveConfig dispatches PUT /config + updates state optimistically.
+ * useConfig.test — verifies the hook fetches GET /config on mount, saveConfig
+ * dispatches PATCH /config with a sparse body and updates state optimistically
+ * via a deep merge against the last persisted config, and replaceConfig PUTs
+ * a whole document rebased on the freshest persisted config.
  *
  * Mocks the openapi-fetch client at the module level via vi.mock.
  */
@@ -11,15 +13,17 @@ vi.mock("../api/client", () => ({
   client: {
     GET: vi.fn(),
     PUT: vi.fn(),
+    PATCH: vi.fn(),
   },
 }));
 
 import { client } from "../api/client";
-import { useConfig, getConfig, putConfig } from "./useConfig";
+import { useConfig, getConfig, putConfig, patchConfig } from "./useConfig";
 
 const mockClient = client as unknown as {
   GET: ReturnType<typeof vi.fn>;
   PUT: ReturnType<typeof vi.fn>;
+  PATCH: ReturnType<typeof vi.fn>;
 };
 
 const sampleConfig = {
@@ -43,6 +47,7 @@ const sampleConfig = {
 beforeEach(() => {
   mockClient.GET.mockReset();
   mockClient.PUT.mockReset();
+  mockClient.PATCH.mockReset();
 });
 
 describe("useConfig", () => {
@@ -55,21 +60,59 @@ describe("useConfig", () => {
     expect(result.current.config?.theme).toBe("dark");
   });
 
-  it("saveConfig dispatches PUT /config and updates optimistic state", async () => {
+  it("saveConfig dispatches PATCH /config with a body containing only the caller's keys", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    const next = { ...sampleConfig, theme: "light" as const };
-    mockClient.PUT.mockResolvedValue({ data: next, response: { status: 200 } });
+    mockClient.PATCH.mockResolvedValue({
+      data: { ...sampleConfig, theme: "light" as const },
+      response: { status: 200 },
+    });
     const { result } = renderHook(() => useConfig());
     await waitFor(() => expect(result.current.config).not.toBeNull());
     await act(async () => {
-      await result.current.saveConfig(next);
+      await result.current.saveConfig({ theme: "light" });
     });
+    expect(mockClient.PATCH).toHaveBeenCalledTimes(1);
+    const body = mockClient.PATCH.mock.calls[0][1].body as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["theme"]);
     expect(result.current.config?.theme).toBe("light");
   });
 
-  it("saveConfig returns an error when PUT fails", async () => {
+  it("saveConfig merges the patch into the last persisted config for the optimistic frame", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    mockClient.PUT.mockResolvedValue({
+    // Never resolves during the assertion window, so we can inspect the
+    // optimistic frame set before the server responds.
+    let resolvePatch: (v: { data: typeof sampleConfig; response: { status: number } }) => void =
+      () => {};
+    mockClient.PATCH.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePatch = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.config).not.toBeNull());
+
+    act(() => {
+      void result.current.saveConfig({ editor: { fontSize: 18 } });
+    });
+
+    await waitFor(() => expect(result.current.config?.editor.fontSize).toBe(18));
+    // Deep merge proof: fontSize changed but the rest of editor survives.
+    expect(result.current.config?.editor.autosaveMs).toBe(sampleConfig.editor.autosaveMs);
+    expect(result.current.config?.editor.lineHeight).toBe(sampleConfig.editor.lineHeight);
+
+    await act(async () => {
+      resolvePatch({
+        data: { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } },
+        response: { status: 200 },
+      });
+      await Promise.resolve();
+    });
+  });
+
+  it("saveConfig returns an error when PATCH fails", async () => {
+    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
+    mockClient.PATCH.mockResolvedValue({
       error: { code: "invalid_request", message: "bad" },
       response: { status: 400 },
     });
@@ -77,7 +120,7 @@ describe("useConfig", () => {
     await waitFor(() => expect(result.current.config).not.toBeNull());
     let saveResult: Awaited<ReturnType<typeof result.current.saveConfig>> | undefined;
     await act(async () => {
-      saveResult = await result.current.saveConfig({ ...sampleConfig, theme: "light" });
+      saveResult = await result.current.saveConfig({ theme: "light" });
     });
     expect(saveResult?.error?.code).toBe("invalid_request");
   });
@@ -85,28 +128,27 @@ describe("useConfig", () => {
   it("CR-02: failed save rolls back to last persisted config, not an optimistic intermediate", async () => {
     // Setup: GET returns the original sampleConfig (theme: dark).
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    // First PUT succeeds (changes fontSize to 18).
+    // First PATCH succeeds (changes fontSize to 18).
     const afterFirstSave = { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } };
-    // Second PUT fails.
-    mockClient.PUT.mockResolvedValueOnce({ data: afterFirstSave, response: { status: 200 } })
-                  .mockResolvedValueOnce({
-                    error: { code: "invalid_request", message: "out of range" },
-                    response: { status: 400 },
-                  });
+    // Second PATCH fails.
+    mockClient.PATCH.mockResolvedValueOnce({ data: afterFirstSave, response: { status: 200 } })
+      .mockResolvedValueOnce({
+        error: { code: "invalid_request", message: "out of range" },
+        response: { status: 400 },
+      });
 
     const { result } = renderHook(() => useConfig());
     await waitFor(() => expect(result.current.config).not.toBeNull());
 
     // First save succeeds: config becomes afterFirstSave.
     await act(async () => {
-      await result.current.saveConfig(afterFirstSave);
+      await result.current.saveConfig({ editor: { fontSize: 18 } });
     });
     expect(result.current.config?.editor.fontSize).toBe(18);
 
     // Second save fails: optimistic value is applied then rolled back.
-    const optimisticSecond = { ...afterFirstSave, editor: { ...afterFirstSave.editor, fontSize: 99 } };
     await act(async () => {
-      await result.current.saveConfig(optimisticSecond);
+      await result.current.saveConfig({ editor: { fontSize: 99 } });
     });
 
     // After rollback, config must be afterFirstSave (last persisted), NOT sampleConfig.
@@ -114,9 +156,38 @@ describe("useConfig", () => {
     // fontSize: 15) because prev was captured from the first optimistic update.
     expect(result.current.config?.editor.fontSize).toBe(18);
   });
+
+  it("replaceConfig PUTs the whole document rebased on the freshest persisted config", async () => {
+    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
+    const afterFirstSave = { ...sampleConfig, editor: { ...sampleConfig.editor, fontSize: 18 } };
+    mockClient.PATCH.mockResolvedValue({ data: afterFirstSave, response: { status: 200 } });
+    mockClient.PUT.mockResolvedValue({
+      data: { ...afterFirstSave, editor: { ...afterFirstSave.editor, autosaveMs: 2000 } },
+      response: { status: 200 },
+    });
+
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.config).not.toBeNull());
+
+    // First save (PATCH) lands fontSize: 18.
+    await act(async () => {
+      await result.current.saveConfig({ editor: { fontSize: 18 } });
+    });
+    expect(result.current.config?.editor.fontSize).toBe(18);
+
+    // replaceConfig with an unrelated patch must rebase onto the post-first-save
+    // config, not a stale closure captured before the first save landed.
+    await act(async () => {
+      await result.current.replaceConfig({ editor: { autosaveMs: 2000 } });
+    });
+
+    expect(mockClient.PUT).toHaveBeenCalledTimes(1);
+    const body = mockClient.PUT.mock.calls[0][1].body as { editor: { fontSize: number } };
+    expect(body.editor.fontSize).toBe(18);
+  });
 });
 
-describe("getConfig + putConfig wrappers", () => {
+describe("getConfig + putConfig + patchConfig wrappers", () => {
   it("getConfig wraps client.GET response in { data, error } shape", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
     const { data } = await getConfig();
@@ -129,6 +200,16 @@ describe("getConfig + putConfig wrappers", () => {
       response: { status: 400 },
     });
     const { error } = await putConfig({ ...sampleConfig, theme: "light" });
+    expect(error?.status).toBe(400);
+    expect(error?.code).toBe("invalid_request");
+  });
+
+  it("patchConfig wraps error responses with status code", async () => {
+    mockClient.PATCH.mockResolvedValue({
+      error: { code: "invalid_request", message: "bad" },
+      response: { status: 400 },
+    });
+    const { error } = await patchConfig({ theme: "light" });
     expect(error?.status).toBe(400);
     expect(error?.code).toBe("invalid_request");
   });

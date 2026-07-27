@@ -84,7 +84,7 @@ const hiddenStyle: React.CSSProperties = {
 };
 
 export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellProps) {
-  const { config, saveConfig } = useConfig();
+  const { config, saveConfig, replaceConfig } = useConfig();
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -136,7 +136,11 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
     async (section: SectionId) => {
       if (!config || !isResettable(section)) return;
       const patch = buildResetPatch(section, config);
-      const { error } = await saveConfig({ ...config, ...patch });
+      // Reset is a whole-document write by decision (D-01/D-07): replaceConfig
+      // rebases this partial onto the freshest persisted config inside the
+      // hook, so Reset can't carry a stale base even if `config` here is a
+      // render behind the last successful save.
+      const { error } = await replaceConfig(patch);
       if (error) {
         setSaveError(`Couldn't save your changes: ${error.message}.`);
         return;
@@ -161,7 +165,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
         );
       }
     },
-    [config, saveConfig],
+    [config, replaceConfig],
   );
 
   const activeMeta = SECTIONS.find((s) => s.id === activeSection);

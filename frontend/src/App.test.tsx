@@ -111,6 +111,7 @@ vi.mock("./lib/useConfig", () => ({
     config: null,
     error: null,
     saveConfig: vi.fn().mockResolvedValue({}),
+    replaceConfig: vi.fn().mockResolvedValue({}),
   }),
 }));
 

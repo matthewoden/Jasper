@@ -9,6 +9,7 @@ vi.mock("../api/client", () => ({
   client: {
     GET: vi.fn(),
     PUT: vi.fn(),
+    PATCH: vi.fn(),
   },
 }));
 
@@ -23,6 +24,7 @@ import {
 const mockClient = client as unknown as {
   GET: ReturnType<typeof vi.fn>;
   PUT: ReturnType<typeof vi.fn>;
+  PATCH: ReturnType<typeof vi.fn>;
 };
 
 const sampleConfig = {
@@ -48,6 +50,7 @@ const SERIF_STACK = "'Source Serif 4', Georgia, 'Times New Roman', serif";
 beforeEach(() => {
   mockClient.GET.mockReset();
   mockClient.PUT.mockReset();
+  mockClient.PATCH.mockReset();
   localStorage.clear();
   document.documentElement.style.removeProperty("--color-accent");
   document.documentElement.style.removeProperty("--font-reading");
@@ -104,9 +107,9 @@ describe("useAccent", () => {
     });
   });
 
-  it("setAccent applies optimistically and persists config", async () => {
+  it("setAccent applies optimistically and persists config via PATCH with a one-key body", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    mockClient.PUT.mockResolvedValue({
+    mockClient.PATCH.mockResolvedValue({
       data: { ...sampleConfig, accent: "sky" },
       response: { status: 200 },
     });
@@ -123,12 +126,36 @@ describe("useAccent", () => {
     expect(
       document.documentElement.style.getPropertyValue("--color-accent"),
     ).toBe("#7dd3fc");
-    expect(mockClient.PUT).toHaveBeenCalled();
+    expect(mockClient.PATCH).toHaveBeenCalledTimes(1);
+    const body = mockClient.PATCH.mock.calls[0][1].body as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["accent"]);
+    expect(body.accent).toBe("sky");
+  });
+
+  it("setReadingFont persists via PATCH with a one-key body", async () => {
+    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
+    mockClient.PATCH.mockResolvedValue({
+      data: { ...sampleConfig, readingFont: "serif" },
+      response: { status: 200 },
+    });
+    const { result } = renderHook(() => useAccent());
+    await waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--color-accent"),
+      ).toBe("#a78bfa"),
+    );
+    await act(async () => {
+      await result.current.setReadingFont("serif");
+    });
+    expect(mockClient.PATCH).toHaveBeenCalledTimes(1);
+    const body = mockClient.PATCH.mock.calls[0][1].body as Record<string, unknown>;
+    expect(Object.keys(body)).toEqual(["readingFont"]);
+    expect(body.readingFont).toBe("serif");
   });
 
   it("rolls back --color-accent to previous value on saveConfig error", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    mockClient.PUT.mockResolvedValue({
+    mockClient.PATCH.mockResolvedValue({
       error: { code: "internal", message: "save failed" },
       response: { status: 500 },
     });
