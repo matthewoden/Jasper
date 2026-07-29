@@ -458,6 +458,10 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     // Settings always opens on Appearance (D-20) — the font-size slider is
     // already the active pane; no extra nav click needed.
 
+    const previewFontSizeBefore = await dialog
+      .getByText(/Type styling applies instantly/)
+      .evaluate((el) => getComputedStyle(el).fontSize);
+
     const slider = dialog.getByRole("slider", { name: "Font size" });
     const box = await slider.boundingBox();
     if (!box) throw new Error("Font size slider has no bounding box");
@@ -483,6 +487,15 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await expect(async () => {
       const fontSizeDuring = await cmEditor.evaluate((el) => getComputedStyle(el).fontSize);
       expect(fontSizeDuring).not.toBe(fontSizeBefore);
+    }).toPass({ timeout: 3_000 });
+
+    // The in-dialog preview card must move mid-drag too. It previously took
+    // commit-driven React state, so it only updated on pointer-up — which
+    // defeats the card's stated purpose. Asserted BEFORE mouse-up.
+    const previewPara = dialog.getByText(/Type styling applies instantly/);
+    await expect(async () => {
+      const previewDuring = await previewPara.evaluate((el) => getComputedStyle(el).fontSize);
+      expect(previewDuring).not.toBe(previewFontSizeBefore);
     }).toPass({ timeout: 3_000 });
 
     await page.mouse.up();

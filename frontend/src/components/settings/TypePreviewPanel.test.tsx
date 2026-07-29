@@ -8,13 +8,20 @@ describe("TypePreviewPanel", () => {
     expect(container.querySelectorAll("p")).toHaveLength(1);
   });
 
-  it("reflects the fontSize prop inline and updates when the prop changes", () => {
+  // The paragraph reads --editor-font-size / --editor-line-height so a drag
+  // moves it on every step (SliderNumberPair writes those properties live).
+  // The props are the fallback for when the properties are unset, and still
+  // track config, so both halves are asserted here. jsdom does not resolve
+  // var() in getComputedStyle — live resolution is pinned by the SET3-07 E2E.
+  it("reads the live CSS custom properties, falling back to the props", () => {
     const { container, rerender } = render(<TypePreviewPanel fontSize={15} lineHeight={1.45} />);
     const p = container.querySelector("p") as HTMLParagraphElement;
-    expect(p.style.fontSize).toBe("15px");
+    expect(p.style.fontSize).toBe("var(--editor-font-size, 15px)");
+    expect(p.style.lineHeight).toBe("var(--editor-line-height, 1.45)");
 
-    rerender(<TypePreviewPanel fontSize={22} lineHeight={1.45} />);
-    expect(p.style.fontSize).toBe("22px");
+    rerender(<TypePreviewPanel fontSize={22} lineHeight={1.8} />);
+    expect(p.style.fontSize).toBe("var(--editor-font-size, 22px)");
+    expect(p.style.lineHeight).toBe("var(--editor-line-height, 1.8)");
   });
 
   it("renders exactly two accent-colored spans (fake link + fake tag)", () => {

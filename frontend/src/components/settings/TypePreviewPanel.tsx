@@ -8,7 +8,9 @@
 import { Eyebrow } from "./shared";
 
 export interface TypePreviewPanelProps {
+  /** Fallback only — used when the live CSS custom property is unset (e.g. jsdom). */
   fontSize: number;
+  /** Fallback only — see fontSize. */
   lineHeight: number;
 }
 
@@ -27,8 +29,13 @@ export function TypePreviewPanel({ fontSize, lineHeight }: TypePreviewPanelProps
         style={{
           margin: 0,
           fontFamily: "var(--font-reading)",
-          fontSize: `${fontSize}px`,
-          lineHeight,
+          // Read the same custom properties the real editor reads, so a drag
+          // updates this paragraph on every step. The props are commit-driven
+          // React state and would only move on pointer-up, which contradicts
+          // this card's whole purpose; they remain as the fallback for when
+          // the properties are unset.
+          fontSize: `var(--editor-font-size, ${fontSize}px)`,
+          lineHeight: `var(--editor-line-height, ${lineHeight})`,
           color: "var(--color-fg)",
         }}
       >

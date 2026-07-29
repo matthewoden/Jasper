@@ -245,13 +245,19 @@ describe("AppearanceSection", () => {
     fireEvent.change(slider, { target: { value: "22" } });
     fireEvent.pointerUp(slider);
 
+    // The preview tracks --editor-font-size (so it moves mid-drag, not only on
+    // commit); jsdom does not resolve var(), so assert the property the
+    // paragraph reads plus the fallback baked into its declaration.
     const preview = screen.getByText(/Type styling applies instantly/);
-    expect(preview).toHaveStyle({ fontSize: "22px" });
+    expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("22px");
+    expect(preview.style.fontSize).toBe("var(--editor-font-size, 22px)");
 
     // Settle the deferred save inside this test's act scope rather than
     // letting its .then land during the next test.
     resolveSave({});
-    await waitFor(() => expect(preview).toHaveStyle({ fontSize: "22px" }));
+    await waitFor(() =>
+      expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("22px"),
+    );
   });
 
   it("reverts both the live preview value and --editor-font-size on a rejected font-size save", async () => {
@@ -266,7 +272,7 @@ describe("AppearanceSection", () => {
     await waitFor(() => expect(onSaveError).toHaveBeenCalled());
 
     const preview = screen.getByText(/Type styling applies instantly/);
-    expect(preview).toHaveStyle({ fontSize: "15px" });
+    expect(preview.style.fontSize).toBe("var(--editor-font-size, 15px)");
     expect(document.documentElement.style.getPropertyValue("--editor-font-size")).toBe("15px");
   });
 
