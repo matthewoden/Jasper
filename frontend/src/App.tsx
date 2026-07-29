@@ -40,6 +40,12 @@ import { useMigrationStatus } from "./lib/useMigrationStatus";
 import { useReveal } from "./lib/useReveal";
 import { useSessionSync, type SessionSyncHandlers } from "./lib/useSessionSync";
 import { useVaultSwitch } from "./lib/useVaultSwitch";
+import {
+  applyAccent,
+  applyReadingFont,
+  persistAccentBootstrap,
+  persistReadingFontBootstrap,
+} from "./lib/useAccent";
 import { VaultSwitchOverlay } from "./components/VaultSwitchOverlay";
 import { useTreeStore } from "./lib/useTreeStore";
 import { useBookmarks } from "./lib/useBookmarks";
@@ -237,6 +243,24 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       `${config.editor.lineHeight}`,
     );
   }, [config?.editor.fontSize, config?.editor.lineHeight]);
+
+  // Server config is the source of truth for accent/reading font; theme-bootstrap.js
+  // only pre-paints from localStorage to avoid a flash. Without this, a browser with
+  // no (or stale) localStorage renders the CSS default while the vault says otherwise
+  // — and the swatch's no-op guard then correctly refuses to "change" to the value
+  // already in config, leaving no way to re-apply it. Re-persisting the bootstrap
+  // keys keeps the next reload's pre-paint honest.
+  useEffect(() => {
+    if (!config) return;
+    applyAccent(config.accent);
+    persistAccentBootstrap(config.accent);
+  }, [config?.accent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!config) return;
+    applyReadingFont(config.readingFont);
+    persistReadingFontBootstrap(config.readingFont);
+  }, [config?.readingFont]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { markSwitching, markSwitched, switching: vaultSwitching, targetName: vaultSwitchTargetName } = useVaultSwitch();
 
