@@ -224,8 +224,13 @@ type strictConfigPatchValidator struct {
 }
 
 // validateConfigPatchBody decodes raw against strictConfigPatchValidator and
-// applies the same eleven constraints as the PUT block, wrapped in the
-// non-nil guards the sparse shape requires. An absent field is never an
+// applies one guard here per constraint in the PUT block above, wrapped in the
+// non-nil guards the sparse shape requires. The two lists MUST stay in
+// lockstep: a constraint deleted from one and not the other is a silent
+// validation hole — CR-01 was exactly that, a presence guard that vanished
+// from PUT when dailyNotes.folder was retired. Deliberately stated
+// structurally rather than as a count, which goes stale and then reassures
+// nobody. An absent field is never an
 // error; a present zero value (e.g. dailyNotes.template: "") always passes,
 // because clearing a field is a legitimate write, not an omission.
 func validateConfigPatchBody(w http.ResponseWriter, raw []byte, next http.Handler, r *http.Request) {

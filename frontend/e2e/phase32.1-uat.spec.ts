@@ -35,10 +35,11 @@
  * auto-retrying `expect`/`expect.poll` plus the explicit route gate — no
  * fixed-duration timer of any kind. The two edited fields
  * (`editor.fontSize`, `editor.autosaveMs`) are leaves of the SAME nested
- * `editor` object, which makes this a stronger deep-merge proof than editing
- * two independent top-level sections: a shallow top-level merge of session
- * B's `{editor:{autosaveMs}}` patch would replace the whole `editor` block
- * and silently drop session A's `fontSize` write.
+ * `editor` object, which preserves the nested-merge coverage the retired
+ * `dailyNotes.folder` / `dailyNotes.template` pair provided — merge-equivalent
+ * to it, not stronger: a shallow top-level merge of session B's
+ * `{editor:{autosaveMs}}` patch would replace the whole `editor` block and
+ * silently drop session A's `fontSize` write.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -130,11 +131,14 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
         await route.continue();
         return;
       }
-      patchCount++;
       // route.fetch() sends the request to the REAL server — the write
       // actually lands — independent of when the response is released back
-      // to session A below.
+      // to session A below. Count AFTER it resolves, not on interception:
+      // incrementing above would make the gate at "wait for PATCH #1 to land"
+      // fire the instant the request was intercepted, before the proxied
+      // request had even been sent, proving interception rather than arrival.
       const response = await route.fetch();
+      patchCount++;
       // Withhold session A's PATCH response until the test releases the
       // gate, so session B's own PATCH is guaranteed to be dispatched while
       // session A's write is still "unresolved" from session A's own point
@@ -146,8 +150,10 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
 
     // Session B's own PATCH is never intercepted/withheld (goes straight
     // through) — this listener only counts it, so the `patchCount` total
-    // below reflects both sessions' writes.
-    pageB.on("request", (req) => {
+    // below reflects both sessions' writes. `requestfinished`, not `request`:
+    // patchCount must mean "this write landed" for BOTH sessions, or the
+    // gates below compare a dispatch against an arrival.
+    pageB.on("requestfinished", (req) => {
       if (req.method() === "PATCH" && req.url().endsWith("/api/v1/config")) {
         patchCount++;
       }
@@ -173,8 +179,9 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     await fontSizeInputA.fill("22");
     await fontSizeInputA.blur(); // session A's PATCH #1 dispatched; server applies it; response withheld
 
-    // Wait for PATCH #1 to actually land server-side (proxied through
-    // route.fetch() above, independent of the withheld response) before
+    // Wait for PATCH #1 to actually land server-side — patchCount is
+    // incremented only after route.fetch() resolves, so this observes arrival
+    // rather than interception, independent of the withheld response — before
     // session B commits — session B's own config was never going to see
     // this either way, but this ordering keeps the "second write while the
     // first is unresolved" framing precise and avoids a benign write-order
@@ -192,11 +199,11 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // Server truth is the only proof a write landed — never `toHaveValue` on
     // the inputs, which is exactly what the defect makes lie (the useEffect
     // re-seed silently reverts the input back to a stale value). fontSize
-    // and autosaveMs are two LEAVES of the same nested `editor` object — a
-    // strictly stronger deep-merge proof than the previous dailyNotes pair,
-    // since a shallow top-level merge of session B's `{editor:{autosaveMs}}`
-    // would replace the whole `editor` block and silently drop session A's
-    // fontSize write.
+    // and autosaveMs are two LEAVES of the same nested `editor` object, which
+    // keeps this merge-equivalent to the retired dailyNotes.folder /
+    // dailyNotes.template pair — not stronger than it: a shallow top-level
+    // merge of session B's `{editor:{autosaveMs}}` would replace the whole
+    // `editor` block and silently drop session A's fontSize write.
     await pollConfigField(
       pageA,
       baseURL,

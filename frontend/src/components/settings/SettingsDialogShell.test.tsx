@@ -321,6 +321,27 @@ describe("<SettingsDialogShell />", () => {
       expect(mockClient.PATCH).not.toHaveBeenCalled();
     });
 
+    // The pane-header Reset is the ONLY reset affordance for this pane since
+    // the inline "Reset to default" link was dropped (IN-02), so this is the
+    // sole assertion that a dailyNotes reset writes the exact default string.
+    it("Daily notes: confirming resets only dailyNotes.template to the exact default", async () => {
+      renderShell();
+      fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
+      await screen.findByLabelText("Daily note template");
+
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+      const dialog = await screen.findByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => expect(mockClient.PUT).toHaveBeenCalledTimes(1));
+      const saved = mockClient.PUT.mock.calls[0][1].body as Config;
+      expect(saved.dailyNotes.template).toBe("# {{date}}\n\n"); // DEFAULT_CONFIG.dailyNotes.template
+      expect(saved.editor).toEqual(mockConfig.editor);
+      expect(saved.accent).toBe(mockConfig.accent);
+      expect(saved.server).toEqual(mockConfig.server);
+      expect(mockClient.PATCH).not.toHaveBeenCalled();
+    });
+
     it("Appearance: one saveConfig call carries accent, readingFont, fontSize, and lineHeight; autosaveMs untouched", async () => {
       renderShell();
       await screen.findByText("Accent and typography");

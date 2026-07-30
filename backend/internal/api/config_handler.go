@@ -75,7 +75,20 @@ func (s *Server) PutConfig(
 		}
 	}
 
-	return PutConfig200JSONResponse(toWireConfig(cfg)), nil
+	// Echo the PERSISTED document, not the request-derived struct, so PUT and
+	// PATCH return the same thing for the same on-disk state. Load normalises
+	// some values (D-02 pins Theme to "dark" while "light" is still in the
+	// wire enum), and useConfig.replaceConfig stores this echo as the rebase
+	// base for later Resets and the rollback target for failed saves — echoing
+	// the request would let the client hold a config the server does not have.
+	persisted, err := config.Load(s.dataDir, s.log)
+	if err != nil {
+		s.log.Error("PutConfig: reload after save failed",
+			"dataDir", s.dataDir, "err", err)
+		return nil, errors.New("could not load config")
+	}
+
+	return PutConfig200JSONResponse(toWireConfig(persisted)), nil
 }
 
 // PatchConfig implements PATCH /api/v1/config. Writes only the keys present

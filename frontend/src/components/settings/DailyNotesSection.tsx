@@ -5,12 +5,14 @@
  * folder-picking control was retired (UAT test 6, 2026-07-29): the config
  * field it wrote had zero functional consumers — daily-note creation
  * hardcodes "daily/".
+ *
+ * The inline "Reset to default" link was dropped (IN-02, owner 2026-07-30):
+ * once the pane held a single control it duplicated the pane-header Reset,
+ * which writes the identical patch via buildResetPatch's dailyNotes case.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Eyebrow } from "./shared";
 import type { SectionProps } from "./types";
-
-const DEFAULT_TEMPLATE = "# {{date}}\n\n";
 
 export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionProps) {
   const [dailyTemplate, setDailyTemplate] = useState(() => config.dailyNotes.template);
@@ -31,19 +33,6 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
       onSaveError(null);
     }
   }, [config, dailyTemplate, saveConfig, onSaveError]);
-
-  // No dirty check: this is an explicit button press, not blur drift.
-  // Writing the default when the template is already the default is
-  // harmless and keeps "calls saveConfig once" honest for that case.
-  const handleResetTemplateToDefault = useCallback(async () => {
-    setDailyTemplate(DEFAULT_TEMPLATE);
-    const { error } = await saveConfig({ dailyNotes: { template: DEFAULT_TEMPLATE } });
-    if (error) {
-      onSaveError(error.message);
-    } else {
-      onSaveError(null);
-    }
-  }, [saveConfig, onSaveError]);
 
   return (
     <section>
@@ -82,25 +71,7 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
           }}
         />
         <p style={{ fontSize: 12, color: "var(--color-muted)", margin: "4px 0", lineHeight: 1.5 }}>
-          {`Use {{date}} to insert today's date (e.g. 2026-06-13).`}{" "}
-          <button
-            type="button"
-            onClick={() => {
-              void handleResetTemplateToDefault();
-            }}
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              color: "var(--color-accent)",
-              textDecoration: "underline",
-              cursor: "pointer",
-              fontSize: 12,
-              fontFamily: "inherit",
-            }}
-          >
-            Reset to default
-          </button>
+          {`Use {{date}} to insert today's date (e.g. 2026-06-13).`}
         </p>
       </div>
     </section>

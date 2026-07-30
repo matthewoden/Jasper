@@ -57,17 +57,17 @@ describe("DailyNotesSection", () => {
     expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
-  it("resets the template to the exact default string via a bare { dailyNotes: { template } } partial", async () => {
+  // IN-02 (owner, 2026-07-30): the inline link duplicated the pane-header
+  // Reset, which writes the identical patch. The surviving affordance is
+  // covered by SettingsDialogShell.test.tsx "Daily notes: confirming resets
+  // only dailyNotes.template to the exact default".
+  it("renders no inline reset affordance — the pane-header Reset is the only one", () => {
     const config = makeConfig({ dailyNotes: { template: "something else" } });
     const { saveConfig } = renderSection(config);
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
-
-    expect(saveConfig).toHaveBeenCalledTimes(1);
-    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
-    expect(Object.keys(saved)).toEqual(["dailyNotes"]);
-    expect(Object.keys(saved.dailyNotes!)).toEqual(["template"]);
-    expect(saved.dailyNotes?.template).toBe("# {{date}}\n\n");
+    expect(screen.queryByRole("button", { name: /reset/i })).toBeNull();
+    expect(screen.queryByText(/reset to default/i)).toBeNull();
+    expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
   it("surfaces a rejected saveConfig through onSaveError", async () => {

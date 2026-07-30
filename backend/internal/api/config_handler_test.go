@@ -85,10 +85,13 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(putBody, &echoed); err != nil {
 		t.Fatal(err)
 	}
-	// The PUT response echoes the submitted config before D-02 load-coercion,
-	// so the written value ("light") is reflected here verbatim.
-	if string(echoed.Theme) != "light" {
-		t.Errorf("Theme: got %q, want %q", echoed.Theme, "light")
+	// PUT echoes the PERSISTED document, matching PATCH. "light" is accepted by
+	// the wire enum but D-02 pins the loaded theme to "dark", so the echo must
+	// already say "dark" — echoing the request verbatim here would hand the
+	// client a config the server does not have (it becomes replaceConfig's
+	// rebase base for later Resets).
+	if string(echoed.Theme) != "dark" {
+		t.Errorf("PUT echo — Theme: got %q, want %q (echo must be the persisted doc, not the request)", echoed.Theme, "dark")
 	}
 
 	resp2, err := http.Get(ts.URL + "/api/v1/config")
@@ -105,6 +108,12 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	// "dark" regardless of the persisted value — so the effective theme is dark.
 	if string(got.Theme) != "dark" {
 		t.Errorf("after GET — Theme: got %q, want %q", got.Theme, "dark")
+	}
+	// The WR-06 invariant itself: the PUT echo and the immediately-following GET
+	// describe the same on-disk state. Asserted as an equality rather than two
+	// independent literal checks so it keeps holding if D-02's coercion changes.
+	if !bytes.Equal(putBody, getBody) {
+		t.Errorf("PUT echo and subsequent GET disagree:\n PUT: %s\n GET: %s", putBody, getBody)
 	}
 }
 
@@ -463,7 +472,12 @@ func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 }
 
 // TestPutConfig_PreservesUnknownFields — a PUT must preserve an unmanaged
-// key that was already on disk (merge-on-write).
+// key that was already on disk (merge-on-write). The dailyNotes.folder entry
+// is the retired-key case (UAT-6): the migration-safety property most likely
+// to be hit in practice is an existing user's config.json meeting a Settings
+// Reset, which writes via PUT. fromWireConfig emits only
+// {"template":...} for that section, so preservation depends on
+// deepMergeRawMaps recursing INTO the nested object rather than replacing it.
 func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	ts, dir := setupConfigServer(t)
 	defer ts.Close()
@@ -472,7 +486,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	seed := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"_jasper_unmanaged":"preserve-me",
-		"dailyNotes":{"template":""},
+		"dailyNotes":{"folder":"legacy-daily","template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":""},
 		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
@@ -514,6 +528,17 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 		if err := json.Unmarshal(val, &s); err != nil || s != "preserve-me" {
 			t.Errorf("unmanaged key value: got %s, want \"preserve-me\"", val)
 		}
+	}
+
+	// The retired key lives INSIDE a managed nested object the request body
+	// also carries, so this fails if deepMergeRawMaps ever replaces the
+	// dailyNotes block wholesale instead of merging into it.
+	var dn map[string]json.RawMessage
+	if err := json.Unmarshal(onDisk["dailyNotes"], &dn); err != nil {
+		t.Fatalf("unmarshal dailyNotes: %v", err)
+	}
+	if got := string(dn["folder"]); got != `"legacy-daily"` {
+		t.Errorf("dailyNotes.folder: got %s, want %q (retired key must survive a PUT)", got, "legacy-daily")
 	}
 
 	theme, ok := onDisk["theme"]
