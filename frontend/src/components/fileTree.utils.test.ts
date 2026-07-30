@@ -3,8 +3,16 @@
  * D-01/D-02). Covers the six sort orders + nested recursion + tie-break
  * behavior specified in 29-04-PLAN.md's <behavior> block.
  */
-import { describe, expect, it } from "vitest";
-import { sortTree, type ArboristNode } from "./fileTree.utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ancestorFolderPaths,
+  expandNoteAncestorFolders,
+  setCurrentTreeRef,
+  sortTree,
+  type ArboristNode,
+} from "./fileTree.utils";
+import { useTreeStore } from "../lib/useTreeStore";
+import type { TreeApi } from "react-arborist";
 
 function folder(name: string, children: ArboristNode[] = []): ArboristNode {
   return {
@@ -136,5 +144,38 @@ describe("sortTree", () => {
     ];
     const sorted = sortTree(nodes, "modified-desc");
     expect(sorted.map((n) => n.name)).toEqual(["Alpha", "Bravo"]);
+  });
+});
+
+describe("ancestorFolderPaths", () => {
+  it("returns the single containing folder for a top-level daily note", () => {
+    expect(ancestorFolderPaths("daily/2026-07-30.md")).toEqual(["daily"]);
+  });
+
+  it("returns cumulative prefixes outermost-first for a nested note", () => {
+    expect(ancestorFolderPaths("a/b/c/note.md")).toEqual(["a", "a/b", "a/b/c"]);
+  });
+
+  it("returns an empty array for a root-level note", () => {
+    expect(ancestorFolderPaths("note.md")).toEqual([]);
+  });
+});
+
+describe("expandNoteAncestorFolders", () => {
+  afterEach(() => {
+    setCurrentTreeRef(null);
+    useTreeStore.setState({ expanded: new Set() });
+  });
+
+  it("opens the TreeApi and writes the store for each ancestor folder", () => {
+    const open = vi.fn();
+    setCurrentTreeRef(
+      { open, isOpen: () => false } as unknown as TreeApi<ArboristNode>,
+    );
+
+    expandNoteAncestorFolders("daily/2026-07-30.md");
+
+    expect(open).toHaveBeenCalledWith("folder:daily");
+    expect(useTreeStore.getState().expanded.has("daily")).toBe(true);
   });
 });

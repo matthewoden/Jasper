@@ -65,6 +65,7 @@ describe("useDailyNote", () => {
     useTreeStore.setState({
       dailyNoteLoading: false,
       activeNoteId: null,
+      expanded: new Set(),
     });
     usePaneStore.getState().clearAll();
   });
@@ -254,5 +255,92 @@ describe("useDailyNote", () => {
     expect(
       screen.queryByText("Couldn't open today's daily note"),
     ).not.toBeInTheDocument();
+  });
+
+  it("DN-HOOK-10: happy path — expands the note's containing folder (pp9)", async () => {
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    expect(useTreeStore.getState().expanded.has("daily")).toBe(true);
+  });
+
+  it("DN-HOOK-11: derivation, not a literal — nested note expands all ancestor folders (pp9)", async () => {
+    const nestedNote = {
+      ...fakeNote,
+      path: "work/journals/2026-05-14.md",
+    };
+    mockedOpenToday.mockResolvedValueOnce(nestedNote);
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    const expanded = useTreeStore.getState().expanded;
+    expect(expanded.has("work")).toBe(true);
+    expect(expanded.has("work/journals")).toBe(true);
+  });
+
+  it("DN-HOOK-12: open failure — expands nothing (pp9, D-5)", async () => {
+    mockedOpenToday.mockRejectedValueOnce(new Error("server down"));
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    expect(useTreeStore.getState().expanded.size).toBe(0);
+  });
+
+  it("DN-HOOK-13: broadcastRefresh rejects — still expands the folder, still no failure toast (pp9, D-2)", async () => {
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+    mockedBroadcastRefresh.mockRejectedValueOnce(new Error("tree refresh failed"));
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    await act(async () => {
+      await result.current.openToday();
+    });
+
+    expect(useTreeStore.getState().expanded.has("daily")).toBe(true);
+    expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
+    expect(
+      screen.queryByText("Couldn't open today's daily note"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("DN-HOOK-14: ordering — expansion happens only after broadcastRefresh() settles (pp9, D-1)", async () => {
+    mockedOpenToday.mockResolvedValueOnce(fakeNote);
+    let resolveRefresh: () => void = () => {};
+    const deferred = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    mockedBroadcastRefresh.mockReturnValueOnce(deferred);
+
+    const { result } = renderHook(() => useDailyNote(), { wrapper });
+
+    let openPromise!: Promise<void>;
+    act(() => {
+      openPromise = result.current.openToday();
+    });
+
+    await waitFor(() => {
+      expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(useTreeStore.getState().expanded.size).toBe(0);
+
+    await act(async () => {
+      resolveRefresh();
+      await openPromise;
+    });
+
+    expect(useTreeStore.getState().expanded.has("daily")).toBe(true);
   });
 });
