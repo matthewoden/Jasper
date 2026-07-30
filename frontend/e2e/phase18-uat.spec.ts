@@ -38,6 +38,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { openNoteFromTree } from "./helpers/openNoteFromTree";
+import { localDateString } from "./helpers/localDate";
 
 async function waitForConnected(page: Page, baseURL: string): Promise<void> {
   await page.goto(baseURL);
@@ -538,8 +539,6 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     // this test cannot race local midnight — a click landing exactly on the
     // local day boundary must still match one of the two straddling dates,
     // not whichever single sample happened to be read.
-    const localDateString = (d: Date): string =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const todayBefore = localDateString(new Date());
     await dailyBtn.click();
     const todayAfter = localDateString(new Date());
