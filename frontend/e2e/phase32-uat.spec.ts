@@ -120,7 +120,12 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     if (!boxBefore) throw new Error("Settings dialog has no bounding box");
 
     await dialog.getByRole("button", { name: "Daily notes" }).click();
-    await expect(dialog.getByRole("textbox", { name: "Daily notes folder" })).toBeVisible();
+    // Barrier: wait for a control in the arrived pane to be visible so the
+    // second measurement below is taken after the pane has actually
+    // rendered, not mid-switch. The template textbox is the only remaining
+    // control in this pane (the folder input was removed in plan 32.1-08) —
+    // its purpose here is purely "the pane has finished switching."
+    await expect(dialog.getByRole("textbox", { name: "Daily note template" })).toBeVisible();
 
     const boxAfter = await dialog.boundingBox();
     if (!boxAfter) throw new Error("Settings dialog has no bounding box after switching panes");
@@ -149,35 +154,36 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Reset scoping: change the Daily notes folder FIRST, then prove the
+    // Reset scoping: change the Daily notes template FIRST, then prove the
     // Editor Reset below never touches it. Daily notes is a stronger scoping
     // vehicle than the retired Server bind field it replaces (ADR-002,
     // 2026-07-26) — Daily notes IS a section with its own Reset, so an
     // over-broad Editor Reset has a live target it could wrongly clobber.
     await dialog.getByRole("button", { name: "Daily notes" }).click();
-    const folderInput = dialog.getByRole("textbox", { name: "Daily notes folder" });
-    await folderInput.fill("journal");
-    await folderInput.blur();
-    await expect(folderInput).toHaveValue("journal");
+    const templateInput = dialog.getByRole("textbox", { name: "Daily note template" });
+    const scopingProbe = "## {{date}}\n\nscoping probe\n";
+    await templateInput.fill(scopingProbe);
+    await templateInput.blur();
+    await expect(templateInput).toHaveValue(scopingProbe);
 
-    // The blur above fires PUT /config, but toHaveValue only proves the
-    // input's own local state -- without this poll, the folder write races
+    // The blur above fires PATCH /config, but toHaveValue only proves the
+    // input's own local state -- without this poll, the template write races
     // the Editor Reset below. Polling AFTER the reset instead would pass
-    // even if the folder PUT landed late, which would silently destroy the
-    // reset-scoping proof this test exists to provide.
+    // even if the template PATCH landed late, which would silently destroy
+    // the reset-scoping proof this test exists to provide.
     await expect.poll(
       async () => {
         try {
           const resp = await page.request.get(`${baseURL}/api/v1/config`);
           if (!resp.ok()) return null;
-          const body = (await resp.json()) as { dailyNotes?: { folder?: string } };
-          return body.dailyNotes?.folder ?? null;
+          const body = (await resp.json()) as { dailyNotes?: { template?: string } };
+          return body.dailyNotes?.template ?? null;
         } catch {
           return null;
         }
       },
-      { timeout: 5000, message: "waiting for dailyNotes.folder PUT to land server-side" },
-    ).toBe("journal");
+      { timeout: 5000, message: "waiting for dailyNotes.template PATCH to land server-side" },
+    ).toBe(scopingProbe);
 
     await dialog.getByRole("button", { name: "Editor", exact: true }).click();
     const autosaveInput = dialog.getByRole("spinbutton", { name: "Autosave interval" });
@@ -212,13 +218,13 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const cfg = await cfgResp.json();
     expect(cfg.editor.autosaveMs).toBe(defaults.editor.autosaveMs);
 
-    // Reset scoping: the Daily notes folder set before the Editor Reset
+    // Reset scoping: the Daily notes template set before the Editor Reset
     // must survive untouched — both in the UI and, more strongly, in the
     // already-fetched server-side config (server-side proof, matching how
     // cfg.editor.autosaveMs is checked above).
     await dialog.getByRole("button", { name: "Daily notes" }).click();
-    await expect(folderInput).toHaveValue("journal");
-    expect(cfg.dailyNotes.folder).toBe("journal");
+    await expect(templateInput).toHaveValue(scopingProbe);
+    expect(cfg.dailyNotes.template).toBe(scopingProbe);
   });
 
   test("about: all six vault facts render with real seeded values; copy matches the displayed path (SET3-04)", async ({
