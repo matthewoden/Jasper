@@ -73,12 +73,6 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"appName must be 1–64 chars"}`))
 			return
 		}
-		if len(tmp.DailyNotes.Folder) < 1 || len(tmp.DailyNotes.Folder) > 64 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"dailyNotes.folder must be 1–64 chars"}`))
-			return
-		}
 		if len(tmp.DailyNotes.Template) > 1024 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -146,7 +140,6 @@ type strictConfigValidator struct {
 	Accent      *string `json:"accent,omitempty"`
 	ReadingFont *string `json:"readingFont,omitempty"`
 	DailyNotes  struct {
-		Folder   string `json:"folder"`
 		Template string `json:"template"`
 	} `json:"dailyNotes"`
 	Editor struct {
@@ -186,7 +179,6 @@ type strictConfigPatchValidator struct {
 	Accent      *string `json:"accent,omitempty"`
 	ReadingFont *string `json:"readingFont,omitempty"`
 	DailyNotes  *struct {
-		Folder   *string `json:"folder,omitempty"`
 		Template *string `json:"template,omitempty"`
 	} `json:"dailyNotes,omitempty"`
 	Editor *struct {
@@ -240,13 +232,6 @@ func validateConfigPatchBody(w http.ResponseWriter, raw []byte, next http.Handle
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"code":"invalid_request","message":"appName must be 1–64 chars"}`))
-		return
-	}
-	if tmp.DailyNotes != nil && tmp.DailyNotes.Folder != nil &&
-		(len(*tmp.DailyNotes.Folder) < 1 || len(*tmp.DailyNotes.Folder) > 64) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"code":"invalid_request","message":"dailyNotes.folder must be 1–64 chars"}`))
 		return
 	}
 	if tmp.DailyNotes != nil && tmp.DailyNotes.Template != nil && len(*tmp.DailyNotes.Template) > 1024 {

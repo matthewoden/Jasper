@@ -41,7 +41,6 @@ func Defaults() Config {
 	return Config{
 		AppName: "Jasper",
 		DailyNotes: DailyNotes{
-			Folder:   "daily",
 			Template: "# {{date}}\n\n",
 		},
 		Editor: Editor{

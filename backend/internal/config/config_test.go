@@ -50,9 +50,9 @@ func TestLoad_DefaultsOnMissing(t *testing.T) {
 		t.Errorf("Editor.FontSize: got %d, want %d",
 			cfg.Editor.FontSize, want.Editor.FontSize)
 	}
-	if cfg.DailyNotes.Folder != want.DailyNotes.Folder {
-		t.Errorf("DailyNotes.Folder: got %q, want %q",
-			cfg.DailyNotes.Folder, want.DailyNotes.Folder)
+	if cfg.DailyNotes.Template != want.DailyNotes.Template {
+		t.Errorf("DailyNotes.Template: got %q, want %q",
+			cfg.DailyNotes.Template, want.DailyNotes.Template)
 	}
 
 	path := filepath.Join(dir, ".jasper", "config.json")
@@ -70,7 +70,7 @@ func TestLoad_RoundTrip(t *testing.T) {
 
 	in := Config{
 		AppName:     "Jasper",
-		DailyNotes:  DailyNotes{Folder: "journal", Template: "## {{date}}"},
+		DailyNotes:  DailyNotes{Template: "## {{date}}"},
 		Editor:      Editor{FontSize: 16, LineHeight: 1.7, AutosaveMs: 3000, LineWidth: 900},
 		Theme:       "dark",
 		Accent:      "sky",
@@ -464,7 +464,7 @@ func TestLoad_LegacyMCPEnabledKeyIsDroppedNotFatal(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	legacy := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
 		`"editor":{"fontSize":18,"lineHeight":1.7,"autosaveMs":3000},` +
 		`"server":{"port":6683,"dataDir":"/tmp/jasper-legacy","bind":"127.0.0.1"},` +
 		`"mcp":{"port":7000,"bind":"127.0.0.1","enabled":true}}`)
@@ -479,8 +479,8 @@ func TestLoad_LegacyMCPEnabledKeyIsDroppedNotFatal(t *testing.T) {
 	if cfg.Accent != "sky" {
 		t.Errorf("Accent: got %q, want %q (legacy mcp.enabled must not wipe sibling sections)", cfg.Accent, "sky")
 	}
-	if cfg.DailyNotes.Folder != "journal" {
-		t.Errorf("DailyNotes.Folder: got %q, want %q", cfg.DailyNotes.Folder, "journal")
+	if cfg.DailyNotes.Template != "## journal" {
+		t.Errorf("DailyNotes.Template: got %q, want %q", cfg.DailyNotes.Template, "## journal")
 	}
 	if cfg.Editor.AutosaveMs != 3000 {
 		t.Errorf("Editor.AutosaveMs: got %d, want 3000", cfg.Editor.AutosaveMs)
@@ -559,7 +559,7 @@ func TestLoad_BadFieldPreservesOtherSections(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
 		`"editor":{"fontSize":15,"lineHeight":"tall","autosaveMs":2000},` +
 		`"server":{"port":6683,"dataDir":"/tmp/j","bind":"0.0.0.0"},` +
 		`"templates":{"folder":"MyTemplates"}}`)
@@ -574,8 +574,8 @@ func TestLoad_BadFieldPreservesOtherSections(t *testing.T) {
 	if cfg.Editor.LineHeight != Defaults().Editor.LineHeight {
 		t.Errorf("Editor.LineHeight: got %v, want default %v", cfg.Editor.LineHeight, Defaults().Editor.LineHeight)
 	}
-	if cfg.DailyNotes.Folder != "journal" {
-		t.Errorf("DailyNotes.Folder: got %q, want %q (must survive editor's bad field)", cfg.DailyNotes.Folder, "journal")
+	if cfg.DailyNotes.Template != "## journal" {
+		t.Errorf("DailyNotes.Template: got %q, want %q (must survive editor's bad field)", cfg.DailyNotes.Template, "## journal")
 	}
 	if cfg.Accent != "sky" {
 		t.Errorf("Accent: got %q, want %q (must survive editor's bad field)", cfg.Accent, "sky")
@@ -693,7 +693,7 @@ func TestLoad_NullSectionWarnsAndFallsBack(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":""},` +
+		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
 		`"server":null}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -714,8 +714,8 @@ func TestLoad_NullSectionWarnsAndFallsBack(t *testing.T) {
 	if cfg.Server.Bind != "127.0.0.1" {
 		t.Errorf("Server.Bind: got %q, want %q (null section falls back)", cfg.Server.Bind, "127.0.0.1")
 	}
-	if cfg.DailyNotes.Folder != "journal" {
-		t.Errorf("DailyNotes.Folder: got %q, want %q (must survive server's null section)", cfg.DailyNotes.Folder, "journal")
+	if cfg.DailyNotes.Template != "## journal" {
+		t.Errorf("DailyNotes.Template: got %q, want %q (must survive server's null section)", cfg.DailyNotes.Template, "## journal")
 	}
 	if cfg.Accent != "sky" {
 		t.Errorf("Accent: got %q, want %q (must survive server's null section)", cfg.Accent, "sky")
@@ -724,5 +724,37 @@ func TestLoad_NullSectionWarnsAndFallsBack(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "field=server") || !strings.Contains(out, "null value") {
 		t.Errorf("warn log missing null-value fallback for %q; got:\n%s", "server", out)
+	}
+}
+
+// TestLoad_UnknownDailyNotesFolderKey_Tolerated — dailyNotes.folder is no
+// longer a config field, but an on-disk config.json still carrying it (from
+// before this change) must load cleanly: decodeDailyNotes only reads the
+// keys it names ("template"), so an unrecognized sibling key in the same
+// section is never inspected, and the rest of the document is unaffected.
+func TestLoad_UnknownDailyNotesFolderKey_Tolerated(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mkdirStorage(t, dir)
+	path := filepath.Join(dir, ".jasper", "config.json")
+	raw := []byte(`{"appName":"MyVault","theme":"dark",` +
+		`"dailyNotes":{"folder":"daily","template":"## journal"},` +
+		`"editor":{"fontSize":15,"lineHeight":1.45,"autosaveMs":1234}}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(dir, newTestLogger())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DailyNotes.Template != "## journal" {
+		t.Errorf("DailyNotes.Template: got %q, want %q (unknown sibling key must not poison the section)", cfg.DailyNotes.Template, "## journal")
+	}
+	if cfg.AppName != "MyVault" {
+		t.Errorf("AppName: got %q, want %q (unknown key in dailyNotes must not poison the document)", cfg.AppName, "MyVault")
+	}
+	if cfg.Editor.AutosaveMs != 1234 {
+		t.Errorf("Editor.AutosaveMs: got %d, want 1234 (unknown key in dailyNotes must not poison sibling sections)", cfg.Editor.AutosaveMs)
 	}
 }

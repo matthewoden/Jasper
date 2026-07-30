@@ -107,19 +107,14 @@ func warnOutOfRange(log *slog.Logger, fieldPath, path string) {
 }
 
 // decodeDailyNotes decodes and range-validates the dailyNotes section.
-// Bounds: folder 1-64 chars, template max 1024 chars.
+// Bounds: template max 1024 chars.
 func decodeDailyNotes(raw map[string]json.RawMessage, path string, log *slog.Logger, cfg *DailyNotes) {
 	nested := decodeSection(raw, "dailyNotes", path, log)
 	if nested == nil {
 		return
 	}
-	decodeField(nested, "folder", "dailyNotes.folder", path, &cfg.Folder, log)
 	decodeField(nested, "template", "dailyNotes.template", path, &cfg.Template, log)
 
-	if len(cfg.Folder) < 1 || len(cfg.Folder) > 64 {
-		warnOutOfRange(log, "dailyNotes.folder", path)
-		cfg.Folder = Defaults().DailyNotes.Folder
-	}
 	if len(cfg.Template) > 1024 {
 		warnOutOfRange(log, "dailyNotes.template", path)
 		cfg.Template = Defaults().DailyNotes.Template

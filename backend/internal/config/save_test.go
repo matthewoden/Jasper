@@ -132,7 +132,7 @@ func TestSaveMergedPartial_LeavesUnmentionedKeysUntouched(t *testing.T) {
 	seed := DefaultConfig()
 	seed.AppName = "Jasper Seed"
 	seed.Theme = "dark"
-	seed.DailyNotes.Folder = "daily"
+	seed.DailyNotes.Template = "## journal"
 	seed.Editor.FontSize = 15
 	seed.Editor.LineHeight = 1.6
 	seed.Editor.AutosaveMs = 2000
@@ -172,8 +172,8 @@ func TestSaveMergedPartial_LeavesUnmentionedKeysUntouched(t *testing.T) {
 	if got.Theme != seed.Theme {
 		t.Errorf("Theme: got %q, want %q (unmentioned, must stay untouched)", got.Theme, seed.Theme)
 	}
-	if got.DailyNotes.Folder != seed.DailyNotes.Folder {
-		t.Errorf("DailyNotes.Folder: got %q, want %q (unmentioned, must stay untouched)", got.DailyNotes.Folder, seed.DailyNotes.Folder)
+	if got.DailyNotes.Template != seed.DailyNotes.Template {
+		t.Errorf("DailyNotes.Template: got %q, want %q (unmentioned, must stay untouched)", got.DailyNotes.Template, seed.DailyNotes.Template)
 	}
 }
 
@@ -247,7 +247,7 @@ func TestSaveMergedPartial_AppliesExplicitZeroValues(t *testing.T) {
 	log := newTestLogger()
 
 	seed := DefaultConfig()
-	seed.DailyNotes.Folder = "daily"
+	seed.AppName = "Jasper Seed"
 	seed.DailyNotes.Template = "## {{date}}\n\n"
 	if err := Save(dir, seed); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -273,8 +273,8 @@ func TestSaveMergedPartial_AppliesExplicitZeroValues(t *testing.T) {
 	if got.DailyNotes.Template != "" {
 		t.Errorf("DailyNotes.Template: got %q, want \"\" (explicit empty-string overlay must apply, not be skipped)", got.DailyNotes.Template)
 	}
-	if got.DailyNotes.Folder != seed.DailyNotes.Folder {
-		t.Errorf("DailyNotes.Folder: got %q, want %q (unmentioned, must stay untouched)", got.DailyNotes.Folder, seed.DailyNotes.Folder)
+	if got.AppName != seed.AppName {
+		t.Errorf("AppName: got %q, want %q (unmentioned, must stay untouched)", got.AppName, seed.AppName)
 	}
 }
 
@@ -333,7 +333,7 @@ func buildConcurrentPartialWriters() []concurrentPartialWriter {
 		{"editor.lineHeight", map[string]json.RawMessage{"editor": json.RawMessage(`{"lineHeight":1.9}`)}, []string{"editor", "lineHeight"}, `1.9`},
 		{"editor.autosaveMs", map[string]json.RawMessage{"editor": json.RawMessage(`{"autosaveMs":4242}`)}, []string{"editor", "autosaveMs"}, `4242`},
 		{"editor.lineWidth", map[string]json.RawMessage{"editor": json.RawMessage(`{"lineWidth":888}`)}, []string{"editor", "lineWidth"}, `888`},
-		{"dailyNotes.folder", map[string]json.RawMessage{"dailyNotes": json.RawMessage(`{"folder":"probe-daily"}`)}, []string{"dailyNotes", "folder"}, `"probe-daily"`},
+		{"dailyNotes.folder (now unknown — deepMergeRawMaps must still preserve it)", map[string]json.RawMessage{"dailyNotes": json.RawMessage(`{"folder":"probe-daily"}`)}, []string{"dailyNotes", "folder"}, `"probe-daily"`},
 		{"dailyNotes.template", map[string]json.RawMessage{"dailyNotes": json.RawMessage(`{"template":"probe-template"}`)}, []string{"dailyNotes", "template"}, `"probe-template"`},
 		{"templates.folder", map[string]json.RawMessage{"templates": json.RawMessage(`{"folder":"probe-templates"}`)}, []string{"templates", "folder"}, `"probe-templates"`},
 	}
