@@ -580,6 +580,9 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const proseLine = page.locator(".cm-line", { hasText: proseText });
     await expect(proseLine).toHaveCount(1);
     const lineHeightBefore = await proseLine.evaluate((el) => getComputedStyle(el).lineHeight);
+    const lineHeightConfigBefore = await page.request
+      .get(`${baseURL}/api/v1/config`)
+      .then(async (r) => ((await r.json()) as { editor: { lineHeight: number } }).editor.lineHeight);
 
     await page.getByTestId("settings-menu-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
@@ -604,6 +607,20 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     }).toPass({ timeout: 3_000 });
 
     await page.mouse.up();
+
+    // The release commits its own PATCH. Let it land before issuing a second
+    // one — commitNumber does not await the slider's in-flight save, and the
+    // server serialises writes without ordering them by dispatch time, so
+    // otherwise the two writes' arrival order decides the persisted value.
+    await expect
+      .poll(
+        async () => {
+          const cfgResp = await page.request.get(`${baseURL}/api/v1/config`);
+          return ((await cfgResp.json()) as { editor: { lineHeight: number } }).editor.lineHeight;
+        },
+        { timeout: 5_000, message: "waiting for the slider-release line-height PATCH to land" },
+      )
+      .not.toBe(lineHeightConfigBefore);
 
     // Pin an exact value through the paired numeric input.
     const spinbutton = dialog.getByRole("spinbutton", { name: "Line height" });

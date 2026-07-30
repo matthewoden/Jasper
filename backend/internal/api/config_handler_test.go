@@ -178,6 +178,69 @@ func TestPutConfig_DisplayNameField_Rejected400(t *testing.T) {
 	}
 }
 
+// TestPutConfig_MissingRequiredSection_Rejected400 — api/openapi.yaml declares
+// dailyNotes and editor as `required` on Config. Because PUT replaces the whole
+// object, accepting a body that omits one of them writes zero values over the
+// user's data. Asserting the persisted template survives is the part that makes
+// this non-vacuous: a 400 alone would still pass if the write happened first.
+func TestPutConfig_MissingRequiredSection_Rejected400(t *testing.T) {
+	seeded := `{"appName":"Jasper","theme":"light","dailyNotes":{"template":"## journal"},"editor":{"fontSize":16,"lineHeight":1.7,"autosaveMs":2000}}`
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"omits dailyNotes", `{"appName":"Jasper","theme":"light","editor":{"fontSize":16,"lineHeight":1.7,"autosaveMs":2000}}`},
+		{"omits editor", `{"appName":"Jasper","theme":"light","dailyNotes":{"template":"replacement"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts, _ := setupConfigServer(t)
+			defer ts.Close()
+
+			seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader([]byte(seeded)))
+			seedReq.Header.Set("Content-Type", "application/json")
+			seedResp, err := http.DefaultClient.Do(seedReq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedBody, _ := io.ReadAll(seedResp.Body)
+			_ = seedResp.Body.Close()
+			if seedResp.StatusCode != 200 {
+				t.Fatalf("seed PUT: got %d, want 200; body: %s", seedResp.StatusCode, seedBody)
+			}
+
+			req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader([]byte(tc.body)))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			putBody, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode != 400 {
+				t.Errorf("PUT %s: got %d, want 400; body: %s", tc.name, resp.StatusCode, putBody)
+			}
+
+			getResp, err := http.Get(ts.URL + "/api/v1/config")
+			if err != nil {
+				t.Fatal(err)
+			}
+			getBody, _ := io.ReadAll(getResp.Body)
+			_ = getResp.Body.Close()
+			var got Config
+			if err := json.Unmarshal(getBody, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.DailyNotes.Template != "## journal" {
+				t.Errorf("after rejected PUT %s — dailyNotes.template: got %q, want %q (a rejected write must not clobber persisted data)", tc.name, got.DailyNotes.Template, "## journal")
+			}
+			if got.Editor.FontSize != 16 {
+				t.Errorf("after rejected PUT %s — editor.fontSize: got %d, want 16", tc.name, got.Editor.FontSize)
+			}
+		})
+	}
+}
+
 // TestPutConfig_V14FieldsRoundTrip — PUTs every new D-17 field with
 // non-default values and asserts the 200 response echoes them back
 // unchanged, and that a subsequent GET /config returns the same values.

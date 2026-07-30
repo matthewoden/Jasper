@@ -73,6 +73,21 @@ func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"appName must be 1–64 chars"}`))
 			return
 		}
+		// dailyNotes and editor are `required` in api/openapi.yaml. As value
+		// structs they cannot distinguish "omitted" from "{}", and an omitted
+		// block round-trips zero values to disk — wiping the user's template.
+		if tmp.DailyNotes == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"dailyNotes is required"}`))
+			return
+		}
+		if tmp.Editor == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"invalid_request","message":"editor is required"}`))
+			return
+		}
 		if len(tmp.DailyNotes.Template) > 1024 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -139,10 +154,12 @@ type strictConfigValidator struct {
 	Theme       string  `json:"theme"`
 	Accent      *string `json:"accent,omitempty"`
 	ReadingFont *string `json:"readingFont,omitempty"`
-	DailyNotes  struct {
+	// Pointers, not value structs: both are `required` in api/openapi.yaml,
+	// and only a pointer distinguishes an omitted block from an empty one.
+	DailyNotes *struct {
 		Template string `json:"template"`
 	} `json:"dailyNotes"`
-	Editor struct {
+	Editor *struct {
 		FontSize       int     `json:"fontSize"`
 		LineHeight     float64 `json:"lineHeight"`
 		AutosaveMs     int     `json:"autosaveMs"`

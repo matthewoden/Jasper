@@ -737,14 +737,17 @@ func TestLoad_UnknownDailyNotesFolderKey_Tolerated(t *testing.T) {
 	dir := t.TempDir()
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
+	// The retired key MUST be present in the fixture — without it this test
+	// passes whether or not the loader tolerates it, and gates nothing.
 	raw := []byte(`{"appName":"MyVault","theme":"dark",` +
-		`"dailyNotes":{"template":"## journal"},` +
+		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
 		`"editor":{"fontSize":15,"lineHeight":1.45,"autosaveMs":1234}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(dir, newTestLogger())
+	var buf bytes.Buffer
+	cfg, err := Load(dir, slog.New(slog.NewTextHandler(&buf, nil)))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -756,5 +759,10 @@ func TestLoad_UnknownDailyNotesFolderKey_Tolerated(t *testing.T) {
 	}
 	if cfg.Editor.AutosaveMs != 1234 {
 		t.Errorf("Editor.AutosaveMs: got %d, want 1234 (unknown key in dailyNotes must not poison sibling sections)", cfg.Editor.AutosaveMs)
+	}
+	// A retired key is dropped, not fallback-warned — the same distinction
+	// decodeMCPConfig draws for the legacy mcp.enabled key.
+	if out := buf.String(); strings.Contains(out, "folder") {
+		t.Errorf("retired dailyNotes.folder must be dropped silently, not warned; got:\n%s", out)
 	}
 }
