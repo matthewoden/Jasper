@@ -1569,6 +1569,74 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 });
 
 
+// Named S35 (not S19 — that id is already used above by the cold-open
+// quick-switcher scenarios) to avoid a duplicate scenario id in this file.
+test.describe("Phase 7 — Today expands the daily folder (S35 / pp9)", () => {
+  let jasper: JasperHandle;
+
+  test.beforeAll(async () => {
+    jasper = await spawnJasper();
+  });
+
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+  });
+
+  test("S35: Today click leaves the daily folder expanded with zero tree clicks", async ({ page }) => {
+    await page.goto(jasper.baseURL);
+    await waitForConnected(page);
+
+    const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
+    await expect(todayBtn).toBeVisible({ timeout: 8_000 });
+    await todayBtn.click();
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+
+    const todayStr = localDateString();
+    const dailyNotePath = `daily/${todayStr}.md`;
+
+    const dailyFolderRow = page.locator('[data-tree-row="daily"][data-tree-row-kind="folder"]');
+    await expect(dailyFolderRow).toHaveAttribute("aria-expanded", "true", { timeout: 5_000 });
+
+    const noteId = await page.evaluate(
+      async ({ baseURL, targetPath }: { baseURL: string; targetPath: string }) => {
+        const treeResp = await fetch(`${baseURL}/api/v1/tree`);
+        if (!treeResp.ok) return null;
+        const treeData = await treeResp.json() as {
+          root: Array<{
+            kind: string;
+            path?: string;
+            id?: string;
+            children?: Array<{ kind: string; path?: string; id?: string }>;
+          }>;
+        };
+
+        function findNoteByPath(
+          nodes: Array<{ kind: string; path?: string; id?: string; children?: Array<{ kind: string; path?: string; id?: string }> }>,
+          searchPath: string,
+        ): string | null {
+          for (const node of nodes) {
+            if (node.kind === "note" && node.path === searchPath) return node.id ?? null;
+            if (node.kind === "folder" && node.children) {
+              const found = findNoteByPath(node.children, searchPath);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
+
+        return findNoteByPath(treeData.root, targetPath);
+      },
+      { baseURL: jasper.baseURL, targetPath: dailyNotePath },
+    );
+
+    expect(noteId, `daily note not found in tree at ${dailyNotePath}`).not.toBeNull();
+
+    const noteRow = page.locator(`[data-tree-row="${noteId}"][data-tree-row-kind="note"]`);
+    await expect(noteRow).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+
 test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
   let jasper: JasperHandle;
 

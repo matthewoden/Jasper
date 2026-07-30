@@ -85,12 +85,17 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
 
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
 
+  // Re-syncs on every `tree` change (not just mount) because <Tree ref={treeRef}>
+  // only renders on the populated-tree branch below — a vault that starts empty
+  // (TreeEmptyState branch, no <Tree> at all) leaves treeRef.current null at
+  // mount, and a []-dep effect would never notice it becoming non-null once the
+  // first note/folder appears and FileTree transitions into the TreeView branch.
   useEffect(() => {
     setCurrentTreeRef(treeRef.current);
     return () => {
       setCurrentTreeRef(null);
     };
-  }, []);
+  }, [tree]);
 
   const nativeDragInfoRef = useRef<{
     dragIds: string[];
