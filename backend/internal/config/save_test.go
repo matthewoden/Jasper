@@ -57,7 +57,7 @@ func TestSaveMerged_NestedUnknownKeySurvives(t *testing.T) {
 	initial := []byte(`{
 		"appName": "Jasper",
 		"theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {
 			"fontSize": 15,
 			"lineHeight": 1.6,
@@ -191,7 +191,7 @@ func TestSaveMergedPartial_PreservesUnknownKeys(t *testing.T) {
 		"appName": "Jasper",
 		"theme": "dark",
 		"someFutureTopLevelKey": "keep-me",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {
 			"fontSize": 15,
 			"lineHeight": 1.6,

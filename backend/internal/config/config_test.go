@@ -218,7 +218,7 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	old := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6}
 	}`)
 	if err := os.WriteFile(path, old, 0o644); err != nil {
@@ -253,7 +253,7 @@ func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"light",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -280,7 +280,7 @@ func TestLoad_MissingAccentDefaultsToPurple(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -307,7 +307,7 @@ func TestLoad_MissingReadingFontDefaultsToSans(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -334,7 +334,7 @@ func TestLoad_BogusAccentNormalizedToPurple(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","accent":"bogus",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -361,7 +361,7 @@ func TestLoad_BogusReadingFontNormalizedToSans(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","readingFont":"bogus",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -388,7 +388,7 @@ func TestLoad_ValidAccentAndReadingFontPreserved(t *testing.T) {
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{
 		"appName":"Jasper","theme":"dark","accent":"sky","readingFont":"serif",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/j","bind":"127.0.0.1"},
 		"mcp":{"port":6684,"bind":"127.0.0.1"}
@@ -433,7 +433,7 @@ func TestLoad_UnknownFieldsAreDroppedNotFatal(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","someFutureField":42,` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":3000,"someFutureNested":true}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -464,7 +464,7 @@ func TestLoad_LegacyMCPEnabledKeyIsDroppedNotFatal(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	legacy := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
+		`"dailyNotes":{"template":"## journal"},` +
 		`"editor":{"fontSize":18,"lineHeight":1.7,"autosaveMs":3000},` +
 		`"server":{"port":6683,"dataDir":"/tmp/jasper-legacy","bind":"127.0.0.1"},` +
 		`"mcp":{"port":7000,"bind":"127.0.0.1","enabled":true}}`)
@@ -504,7 +504,7 @@ func TestLoad_WrongTypedFieldFallsBackPerField(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":"big","lineHeight":1.6,"autosaveMs":3000}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -532,7 +532,7 @@ func TestLoad_OutOfRangeFallsBackNotClamped(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":500,"lineHeight":1.6,"autosaveMs":2000,"lineWidth":9999}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -559,7 +559,7 @@ func TestLoad_BadFieldPreservesOtherSections(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
+		`"dailyNotes":{"template":"## journal"},` +
 		`"editor":{"fontSize":15,"lineHeight":"tall","autosaveMs":2000},` +
 		`"server":{"port":6683,"dataDir":"/tmp/j","bind":"0.0.0.0"},` +
 		`"templates":{"folder":"MyTemplates"}}`)
@@ -597,7 +597,7 @@ func TestLoad_InvalidEnumFallsBackToDefault(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"chartreuse","readingFont":"comic",` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":3000}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -627,7 +627,7 @@ func TestLoad_FallbackLogsWarn(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":"big","lineHeight":1.6,"autosaveMs":2000}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -656,7 +656,7 @@ func TestLoad_NullScalarFieldWarnsAndFallsBack(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark",` +
-		`"dailyNotes":{"folder":"daily","template":""},` +
+		`"dailyNotes":{"template":""},` +
 		`"editor":{"fontSize":null,"lineHeight":1.6,"autosaveMs":3000}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -693,7 +693,7 @@ func TestLoad_NullSectionWarnsAndFallsBack(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"Jasper","theme":"dark","accent":"sky",` +
-		`"dailyNotes":{"folder":"journal","template":"## journal"},` +
+		`"dailyNotes":{"template":"## journal"},` +
 		`"server":null}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
@@ -738,7 +738,7 @@ func TestLoad_UnknownDailyNotesFolderKey_Tolerated(t *testing.T) {
 	mkdirStorage(t, dir)
 	path := filepath.Join(dir, ".jasper", "config.json")
 	raw := []byte(`{"appName":"MyVault","theme":"dark",` +
-		`"dailyNotes":{"folder":"daily","template":"## journal"},` +
+		`"dailyNotes":{"template":"## journal"},` +
 		`"editor":{"fontSize":15,"lineHeight":1.45,"autosaveMs":1234}}`)
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
