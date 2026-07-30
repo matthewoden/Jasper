@@ -34,14 +34,17 @@
  *
  * Daily note filename/title: backend `notes.GetOrCreateDailyNote` (daily.go)
  * uses relPath `daily/<date>.md` and title `<date>` where date is
- * `YYYY-MM-DD` — the same `new Date().toISOString().slice(0, 10)` the
- * frontend's useDailyNote.ts computes, so the tree row's display label
- * (title, per TreeRow.tsx's `displayLabel`) equals the test's computed
- * `todayStr` exactly.
+ * `YYYY-MM-DD` — the LOCAL calendar date computed by the frontend's
+ * useDailyNote.ts (getFullYear/getMonth/getDate), NOT a UTC date. This test
+ * derives its expected date the same way, via the shared local-calendar
+ * helper (see `helpers/localDate.ts` for why `toISOString()` is wrong here),
+ * so the tree row's display label (title, per TreeRow.tsx's `displayLabel`)
+ * equals the test's computed `todayStr` exactly.
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { apiCreateNote } from "./helpers/phase7Helpers";
+import { localDateString } from "./helpers/localDate";
 
 let jasper: JasperHandle;
 
@@ -91,7 +94,7 @@ test.describe("SY-01 — cross-session broadcast updates other session's file tr
         pageB.locator('[data-tree-row-kind="folder"]').filter({ hasText: "daily" }),
       ).toHaveCount(0);
 
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = localDateString();
 
       const todayBtn = pageA.getByRole("button", { name: "Open today's daily note" });
       await expect(todayBtn).toBeVisible({ timeout: 8_000 });

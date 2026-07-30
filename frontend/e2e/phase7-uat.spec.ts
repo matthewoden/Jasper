@@ -33,6 +33,7 @@ import {
   dispatchSyntheticDragLeave,
   activateTagFilterChip,
 } from "./helpers/phase7Helpers";
+import { localDateString } from "./helpers/localDate";
 
 
 test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
@@ -169,7 +170,7 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
 
     await todayBtn.click();
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
 
     const dailyPath = path.join(jasper.dataDir, "notes", "daily", `${todayStr}.md`);
     let fileExists = false;
@@ -212,7 +213,7 @@ test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
 
     await pressShortcut(page, "CmdShiftD");
 
@@ -296,7 +297,7 @@ test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
 
     await openCommandMenu(page, "commands");
 
@@ -662,7 +663,7 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
     const dailyNoteResp = await page.request.get(
       `${jasper.baseURL}/api/v1/daily-notes/${todayStr}`
     );
@@ -751,7 +752,7 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
     // editor (firstH1HideExtension) and rendered above it in the TitleElement.
     // The daily note's date lives in the H1, so it now appears in the title
     // element, not in .cm-content (whose body is empty for a fresh daily note).
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
     await expect(page.getByTestId("editor-title-element").first()).toContainText(todayStr, {
       timeout: 5_000,
     });
@@ -1481,7 +1482,7 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
     await todayBtn.click();
     await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateString();
     const originalDailyPath = `daily/${todayStr}.md`;
     const renamedPath = `daily/${todayStr}-standup.md`;
 
