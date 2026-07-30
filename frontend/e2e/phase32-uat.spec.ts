@@ -421,13 +421,20 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await page.goto(baseURL);
     await waitForConnected(page);
 
-    // The note's H1 becomes its searchable title AND renames the underlying
-    // file via the bidirectional H1<->filename binding (notes.Rewriter) —
-    // so the quick switcher must search for the H1 text ("Type preview"),
-    // not the original create-time filename slug.
+    // apiCreateNote's PUT sets the H1, which becomes the note's searchable
+    // title server-side immediately — but the client's quick-switcher tree
+    // cache only refreshes on note:created/moved/folder events, NOT on
+    // note:updated (the H1-driven rename path only fires through an open
+    // editor's own save cycle, which this API-only seed never exercises).
+    // Reloading after seeding forces a fresh GET /tree strictly after the
+    // PUT above has already landed, so the switcher search deterministically
+    // sees the current title instead of racing the WS note:created broadcast
+    // against apiCreateNote's own PUT.
     const noteTitle = "type-preview-note";
     const displayTitle = "Type preview";
     await apiCreateNote(page, baseURL, `${noteTitle}.md`, "", `# ${displayTitle}\n\nSample body text.\n`);
+    await page.reload();
+    await waitForConnected(page);
 
     await page.keyboard.press("Meta+o");
     const switcher = page.getByRole("dialog", { name: "Quick switcher" });
@@ -451,6 +458,15 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const cmEditor = page.locator(".cm-editor").first();
     await expect(cmEditor).toBeVisible({ timeout: 10_000 });
     const fontSizeBefore = await cmEditor.evaluate((el) => getComputedStyle(el).fontSize);
+
+    // .cm-editor is the element the value already reached even when the
+    // bug shipped (the propagation break was one level deeper, on
+    // .cm-scroller) — measuring a rendered prose line too proves the value
+    // reaches actual note text, not only the outer wrapper. Selected by
+    // text, not index: the first .cm-line carries cm-heading-1.
+    const proseLine = page.locator(".cm-line", { hasText: "Sample body text." });
+    await expect(proseLine).toHaveCount(1);
+    const proseFontSizeBefore = await proseLine.evaluate((el) => getComputedStyle(el).fontSize);
 
     await page.getByTestId("settings-menu-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
@@ -487,6 +503,8 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await expect(async () => {
       const fontSizeDuring = await cmEditor.evaluate((el) => getComputedStyle(el).fontSize);
       expect(fontSizeDuring).not.toBe(fontSizeBefore);
+      const proseFontSizeDuring = await proseLine.evaluate((el) => getComputedStyle(el).fontSize);
+      expect(proseFontSizeDuring).not.toBe(proseFontSizeBefore);
     }).toPass({ timeout: 3_000 });
 
     // The in-dialog preview card must move mid-drag too. It previously took
@@ -510,6 +528,99 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
       const cfg = await cfgResp.json();
       const fontSizeAfter = await cmEditor.evaluate((el) => getComputedStyle(el).fontSize);
       expect(fontSizeAfter).toBe(`${String(cfg.editor.fontSize)}px`);
+      const proseFontSizeAfter = await proseLine.evaluate((el) => getComputedStyle(el).fontSize);
+      expect(proseFontSizeAfter).toBe(`${String(cfg.editor.fontSize)}px`);
+    }).toPass({ timeout: 3_000 });
+  });
+
+  test("line height: the slider restyles a rendered prose line in the live editor, not only the Settings preview (SET3-07, UAT-4)", async ({
+    page,
+  }) => {
+    jasper = await spawnJasper();
+    const baseURL = jasper.baseURL;
+    await page.setViewportSize({ width: 1512, height: 944 });
+
+    await page.goto(baseURL);
+    await waitForConnected(page);
+
+    const noteTitle = "line-height-probe";
+    const displayTitle = "Line height probe";
+    const proseText = "Prose body line for line-height measurement.";
+    await apiCreateNote(page, baseURL, `${noteTitle}.md`, "", `# ${displayTitle}\n\n${proseText}\n`);
+    // Reload forces a fresh GET /tree strictly after the PUT above has
+    // landed (see the "type preview" test's comment on this same pattern) —
+    // the quick-switcher's client-side tree cache otherwise only refreshes
+    // on note:created/moved/folder events, not note:updated.
+    await page.reload();
+    await waitForConnected(page);
+
+    await page.keyboard.press("Meta+o");
+    const switcher = page.getByRole("dialog", { name: "Quick switcher" });
+    await switcher.waitFor({ state: "visible", timeout: 5_000 });
+    await switcher.getByRole("combobox").fill(displayTitle);
+    const noteRow = switcher.locator('[data-row-kind="note"]', { hasText: displayTitle });
+    await expect(noteRow).toBeVisible({ timeout: 5_000 });
+    await expect(noteRow).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Enter");
+    await expect(switcher).not.toBeVisible();
+
+    const cmEditor = page.locator(".cm-editor").first();
+    await expect(cmEditor).toBeVisible({ timeout: 10_000 });
+
+    // Measured on the prose line itself, never .cm-editor (the wrapper the
+    // broken value already reached) or an index-selected .cm-line (the
+    // first line carries cm-heading-1, pinned to 1.3 regardless of this
+    // control).
+    const proseLine = page.locator(".cm-line", { hasText: proseText });
+    await expect(proseLine).toHaveCount(1);
+    const lineHeightBefore = await proseLine.evaluate((el) => getComputedStyle(el).lineHeight);
+
+    await page.getByTestId("settings-menu-trigger").click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible();
+    // Settings always opens on Appearance (D-20) — the line-height slider
+    // is already the active pane; no extra nav click needed.
+
+    const slider = dialog.getByRole("slider", { name: "Line height" });
+    const box = await slider.boundingBox();
+    if (!box) throw new Error("Line height slider has no bounding box");
+
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 4, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 4, y, { steps: 12 });
+
+    // Live restyle, asserted BEFORE mouse-up so this cannot be satisfied by
+    // the eventual onCommit alone.
+    await expect(async () => {
+      const lineHeightDuring = await proseLine.evaluate((el) => getComputedStyle(el).lineHeight);
+      expect(lineHeightDuring).not.toBe(lineHeightBefore);
+    }).toPass({ timeout: 3_000 });
+
+    await page.mouse.up();
+
+    // Pin an exact value through the paired numeric input.
+    const spinbutton = dialog.getByRole("spinbutton", { name: "Line height" });
+    await spinbutton.fill("2.5");
+    await page.keyboard.press("Enter");
+
+    await expect.poll(
+      async () => {
+        const cfgResp = await page.request.get(`${baseURL}/api/v1/config`);
+        const cfg = await cfgResp.json();
+        return cfg.editor.lineHeight as number;
+      },
+      { timeout: 5000, message: "waiting for line-height PATCH to land server-side" },
+    ).toBe(2.5);
+
+    // Ratio computed from the element's own metrics — no px literal
+    // hard-coded, so float rounding cannot bite.
+    await expect(async () => {
+      const ratio = await proseLine.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return parseFloat(s.lineHeight) / parseFloat(s.fontSize);
+      });
+      expect(Math.abs(ratio - 2.5)).toBeLessThan(0.02);
     }).toPass({ timeout: 3_000 });
   });
 });
