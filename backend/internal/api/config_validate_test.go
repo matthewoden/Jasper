@@ -42,7 +42,7 @@ func setupValidateServer(t *testing.T) *httptest.Server {
 func validConfigBodyWithAutosave(autosaveMs int) []byte {
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":` +
 		itoa(autosaveMs) + `}
 	}`)
@@ -116,7 +116,7 @@ func TestConfigMiddleware_DisplayNameField_Rejected400(t *testing.T) {
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"display_name":"My Notes",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -141,7 +141,7 @@ func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
 
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":"/tmp/x","bind":"0.0.0.0"}
 	}`)
@@ -168,7 +168,7 @@ func TestConfigStrictBody_AcceptsAllV14Fields(t *testing.T) {
 
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{
 			"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,
 			"showProperties":false,"autoPair":false,"foldGutter":false,
@@ -198,7 +198,7 @@ func TestConfigStrictBody_RejectsLineWidthOutOfRange(t *testing.T) {
 
 	body := []byte(`{
 		"appName":"Jasper","theme":"dark",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,"lineWidth":3000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))

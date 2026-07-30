@@ -67,7 +67,7 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper",
 		"theme": "light",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 16, "lineHeight": 1.7, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -113,7 +113,7 @@ func TestPutConfig_UnknownField_400(t *testing.T) {
 	defer ts.Close()
 
 	body := []byte(`{
-		"appName": "Jasper", "theme": "dark", "dailyNotes": {"folder": "daily", "template": ""},
+		"appName": "Jasper", "theme": "dark", "dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000},
 		"unknownField": 42
 	}`)
@@ -136,7 +136,7 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "neon-purple",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -162,7 +162,7 @@ func TestPutConfig_DisplayNameField_Rejected400(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark",
 		"display_name": "My Notes",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -189,7 +189,7 @@ func TestPutConfig_V14FieldsRoundTrip(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {
 			"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000,
 			"showProperties": false, "autoPair": false, "foldGutter": false,
@@ -267,7 +267,7 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	body := []byte(`{
 		"appName": "Jasper",
 		"theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -338,7 +338,7 @@ func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -409,7 +409,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	seed := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"_jasper_unmanaged":"preserve-me",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000},
 		"server":{"port":6683,"dataDir":""},
 		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
@@ -420,7 +420,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 
 	body := []byte(`{
 		"appName": "Jasper", "theme": "light",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(body))
@@ -473,7 +473,7 @@ func TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged(t *testing.T) {
 
 	putBody := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": "## journal"},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	putReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(putBody))
@@ -529,8 +529,8 @@ func TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged(t *testing.T) {
 	if string(got.Theme) != "dark" {
 		t.Errorf("theme: got %q, want %q (unmentioned by PATCH)", got.Theme, "dark")
 	}
-	if got.DailyNotes.Folder != "daily" {
-		t.Errorf("dailyNotes.folder: got %q, want %q (unmentioned by PATCH)", got.DailyNotes.Folder, "daily")
+	if got.DailyNotes.Template != "## journal" {
+		t.Errorf("dailyNotes.template: got %q, want %q (unmentioned by PATCH)", got.DailyNotes.Template, "## journal")
 	}
 }
 
@@ -546,7 +546,7 @@ func TestPatchConfig_PreservesUnknownFields(t *testing.T) {
 	seed := []byte(`{
 		"appName":"Jasper","theme":"dark",
 		"_jasper_unmanaged":"preserve-me",
-		"dailyNotes":{"folder":"daily","template":""},
+		"dailyNotes":{"template":""},
 		"editor":{"fontSize":15,"lineHeight":1.6,"autosaveMs":2000,"_unmanaged_editor_key":"also-preserve"},
 		"server":{"port":6683,"dataDir":""},
 		"mcp":{"enabled":true,"port":6684,"bind":"127.0.0.1"}
@@ -621,7 +621,7 @@ func TestPatchConfig_ClearsTemplateWithEmptyString(t *testing.T) {
 
 	seedBody := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": "# {{date}}\n\n"},
+		"dailyNotes": {"template": "# {{date}}\n\n"},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
@@ -672,7 +672,7 @@ func TestPatchConfig_EchoesFullPersistedConfig(t *testing.T) {
 
 	seedBody := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": ""},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
@@ -709,8 +709,8 @@ func TestPatchConfig_EchoesFullPersistedConfig(t *testing.T) {
 	if echoed.Theme == "" {
 		t.Error("PATCH response missing theme — not a full Config document")
 	}
-	if echoed.DailyNotes.Folder == "" {
-		t.Error("PATCH response missing dailyNotes.folder — not a full Config document")
+	if echoed.Editor.AutosaveMs == 0 {
+		t.Error("PATCH response missing editor.autosaveMs — not a full Config document")
 	}
 	if echoed.Editor.FontSize != 22 {
 		t.Errorf("editor.fontSize: got %d, want 22 (the patched field)", echoed.Editor.FontSize)
@@ -725,7 +725,7 @@ func TestPatchConfig_EmptyBodyObject_200(t *testing.T) {
 
 	seedBody := []byte(`{
 		"appName": "Jasper", "theme": "dark",
-		"dailyNotes": {"folder": "daily", "template": ""},
+		"dailyNotes": {"template": "## journal"},
 		"editor": {"fontSize": 15, "lineHeight": 1.6, "autosaveMs": 2000}
 	}`)
 	seedReq, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/config", bytes.NewReader(seedBody))
@@ -764,8 +764,8 @@ func TestPatchConfig_EmptyBodyObject_200(t *testing.T) {
 	if got.Editor.FontSize != 15 {
 		t.Errorf("editor.fontSize: got %d, want 15 (empty patch must be a no-op)", got.Editor.FontSize)
 	}
-	if got.DailyNotes.Folder != "daily" {
-		t.Errorf("dailyNotes.folder: got %q, want %q (empty patch must be a no-op)", got.DailyNotes.Folder, "daily")
+	if got.DailyNotes.Template != "## journal" {
+		t.Errorf("dailyNotes.template: got %q, want %q (empty patch must be a no-op)", got.DailyNotes.Template, "## journal")
 	}
 }
 

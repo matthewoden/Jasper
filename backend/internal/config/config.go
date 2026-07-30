@@ -38,7 +38,6 @@ type Templates struct {
 
 // DailyNotes — DESIGN.md §11 dailyNotes block.
 type DailyNotes struct {
-	Folder   string `json:"folder"`
 	Template string `json:"template"`
 }
 

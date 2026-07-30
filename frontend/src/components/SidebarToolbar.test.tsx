@@ -16,7 +16,7 @@ vi.mock("../api/client", () => ({
       data: {
         appName: "Jasper",
         theme: "dark",
-        dailyNotes: { folder: "daily", template: "" },
+        dailyNotes: { template: "" },
         editor: { fontSize: 15, lineHeight: 1.6 },
       },
       response: { status: 200 },

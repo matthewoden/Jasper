@@ -29,7 +29,6 @@ export const DEFAULT_CONFIG: DefaultConfigShape = {
   accent: "purple",
   readingFont: "sans",
   dailyNotes: {
-    folder: "daily",
     template: "# {{date}}\n\n",
   },
   editor: {

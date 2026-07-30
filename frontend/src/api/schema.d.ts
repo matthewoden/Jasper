@@ -1409,8 +1409,6 @@ export interface components {
              */
             theme: "dark" | "light";
             dailyNotes: {
-                /** @default daily */
-                folder: string;
                 /** @default  */
                 template: string;
             };
@@ -1497,7 +1495,6 @@ export interface components {
             /** @enum {string} */
             theme?: "dark" | "light";
             dailyNotes?: {
-                folder?: string;
                 template?: string;
             };
             editor?: {

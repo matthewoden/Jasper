@@ -31,7 +31,7 @@ const sampleConfig = {
   theme: "dark" as const,
   accent: "purple" as const,
   readingFont: "sans" as const,
-  dailyNotes: { folder: "daily", template: "" },
+  dailyNotes: { template: "" },
   editor: {
     fontSize: 15,
     lineHeight: 1.6,

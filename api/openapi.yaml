@@ -2201,14 +2201,9 @@ components:
           default: dark
         dailyNotes:
           type: object
-          required: [folder, template]
+          required: [template]
           additionalProperties: false
           properties:
-            folder:
-              type: string
-              minLength: 1
-              maxLength: 64
-              default: "daily"
             template:
               type: string
               maxLength: 1024
@@ -2362,10 +2357,6 @@ components:
           type: object
           additionalProperties: false
           properties:
-            folder:
-              type: string
-              minLength: 1
-              maxLength: 64
             template:
               type: string
               maxLength: 1024

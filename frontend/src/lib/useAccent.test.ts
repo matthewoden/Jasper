@@ -30,7 +30,7 @@ const mockClient = client as unknown as {
 const sampleConfig = {
   appName: "Jasper",
   theme: "dark" as const,
-  dailyNotes: { folder: "daily", template: "" },
+  dailyNotes: { template: "" },
   editor: {
     fontSize: 15,
     lineHeight: 1.6,

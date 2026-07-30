@@ -34,7 +34,7 @@ function makeConfig(): Config {
     theme: "dark",
     accent: "purple",
     readingFont: "sans",
-    dailyNotes: { folder: "daily", template: "" },
+    dailyNotes: { template: "" },
     editor: {
       fontSize: 15,
       lineHeight: 1.6,

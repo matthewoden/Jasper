@@ -22,7 +22,7 @@ export interface SectionMeta {
 export const SECTIONS = [
   { id: "appearance", label: "Appearance", subtitle: "Accent and typography" },
   { id: "editor", label: "Editor", subtitle: "Writing and autosave" },
-  { id: "dailyNotes", label: "Daily notes", subtitle: "Folder and template" },
+  { id: "dailyNotes", label: "Daily notes", subtitle: "Note template" },
   { id: "about", label: "About", subtitle: "Vault details" },
 ] as const satisfies readonly SectionMeta[];
 

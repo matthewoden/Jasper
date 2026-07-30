@@ -178,10 +178,8 @@ func toWireConfig(c config.Config) Config {
 		Accent:      &accent,
 		ReadingFont: &readingFont,
 		DailyNotes: struct {
-			Folder   string `json:"folder"`
 			Template string `json:"template"`
 		}{
-			Folder:   c.DailyNotes.Folder,
 			Template: c.DailyNotes.Template,
 		},
 		Editor: struct {
@@ -215,7 +213,6 @@ func fromWireConfig(w Config) config.Config {
 		AppName: w.AppName,
 		Theme:   string(w.Theme),
 		DailyNotes: config.DailyNotes{
-			Folder:   w.DailyNotes.Folder,
 			Template: w.DailyNotes.Template,
 		},
 		Editor: config.Editor{

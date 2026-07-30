@@ -9,7 +9,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     theme: "dark",
     accent: "purple",
     readingFont: "sans",
-    dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+    dailyNotes: { template: "# {{date}}\n\n" },
     editor: {
       fontSize: 15,
       lineHeight: 1.6,
@@ -31,33 +31,6 @@ function renderSection(config: Config, saveConfig = vi.fn().mockResolvedValue({}
 }
 
 describe("DailyNotesSection", () => {
-  it("renders the folder input with the config value and commits a bare { dailyNotes: { folder } } partial on blur", async () => {
-    const config = makeConfig({ dailyNotes: { folder: "journal", template: "custom template" } });
-    const { saveConfig } = renderSection(config);
-    const folderInput = screen.getByLabelText("Daily notes folder");
-    expect(folderInput).toHaveValue("journal");
-
-    fireEvent.change(folderInput, { target: { value: "logs" } });
-    fireEvent.blur(folderInput);
-
-    expect(saveConfig).toHaveBeenCalledTimes(1);
-    const saved = saveConfig.mock.calls[0][0] as ConfigPatch;
-    expect(Object.keys(saved)).toEqual(["dailyNotes"]);
-    expect(Object.keys(saved.dailyNotes!)).toEqual(["folder"]);
-    expect(saved.dailyNotes?.folder).toBe("logs");
-  });
-
-  it("blurring the folder input without editing it calls saveConfig zero times", () => {
-    const config = makeConfig({ dailyNotes: { folder: "journal", template: "custom template" } });
-    const { saveConfig } = renderSection(config);
-    const folderInput = screen.getByLabelText("Daily notes folder");
-
-    fireEvent.focus(folderInput);
-    fireEvent.blur(folderInput);
-
-    expect(saveConfig).toHaveBeenCalledTimes(0);
-  });
-
   it("commits a bare { dailyNotes: { template } } partial on blur", async () => {
     const config = makeConfig();
     const { saveConfig } = renderSection(config);
@@ -85,7 +58,7 @@ describe("DailyNotesSection", () => {
   });
 
   it("resets the template to the exact default string via a bare { dailyNotes: { template } } partial", async () => {
-    const config = makeConfig({ dailyNotes: { folder: "daily", template: "something else" } });
+    const config = makeConfig({ dailyNotes: { template: "something else" } });
     const { saveConfig } = renderSection(config);
 
     fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
@@ -101,10 +74,10 @@ describe("DailyNotesSection", () => {
     const config = makeConfig();
     const saveConfig = vi.fn().mockResolvedValue({ error: { code: "bad", message: "nope", status: 400 } });
     const { onSaveError } = renderSection(config, saveConfig);
-    const folderInput = screen.getByLabelText("Daily notes folder");
+    const textarea = screen.getByLabelText("Daily note template");
 
-    fireEvent.change(folderInput, { target: { value: "logs" } });
-    fireEvent.blur(folderInput);
+    fireEvent.change(textarea, { target: { value: "## journal" } });
+    fireEvent.blur(textarea);
 
     await vi.waitFor(() => {
       expect(onSaveError).toHaveBeenCalledWith("nope");
