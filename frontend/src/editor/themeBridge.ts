@@ -33,6 +33,11 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-scroller": {
       overflow: "auto",
       width: "100%",
+      // CM6's own baseTheme declares line-height: 1.4 on this same element,
+      // which otherwise beats the value inherited from the `&` rule above —
+      // an explicit child declaration wins over inheritance regardless of
+      // specificity.
+      lineHeight: "var(--editor-line-height)",
     },
     ".cm-content": {
       // D-14/D-15/D-17: 760px centered col (margin:auto+border-box). P0 fix:
