@@ -58,10 +58,7 @@ function buildResetPatch(section: ResettableSectionId, config: Config): Partial<
       };
     case "dailyNotes":
       return {
-        dailyNotes: {
-          folder: DEFAULT_CONFIG.dailyNotes.folder,
-          template: DEFAULT_CONFIG.dailyNotes.template,
-        },
+        dailyNotes: { template: DEFAULT_CONFIG.dailyNotes.template },
       };
   }
 }

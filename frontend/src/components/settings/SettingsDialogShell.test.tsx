@@ -17,7 +17,7 @@ const mockConfig = {
   theme: "dark",
   accent: "purple",
   readingFont: "sans",
-  dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+  dailyNotes: { template: "# {{date}}\n\n" },
   editor: {
     fontSize: 15,
     lineHeight: 1.45,
@@ -41,7 +41,7 @@ vi.mock("../../api/client", () => ({
         theme: "dark",
         accent: "purple",
         readingFont: "sans",
-        dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+        dailyNotes: { template: "# {{date}}\n\n" },
         editor: {
           fontSize: 15,
           lineHeight: 1.45,
@@ -137,7 +137,7 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
-    await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Daily note template")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -161,7 +161,7 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.getByLabelText("Autosave interval")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
-    await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Daily note template")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /About/ }));
     await waitFor(() => expect(screen.getByText("Vault name")).toBeInTheDocument());
@@ -205,7 +205,7 @@ describe("<SettingsDialogShell />", () => {
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
-    await waitFor(() => expect(screen.getByLabelText("Daily notes folder")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Daily note template")).toBeInTheDocument());
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
   });
 
@@ -246,9 +246,9 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
-    const folderInput = await screen.findByLabelText("Daily notes folder");
-    fireEvent.change(folderInput, { target: { value: "journal" } });
-    fireEvent.keyDown(folderInput, { key: "Enter" });
+    const templateInput = await screen.findByLabelText("Daily note template");
+    fireEvent.change(templateInput, { target: { value: "## journal" } });
+    fireEvent.blur(templateInput);
 
     await waitFor(() => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -272,9 +272,9 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /Daily notes/ }));
-    const folderInput = await screen.findByLabelText("Daily notes folder");
-    fireEvent.change(folderInput, { target: { value: "journal" } });
-    fireEvent.keyDown(folderInput, { key: "Enter" });
+    const templateInput = await screen.findByLabelText("Daily note template");
+    fireEvent.change(templateInput, { target: { value: "## journal" } });
+    fireEvent.blur(templateInput);
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("offline"));
 
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));

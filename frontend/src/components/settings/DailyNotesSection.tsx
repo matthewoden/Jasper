@@ -1,41 +1,23 @@
 /**
- * DailyNotesSection — the Daily notes pane. Carries the existing folder and
- * template controls over verbatim (D-18 "carried as-is"); the mock's
- * template picker/preview/"New note from template" affordances are Phase 35
- * work (Templates don't exist yet).
+ * DailyNotesSection — the Daily notes pane. Carries the template control
+ * over verbatim; the mock's template picker/preview/"New note from
+ * template" affordances are Phase 35 work (Templates don't exist yet). Its
+ * folder-picking control was retired (UAT test 6, 2026-07-29): the config
+ * field it wrote had zero functional consumers — daily-note creation
+ * hardcodes "daily/".
  */
 import { useCallback, useEffect, useState } from "react";
-import { ControlRow, Eyebrow, inputStyle } from "./shared";
+import { Eyebrow } from "./shared";
 import type { SectionProps } from "./types";
 
 const DEFAULT_TEMPLATE = "# {{date}}\n\n";
 
 export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionProps) {
-  const [dailyFolder, setDailyFolder] = useState(() => config.dailyNotes.folder);
   const [dailyTemplate, setDailyTemplate] = useState(() => config.dailyNotes.template);
-
-  useEffect(() => {
-    setDailyFolder(config.dailyNotes.folder);
-  }, [config.dailyNotes.folder]);
 
   useEffect(() => {
     setDailyTemplate(config.dailyNotes.template);
   }, [config.dailyNotes.template]);
-
-  const handleDailyFolderCommit = useCallback(async () => {
-    // WR-06's reproduction site: without this guard, blurring an unedited
-    // folder input writes a stale-base copy back over an in-flight save.
-    if (dailyFolder === config.dailyNotes.folder) {
-      onSaveError(null);
-      return;
-    }
-    const { error } = await saveConfig({ dailyNotes: { folder: dailyFolder } });
-    if (error) {
-      onSaveError(error.message);
-    } else {
-      onSaveError(null);
-    }
-  }, [config, dailyFolder, saveConfig, onSaveError]);
 
   const handleDailyTemplateCommit = useCallback(async () => {
     if (dailyTemplate === config.dailyNotes.template) {
@@ -66,24 +48,6 @@ export function DailyNotesSection({ config, saveConfig, onSaveError }: SectionPr
   return (
     <section>
       <Eyebrow text="DAILY NOTES" />
-
-      <ControlRow label="Folder" htmlFor="settings-daily-folder">
-        <input
-          id="settings-daily-folder"
-          type="text"
-          placeholder="daily"
-          aria-label="Daily notes folder"
-          value={dailyFolder}
-          onChange={(e) => setDailyFolder(e.target.value)}
-          onBlur={() => {
-            void handleDailyFolderCommit();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void handleDailyFolderCommit();
-          }}
-          style={{ ...inputStyle, width: "100%" }}
-        />
-      </ControlRow>
 
       <div style={{ marginBottom: 8 }}>
         <label

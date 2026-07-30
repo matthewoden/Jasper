@@ -29,7 +29,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     theme: "dark",
     accent: "purple",
     readingFont: "sans",
-    dailyNotes: { folder: "daily", template: "# {{date}}\n\n" },
+    dailyNotes: { template: "# {{date}}\n\n" },
     editor: {
       fontSize: 15,
       lineHeight: 1.6,
