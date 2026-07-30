@@ -33,7 +33,12 @@
  * stated reason server-side serialisation was chosen over a client-side
  * queue). Every timing-sensitive assertion here uses Playwright's own
  * auto-retrying `expect`/`expect.poll` plus the explicit route gate — no
- * fixed-duration timer of any kind.
+ * fixed-duration timer of any kind. The two edited fields
+ * (`editor.fontSize`, `editor.autosaveMs`) are leaves of the SAME nested
+ * `editor` object, which makes this a stronger deep-merge proof than editing
+ * two independent top-level sections: a shallow top-level merge of session
+ * B's `{editor:{autosaveMs}}` patch would replace the whole `editor` block
+ * and silently drop session A's `fontSize` write.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -80,9 +85,9 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     const baseURL = jasper.baseURL;
 
     // Two INDEPENDENT sessions (separate pages, each its own React tree and
-    // its own `useConfig()` state) editing DIFFERENT Daily-notes fields —
-    // this is the deterministic, faithful reproduction of WR-06 in the
-    // shipped codebase.
+    // its own `useConfig()` state) editing DIFFERENT leaves of the same
+    // nested `editor` object (fontSize, autosaveMs) — this is the
+    // deterministic, faithful reproduction of WR-06 in the shipped codebase.
     //
     // A single-tab "fire two edits fast" version (even one driven by
     // synchronous, zero-yield native DOM events dispatched from a single
@@ -94,8 +99,8 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // the time ANY second same-tab event fires, the closure already reads
     // the just-committed value, even against the reintroduced stale-base
     // spread. Confirmed empirically: instrumenting the intercepted PATCH
-    // body showed PATCH #2 already carrying the corrected `folder` in both
-    // a two-action Playwright sequence AND a single synchronous-dispatch
+    // body showed PATCH #2 already carrying the corrected `autosaveMs` in
+    // both a two-action Playwright sequence AND a single synchronous-dispatch
     // script.
     //
     // Two separate sessions have no such protection: there is no WebSocket
@@ -109,8 +114,6 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // plus server-side serialisation (plan 01), not a client-side lock.
     const pageA = await context.newPage();
     const pageB = await context.newPage();
-
-    const distinctTemplate = "# {{date}} journal\n\nnotes\n";
 
     let patchCount = 0;
     let releaseFirstResponse: (() => void) | undefined;
@@ -158,16 +161,17 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     const dialogA = pageA.getByRole("dialog", { name: "Settings" });
     await pageA.getByTestId("settings-menu-trigger").click();
     await expect(dialogA).toBeVisible();
-    await dialogA.getByRole("button", { name: "Daily notes" }).click();
+    // Session A stays on Appearance — Settings always opens there (D-20), no
+    // nav click needed.
 
     const dialogB = pageB.getByRole("dialog", { name: "Settings" });
     await pageB.getByTestId("settings-menu-trigger").click();
     await expect(dialogB).toBeVisible();
-    await dialogB.getByRole("button", { name: "Daily notes" }).click();
+    await dialogB.getByRole("button", { name: "Editor", exact: true }).click();
 
-    const folderInputA = dialogA.getByRole("textbox", { name: "Daily notes folder" });
-    await folderInputA.fill("journal");
-    await folderInputA.blur(); // session A's PATCH #1 dispatched; server applies it; response withheld
+    const fontSizeInputA = dialogA.getByRole("spinbutton", { name: "Font size" });
+    await fontSizeInputA.fill("22");
+    await fontSizeInputA.blur(); // session A's PATCH #1 dispatched; server applies it; response withheld
 
     // Wait for PATCH #1 to actually land server-side (proxied through
     // route.fetch() above, independent of the withheld response) before
@@ -177,9 +181,9 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // ambiguity at the assertion below.
     await expect.poll(() => patchCount, { timeout: 5000 }).toBe(1);
 
-    const templateInputB = dialogB.getByRole("textbox", { name: "Daily note template" });
-    await templateInputB.fill(distinctTemplate);
-    await templateInputB.blur(); // session B's PATCH #2, built from session B's own still-v1 config
+    const autosaveInputB = dialogB.getByRole("spinbutton", { name: "Autosave interval" });
+    await autosaveInputB.fill("4500");
+    await autosaveInputB.blur(); // session B's PATCH #2, built from session B's own still-v1 config
 
     await expect.poll(() => patchCount, { timeout: 5000 }).toBe(2);
 
@@ -187,20 +191,25 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
 
     // Server truth is the only proof a write landed — never `toHaveValue` on
     // the inputs, which is exactly what the defect makes lie (the useEffect
-    // re-seed silently reverts the input back to a stale value).
+    // re-seed silently reverts the input back to a stale value). fontSize
+    // and autosaveMs are two LEAVES of the same nested `editor` object — a
+    // strictly stronger deep-merge proof than the previous dailyNotes pair,
+    // since a shallow top-level merge of session B's `{editor:{autosaveMs}}`
+    // would replace the whole `editor` block and silently drop session A's
+    // fontSize write.
     await pollConfigField(
       pageA,
       baseURL,
-      (body) => (body as { dailyNotes?: { folder?: string } }).dailyNotes?.folder ?? null,
-      "journal",
-      "waiting for dailyNotes.folder to land server-side",
+      (body) => (body as { editor?: { fontSize?: number } }).editor?.fontSize ?? null,
+      22,
+      "waiting for editor.fontSize to land server-side",
     );
     await pollConfigField(
       pageA,
       baseURL,
-      (body) => (body as { dailyNotes?: { template?: string } }).dailyNotes?.template ?? null,
-      distinctTemplate,
-      "waiting for dailyNotes.template to land server-side",
+      (body) => (body as { editor?: { autosaveMs?: number } }).editor?.autosaveMs ?? null,
+      4500,
+      "waiting for editor.autosaveMs to land server-side",
     );
 
     // Exactly 2 PATCHes: proof the dirty checks did not suppress a real
@@ -274,10 +283,6 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     await autosaveInput.blur();
 
     await dialog.getByRole("button", { name: "Daily notes" }).click();
-    const folderInput = dialog.getByRole("textbox", { name: "Daily notes folder" });
-    await folderInput.focus();
-    await folderInput.blur();
-
     const templateInput = dialog.getByRole("textbox", { name: "Daily note template" });
     await templateInput.focus();
     await templateInput.blur();
@@ -287,15 +292,15 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // Positive control: a future regression that disables all writes must
     // not make the assertion above pass vacuously — change one real value
     // and confirm exactly one write is observed.
-    await folderInput.fill("journal2");
-    await folderInput.blur();
+    await templateInput.fill("## {{date}}\n\nnoop probe\n");
+    await templateInput.blur();
 
     await pollConfigField(
       page,
       baseURL,
-      (body) => (body as { dailyNotes?: { folder?: string } }).dailyNotes?.folder ?? null,
-      "journal2",
-      "waiting for dailyNotes.folder PATCH to land server-side",
+      (body) => (body as { dailyNotes?: { template?: string } }).dailyNotes?.template ?? null,
+      "## {{date}}\n\nnoop probe\n",
+      "waiting for dailyNotes.template PATCH to land server-side",
     );
 
     expect(writeCount).toBe(1);
