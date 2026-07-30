@@ -334,6 +334,43 @@ export function expandAndScrollToFolder(folderPath: string): void {
 }
 
 /**
+ * Ancestor folder paths of a note, outermost-first. Tolerates leading/
+ * duplicate/trailing slashes; the final segment (filename) is always
+ * dropped. A root-level note yields [].
+ */
+export function ancestorFolderPaths(notePath: string): string[] {
+  const segments = notePath.split("/").filter((s) => s.length > 0);
+  segments.pop();
+  const out: string[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    out.push(segments.slice(0, i + 1).join("/"));
+  }
+  return out;
+}
+
+/**
+ * Expand every ancestor folder of `notePath` — both the live tree (if
+ * mounted) and the persisted store. Deliberately quieter than
+ * expandAndScrollToFolder/revealInNavigation: no sidebar-visibility force,
+ * no panel switch, no scroll, no pulse (D-3, pp9).
+ */
+export function expandNoteAncestorFolders(notePath: string): void {
+  const state = useTreeStore.getState();
+  for (const path of ancestorFolderPaths(notePath)) {
+    try {
+      currentTreeRef?.open("folder:" + path);
+    } catch {
+      // FileTree may be unmounted or arborist API mismatch — the store
+      // write below still seeds initialOpenState on the next mount.
+    }
+    // open() synchronously fires onToggle, which mirrors arborist's
+    // possibly-not-yet-flushed isOpen back into the store (F4) — so the
+    // explicit `true` must land last to avoid being undone by that mirror.
+    state.setFolderExpanded(path, true);
+  }
+}
+
+/**
  * Scroll the file tree to a note's row (D-25, note-options "Reveal in
  * navigation"). Unlike expandAndScrollToFolder, ancestor expansion is not
  * done manually here — react-arborist's own scrollTo() already calls
