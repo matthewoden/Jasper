@@ -766,7 +766,18 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     const postCRUDCount = treeFetches.length;
     const sessionDelta = postCRUDCount - initialCount;
 
-    expect(sessionDelta).toBeLessThanOrEqual(6);
+    // Ceiling raised 6 -> 7 (.planning/debug/resolved/opennotefromtree-row-missing.md):
+    // coalescedGetTree() used to let a caller join an already-in-flight GET
+    // /tree unconditionally, even if that in-flight request was issued
+    // before a mutation the caller already knows happened — occasionally
+    // resolving with a stale, pre-mutation snapshot and no follow-up fetch
+    // (the root cause of the flaky "tree row never appears" E2E failures).
+    // The fix guarantees a joiner is always satisfied by a fetch issued at
+    // or after its own call, which costs at most one extra GET /tree when a
+    // race is actually detected during this 5-create burst. Verified
+    // deterministic and bounded: 20 isolated repeats of this test after the
+    // fix produced only 6 (no race hit) or 7 (one race hit), never higher.
+    expect(sessionDelta).toBeLessThanOrEqual(7);
   });
 
   test("UX-14b: sidebar resize does not trigger tree fetches", async ({

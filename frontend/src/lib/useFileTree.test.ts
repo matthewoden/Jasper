@@ -248,6 +248,52 @@ describe("UX-14 single-flight", () => {
     expect(getTreeMock).toHaveBeenCalledTimes(2);
   });
 
+  it("REGRESSION opennotefromtree-row-missing: a call that arrives while a fetch is already in flight must not resolve against that stale (pre-call) snapshot", async () => {
+    // call #1 represents an already-running fetch (e.g. mount, or a prior
+    // WS-triggered refresh) that was issued BEFORE some mutation happened.
+    let resolveStale!: (v: { data: Tree }) => void;
+    const staleFetch = new Promise<{ data: Tree }>((resolve) => {
+      resolveStale = resolve;
+    });
+    const withNewNote: Tree = {
+      root: [
+        ...tinyTree.root,
+        {
+          kind: "note",
+          id: "uuid-new",
+          path: "new.md",
+          title: "new",
+          updated_at: "2026-01-03T00:00:00Z",
+        },
+      ],
+    } as unknown as Tree;
+
+    getTreeMock
+      .mockImplementationOnce(() => staleFetch)
+      .mockResolvedValueOnce({ data: withNewNote });
+
+    // call #1: e.g. mount fetch, still pending.
+    const call1 = coalescedGetTree();
+    expect(getTreeMock).toHaveBeenCalledTimes(1);
+
+    // call #2: e.g. the WS `note:created` handler's refresh, arriving WHILE
+    // call #1 is still in flight — this is the exact race from
+    // opennotefromtree-row-missing.
+    const call2 = coalescedGetTree();
+
+    // call #1's HTTP request was issued before the mutation, so it resolves
+    // without the new note.
+    resolveStale({ data: tinyTree });
+
+    const [result1, result2] = await Promise.all([call1, call2]);
+
+    expect(result1.data).toEqual(tinyTree);
+    // call #2 must NOT be satisfied by call #1's stale, pre-mutation
+    // snapshot — it must reflect a fetch issued after call #2's own request.
+    expect(result2.data).toEqual(withNewNote);
+    expect(getTreeMock).toHaveBeenCalledTimes(2);
+  });
+
   it("a fresh call AFTER the in-flight resolves issues a new fetch", async () => {
     const v2: Tree = {
       root: [

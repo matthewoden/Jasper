@@ -47,31 +47,51 @@ function startInFlight(): Promise<{ data?: Tree; error?: ApiError }> {
 }
 
 async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
-  if (inFlightTreePromise !== null) return inFlightTreePromise;
+  // A fetch already in flight was necessarily *issued* before this call, so
+  // its eventual snapshot cannot be trusted to reflect anything that changed
+  // between then and now (e.g. a note created by a raw API call, surfaced
+  // only via a WS event racing this in-flight request — see
+  // opennotefromtree-row-missing). Never hand the caller that stale promise
+  // directly; queue them for a fetch that starts strictly after the current
+  // one resolves.
+  if (inFlightTreePromise !== null) {
+    return queueTrailing(0);
+  }
 
   const elapsed = Date.now() - lastResolvedAt;
   if (lastResolvedAt > 0 && elapsed < COALESCE_TAIL_MS) {
-    if (pendingTrailingPromise === null) {
-      pendingTrailingPromise = new Promise((resolve, reject) => {
-        pendingTrailingResolve = resolve;
-        pendingTrailingReject = reject;
-      });
-    }
-    if (pendingTrailingTimer !== null) clearTimeout(pendingTrailingTimer);
-    pendingTrailingTimer = setTimeout(
-      flushTrailing,
-      COALESCE_TAIL_MS - elapsed,
-    );
-    return pendingTrailingPromise;
+    return queueTrailing(COALESCE_TAIL_MS - elapsed);
   }
 
   return startInFlight();
+}
+
+function queueTrailing(
+  delayMs: number,
+): Promise<{ data?: Tree; error?: ApiError }> {
+  if (pendingTrailingPromise === null) {
+    pendingTrailingPromise = new Promise((resolve, reject) => {
+      pendingTrailingResolve = resolve;
+      pendingTrailingReject = reject;
+    });
+  }
+  if (pendingTrailingTimer !== null) clearTimeout(pendingTrailingTimer);
+  pendingTrailingTimer = setTimeout(flushTrailing, delayMs);
+  return pendingTrailingPromise;
 }
 
 function flushTrailing(): void {
   if (pendingTrailingTimer !== null) {
     clearTimeout(pendingTrailingTimer);
     pendingTrailingTimer = null;
+  }
+  // Something started fetching after we were queued but hasn't resolved yet
+  // (either the original in-flight fetch we deferred behind, or a trailing
+  // fetch from an earlier flush). Its request predates us too — wait for it
+  // to finish, then re-evaluate, rather than joining it.
+  if (inFlightTreePromise !== null) {
+    void inFlightTreePromise.finally(flushTrailing);
+    return;
   }
   const resolve = pendingTrailingResolve;
   const reject = pendingTrailingReject;

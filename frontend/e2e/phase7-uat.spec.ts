@@ -14,8 +14,22 @@
  *   S10 Oversize upload >100MB: toast "File too large" with locked description
  *   S11 Daily folder calendar icon: daily/ row renders CalendarDays in accent; sub-paths do not
  *
- * CM6 typing recipe: page.locator(".cm-content").click() → page.keyboard.type()
+ * CM6 typing recipe: page.locator(".cm-content:visible").first().click() → page.keyboard.type()
  * NOT page.fill() (editor is CodeMirror 6 contenteditable).
+ *
+ * ALWAYS `.cm-content:visible` here — never the bare `.cm-content`, and never a
+ * plain `.first()`. A settled note renders exactly ONE `.cm-content` (verified
+ * by DOM probe; `data-language="yaml-frontmatter"` sits on the MAIN editor, it
+ * does not indicate a separate frontmatter editor). But while an editor is being
+ * torn down and remounted — e.g. S12's post-reindex reopen — a HIDDEN outgoing
+ * `.cm-content` briefly coexists with the incoming visible one. Two consequences,
+ * both observed as "flakes" on 2026-07-30 once the local-vs-UTC date bug stopped
+ * masking these tests in the evening:
+ *   - bare `.cm-content`   -> Playwright strict-mode violation (2 elements)
+ *   - `.cm-content` .first() -> resolves the HIDDEN outgoing editor, so
+ *                              toBeVisible fails with "Received: hidden"
+ * `:visible` states the actual intent — the editor the user can see — and is
+ * identical to the bare locator in the steady single-editor state.
  */
 import { test, expect } from "@playwright/test";
 import * as path from "node:path";
@@ -88,7 +102,7 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
     });
 
     await alphaResult.click();
-    await expect(page.locator(".cm-content").first()).toContainText("searchable phrase", {
+    await expect(page.locator(".cm-content:visible").first()).toContainText("searchable phrase", {
       timeout: 5_000,
     });
   });
@@ -180,7 +194,7 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
     await page.waitForTimeout(300);
 
     const fileContent = fs.readFileSync(dailyPath, "utf-8");
@@ -189,7 +203,7 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
     await todayBtn.click();
     await page.waitForTimeout(500);
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 5_000 });
 
     const files = fs.readdirSync(path.join(jasper.dataDir, "notes", "daily"));
     const todayFiles = files.filter((f) => f.startsWith(todayStr));
@@ -225,7 +239,7 @@ test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
   });
 });
 
@@ -272,7 +286,7 @@ test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
 
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
     await openCommandMenu(page, "notes");
     await expect(page.getByRole("dialog", { name: "Quick switcher" })).toBeVisible({ timeout: 3_000 });
@@ -327,7 +341,7 @@ test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
     }
     expect(fileExists, `Daily note not created at ${dailyPath}`).toBe(true);
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
   });
 });
 
@@ -746,7 +760,7 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
     await todayBtn.click();
 
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
     // v1.2 redesign (READ-01/D-02): the note's first H1 is hidden inside the
     // editor (firstH1HideExtension) and rendered above it in the TitleElement.
@@ -770,7 +784,7 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
 
     await todayBtn.click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -890,7 +904,7 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(400);
 
-    const editor = page.locator(".cm-content");
+    const editor = page.locator(".cm-content:visible").first();
     await editor.click();
     await page.waitForTimeout(200);
 
@@ -1480,7 +1494,7 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
     const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
     await expect(todayBtn).toBeVisible({ timeout: 8_000 });
     await todayBtn.click();
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
     const todayStr = localDateString();
     const originalDailyPath = `daily/${todayStr}.md`;
@@ -1552,7 +1566,7 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
     await todayBtn.click();
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
     const newNoteByTitle = page.locator('[data-tree-row-kind="note"]').filter({ hasText: todayStr });
 
@@ -1589,7 +1603,7 @@ test.describe("Phase 7 — Today expands the daily folder (S35 / pp9)", () => {
     const todayBtn = page.getByRole("button", { name: "Open today's daily note" });
     await expect(todayBtn).toBeVisible({ timeout: 8_000 });
     await todayBtn.click();
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
     const todayStr = localDateString();
     const dailyNotePath = `daily/${todayStr}.md`;
@@ -1662,7 +1676,7 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(500);
 
-    const editor = page.locator(".cm-content");
+    const editor = page.locator(".cm-content:visible").first();
     await editor.click();
     await page.waitForTimeout(300);
 
@@ -1703,7 +1717,7 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(500);
 
-    const editor = page.locator(".cm-content");
+    const editor = page.locator(".cm-content:visible").first();
     await editor.click();
     await page.waitForTimeout(300);
 
@@ -1766,7 +1780,7 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
     await page.waitForTimeout(400);
 
-    const editor = page.locator(".cm-content");
+    const editor = page.locator(".cm-content:visible").first();
     await editor.click();
     await page.keyboard.type(" edited by single session");
 
@@ -1868,7 +1882,7 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     const noteRow = page.locator('[data-tree-row-kind="note"]').filter({ hasText: /S24a Test/i });
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
     await page.waitForTimeout(500);
 
     // SaveIndicator is in the StatusBar, not TopBar.
@@ -1876,7 +1890,7 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
     const saveBtn = statusBar.locator("button[data-save-state]");
     await expect(saveBtn).toBeVisible({ timeout: 5_000 });
 
-    await page.locator(".cm-content").click();
+    await page.locator(".cm-content:visible").first().click();
     await page.keyboard.type(" more text");
 
     await expect(saveBtn).toHaveAttribute("data-save-state", "saved", { timeout: 8_000 });
@@ -1965,7 +1979,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
 
-    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 5_000 });
 
     // The toggle is gated on panelSelector (defaults both on), so it should be visible.
     await expect(
@@ -1973,7 +1987,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     ).toBeVisible({ timeout: 3_000 });
 
     // Type a tag and auto-save; the Tags panel should populate.
-    await page.locator(".cm-content").click();
+    await page.locator(".cm-content:visible").first().click();
     await page.keyboard.press("End");
     await page.keyboard.type("\n\n#testtag-s26a");
 
@@ -2012,7 +2026,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await expect(noteRow).toBeVisible({ timeout: 8_000 });
     await noteRow.click();
 
-    await expect(page.locator(".cm-content").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 5_000 });
 
     // v1.2 redesign: the editor content is now a self-centering 760px column
     // (margin:0 auto, 21-01/D-14) and the sidebar toggle lives in the tab-strip
@@ -2036,7 +2050,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await expect(toggleLocator).toBeVisible({ timeout: 3_000 });
 
     const toggleBox = await toggleLocator.boundingBox();
-    const editorBox = await page.locator(".cm-content").first().boundingBox();
+    const editorBox = await page.locator(".cm-content:visible").first().boundingBox();
 
     expect(toggleBox).not.toBeNull();
     expect(editorBox).not.toBeNull();
@@ -2050,7 +2064,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 
       const closedToggle = page.getByRole("button", { name: "Show sidebar" });
       const toggleBoxClosed = await closedToggle.boundingBox();
-      const editorBoxClosed = await page.locator(".cm-content").first().boundingBox();
+      const editorBoxClosed = await page.locator(".cm-content:visible").first().boundingBox();
 
       if (toggleBoxClosed && editorBoxClosed) {
         expect(rectsIntersect(toggleBoxClosed, editorBoxClosed)).toBe(false);
