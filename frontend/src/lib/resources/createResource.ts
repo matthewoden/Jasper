@@ -254,12 +254,19 @@ function subscribeEntry<T>(
   fullKey: string,
   baseKey: string,
   entry: CacheEntry<T>,
+  fetcher: () => Promise<T>,
+  mode: ResourceMode,
   listener: () => void,
 ): () => void {
   const wasEmpty = entry.listeners.size === 0;
   entry.listeners.add(listener);
   if (wasEmpty) {
     evictSiblingIfKeyed(fullKey, baseKey);
+    // D-14: the first subscriber triggers the fetch; every later
+    // subscriber reads cache. read() resolves from cache with no network
+    // call when the entry is already hydrated, so a later remount costs
+    // zero requests (D-15).
+    void readEntry(entry, fetcher, mode).catch(() => undefined);
   }
   return () => {
     entry.listeners.delete(listener);
@@ -345,7 +352,14 @@ function makeResourceView<T>(
     invalidate: () => invalidateEntry(getOrCreateEntry<T>(fullKey), fetcher, mode),
     peek: () => peekEntry(getOrCreateEntry<T>(fullKey)),
     subscribe: (listener) =>
-      subscribeEntry(fullKey, baseKey, getOrCreateEntry<T>(fullKey), listener),
+      subscribeEntry(
+        fullKey,
+        baseKey,
+        getOrCreateEntry<T>(fullKey),
+        fetcher,
+        mode,
+        listener,
+      ),
     patch: (recipe) => patchEntry(getOrCreateEntry<T>(fullKey), recipe),
     mutate: (spec) => mutateEntry(getOrCreateEntry<T>(fullKey), spec),
     clear: () => clearEntry(getOrCreateEntry<T>(fullKey)),
