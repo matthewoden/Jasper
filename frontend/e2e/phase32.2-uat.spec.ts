@@ -116,9 +116,9 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
     if (jasper) await jasper.kill();
   });
 
-  test.fixme(
-    // Plan 03 flips this back to test(...) once useMcpGrants migrates onto
-    // createResource (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
+  test(
+    // Flipped by plan 03: useMcpGrants now migrates onto createResource
+    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "grants: page load issues 1 request",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -135,9 +135,9 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
     },
   );
 
-  test.fixme(
-    // Plan 03 flips this back to test(...) once useMcpGrants migrates onto
-    // createResource (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
+  test(
+    // Flipped by plan 03: useMcpGrants now migrates onto createResource
+    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "grants: folder expand issues 0 additional",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -167,9 +167,9 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
     },
   );
 
-  test.fixme(
-    // Plan 03 flips this back to test(...) once useMcpGrants migrates onto
-    // createResource (D-13 event-bus fan-out fix). Pre-fix RED transcript:
+  test(
+    // Flipped by plan 03: useMcpGrants now migrates onto createResource
+    // (D-13 event-bus fan-out fix). Pre-fix RED transcript:
     // 32.2-02-SUMMARY.md.
     "grants: one WS event issues 1 refetch",
     async ({ page, context }) => {
@@ -203,9 +203,9 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
     },
   );
 
-  test.fixme(
-    // Plan 03 flips this back to test(...) once useTagBrowser migrates onto
-    // createResource (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
+  test(
+    // Flipped by plan 03: useTagBrowser now migrates onto createResource
+    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "tags: split pane issues 1 request",
     async ({ page }) => {
       const { firstNoteId } = await seedInvestigationVault(page, jasper.baseURL);
