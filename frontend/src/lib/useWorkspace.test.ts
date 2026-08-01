@@ -1,8 +1,13 @@
 /**
  * Tests for useWorkspace hook — rightPanel slice (TAGS-01).
  * Covers optimistic setRightPanel mutate, revert-and-toast on failure, and
- * hydration from a fetched workspace doc on refresh(). Mirrors
+ * hydration from the shared workspace cache on mount. Mirrors
  * useBookmarks.test.ts's mock-module + renderHook shape.
+ *
+ * `workspaceResource` is built with the REAL `createResource` (not mocked)
+ * so the resource layer's coalescing/invalidation semantics are exercised
+ * for real — only the network-facing `getWorkspace`/`putWorkspace`
+ * fetchers are mocked via `./workspaceApi`.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -11,10 +16,17 @@ import { type ReactNode } from "react";
 const getWorkspaceMock = vi.fn();
 const putWorkspaceMock = vi.fn();
 
-vi.mock("./workspaceApi", () => ({
-  getWorkspace: (...args: unknown[]) => getWorkspaceMock(...args),
-  putWorkspace: (...args: unknown[]) => putWorkspaceMock(...args),
-}));
+vi.mock("./workspaceApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    workspaceResource: createResource(
+      "workspace",
+      () => getWorkspaceMock(),
+      { mode: "cached", invalidatedBy: ["workspace:changed"] },
+    ),
+    putWorkspace: (...args: unknown[]) => putWorkspaceMock(...args),
+  };
+});
 
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
@@ -28,6 +40,7 @@ import {
   SEARCH_SORT_DEFAULT,
   RIGHT_PANEL_DEFAULT,
 } from "./useTreeStore";
+import { workspaceResource } from "./workspaceApi";
 import { useWorkspace } from "./useWorkspace";
 
 const wrapper = ({ children }: { children: ReactNode }) => children;
@@ -37,6 +50,11 @@ describe("useWorkspace — rightPanel", () => {
     getWorkspaceMock.mockReset();
     putWorkspaceMock.mockReset();
     toastSpy.mockReset();
+    // Per-entry reset (not the global registry reset): the eventBus
+    // subscription createResource() wires up at module-load time inside
+    // the mock factory above must survive across tests. clear() resets
+    // cached data/hydrated/error without touching that subscription.
+    workspaceResource.clear();
     useTreeStore.setState({
       notesSort: NOTES_SORT_DEFAULT,
       searchSort: SEARCH_SORT_DEFAULT,
@@ -81,7 +99,7 @@ describe("useWorkspace — rightPanel", () => {
     );
   });
 
-  it("W3: refresh() hydrates rightPanel from a fetched workspace doc", async () => {
+  it("W3: mount hydrates rightPanel from the shared workspace cache", async () => {
     getWorkspaceMock.mockResolvedValue({ rightPanel: "backlinks" });
 
     renderHook(() => useWorkspace(), { wrapper });
@@ -91,12 +109,40 @@ describe("useWorkspace — rightPanel", () => {
     });
   });
 
-  it("W4: refresh() falls back to the default when rightPanel is empty/absent", async () => {
+  it("W4: mount falls back to the default when rightPanel is empty/absent", async () => {
     getWorkspaceMock.mockResolvedValue({ rightPanel: "" });
 
     renderHook(() => useWorkspace(), { wrapper });
 
     await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(1));
     expect(useTreeStore.getState().rightPanel).toBe(RIGHT_PANEL_DEFAULT);
+  });
+
+  it("W5: three mounted consumers produce exactly one fetcher call (D-11/D-14 fetch-once)", async () => {
+    getWorkspaceMock.mockResolvedValue({ rightPanel: "tags" });
+
+    renderHook(() => useWorkspace(), { wrapper });
+    renderHook(() => useWorkspace(), { wrapper });
+    renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => {
+      expect(useTreeStore.getState().rightPanel).toBe("tags");
+    });
+
+    expect(getWorkspaceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("W6: setNotesSort success patches the shared cache so a later refetch doesn't revert the choice", async () => {
+    getWorkspaceMock.mockResolvedValueOnce({});
+    putWorkspaceMock.mockResolvedValue({ notesSort: "modified-desc" });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.setNotesSort("modified-desc");
+    });
+
+    expect(workspaceResource.peek().data?.notesSort).toBe("modified-desc");
   });
 });

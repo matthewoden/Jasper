@@ -1,24 +1,27 @@
 /**
- * useWorkspace — composes the notesSort/searchSort/rightPanel store slices
- * with GET/PUT /vault/workspace calls and a WS refresh subscription on
- * `workspace:changed`. Mirrors useBookmarks.ts's hydrate + subscriber-bus +
- * optimistic-mutate shape (D-12).
+ * useWorkspace — reads the shared `workspaceResource` cache and projects it
+ * into the notesSort/searchSort/rightPanel zustand UI slices, then composes
+ * those slices with PUT /vault/workspace calls. The GET side is
+ * fetch-once-and-cache via the resource layer (D-08/D-11/D-14): mounting
+ * never issues a network request by itself; only the resource's own 0->1
+ * subscriber transition and `workspace:changed` WS invalidation do.
  *
  * Public surface:
  *   - notesSort / searchSort / rightPanel: current store slices (hydrated
- *                              from the backend, never localStorage — D-09)
+ *                              from the shared cache, never localStorage — D-09)
  *   - setNotesSort(value):    optimistic write, NO debounce (D-12) — one
  *                              PUT per selection. Reverts + toasts on failure.
  *   - setSearchSort(value):   same shape as setNotesSort, other field.
  *   - setRightPanel(value):   same shape as setNotesSort, rightPanel field
  *                              (TAGS-01).
  *
- * dispatchWorkspaceEvent() is called by useSessionSync when a
- * `workspace:changed` WS event arrives (origin-filtered server-side), so a
- * second browser session re-fetches and re-sorts live.
+ * D-08 note: notesSort/searchSort/rightPanel remain zustand slices (they're
+ * read directly by components through their own store selectors), not the
+ * resource cache itself. This hook is the ONLY place that projects the
+ * shared cache INTO those slices — see the sync effect below.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { useToast } from "../components/toast.utils";
 import {
   useTreeStore,
@@ -26,21 +29,11 @@ import {
   type SearchSortOrder,
   type RightPanelTab,
 } from "./useTreeStore";
-import { getWorkspace, putWorkspace } from "./workspaceApi";
+import { workspaceResource, putWorkspace } from "./workspaceApi";
+import { publish, useResource } from "./resources";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 export type { RightPanelTab };
-
-const workspaceSubscribers = new Set<() => void>();
-
-/**
- * Called by useSessionSync when a `workspace:changed` WS event arrives.
- * Iterates a snapshot of the subscriber set so mid-iteration
- * register/unregister doesn't cause a concurrent-mutation error.
- */
-export function dispatchWorkspaceEvent(): void {
-  const snapshot = Array.from(workspaceSubscribers);
-  for (const fn of snapshot) fn();
-}
 
 export interface UseWorkspaceResult {
   notesSort: NotesSortOrder;
@@ -52,6 +45,7 @@ export interface UseWorkspaceResult {
 }
 
 export function useWorkspace(): UseWorkspaceResult {
+  const snapshot = useResource(workspaceResource);
   const notesSort = useTreeStore((s) => s.notesSort);
   const setNotesSortSlice = useTreeStore((s) => s.setNotesSort);
   const searchSort = useTreeStore((s) => s.searchSort);
@@ -59,39 +53,27 @@ export function useWorkspace(): UseWorkspaceResult {
   const rightPanel = useTreeStore((s) => s.rightPanel);
   const setRightPanelSlice = useTreeStore((s) => s.setRightPanel);
   const { toast } = useToast();
-  // True once the first hydrate has run. Not currently branched on, but
-  // kept for parity with useBookmarks.ts's hydratedRef shape and as a
-  // seam for future loading/error UI without another refactor.
-  const hydratedRef = useRef(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      const doc = await getWorkspace();
-      // Empty string means "use the default" (D-06) — the store already
-      // carries the correct default, so only overwrite on a real value.
-      if (doc.notesSort) {
-        setNotesSortSlice(doc.notesSort as NotesSortOrder);
-      }
-      if (doc.searchSort) {
-        setSearchSortSlice(doc.searchSort as SearchSortOrder);
-      }
-      if (doc.rightPanel) {
-        setRightPanelSlice(doc.rightPanel as RightPanelTab);
-      }
-      hydratedRef.current = true;
-    } catch {
-      // Swallow — keep whatever default/last-known-good slice is in
-      // place rather than surfacing an error for a background refresh.
-    }
-  }, [setNotesSortSlice, setSearchSortSlice, setRightPanelSlice]);
-
+  // Projects the shared cache snapshot INTO the existing UI slices — no
+  // network call of its own (that's workspaceResource's job, triggered by
+  // useResource's subscribe). Keyed on snapshot.data identity, so N
+  // mounted instances each run this once per actual cache change, not
+  // once per render. Empty string means "use the default" (D-06) — the
+  // store already carries the correct default, so only overwrite on a
+  // real value.
   useEffect(() => {
-    void refresh();
-    workspaceSubscribers.add(refresh);
-    return () => {
-      workspaceSubscribers.delete(refresh);
-    };
-  }, [refresh]);
+    const doc = snapshot.data;
+    if (!doc) return;
+    if (doc.notesSort) {
+      setNotesSortSlice(doc.notesSort as NotesSortOrder);
+    }
+    if (doc.searchSort) {
+      setSearchSortSlice(doc.searchSort as SearchSortOrder);
+    }
+    if (doc.rightPanel) {
+      setRightPanelSlice(doc.rightPanel as RightPanelTab);
+    }
+  }, [snapshot.data, setNotesSortSlice, setSearchSortSlice, setRightPanelSlice]);
 
   const setNotesSort = useCallback(
     async (value: NotesSortOrder) => {
@@ -99,6 +81,7 @@ export function useWorkspace(): UseWorkspaceResult {
       setNotesSortSlice(value);
       try {
         await putWorkspace({ notesSort: value });
+        workspaceResource.patch((cur) => ({ ...cur, notesSort: value }));
       } catch (e) {
         setNotesSortSlice(previous);
         toast({
@@ -117,6 +100,7 @@ export function useWorkspace(): UseWorkspaceResult {
       setSearchSortSlice(value);
       try {
         await putWorkspace({ searchSort: value });
+        workspaceResource.patch((cur) => ({ ...cur, searchSort: value }));
       } catch (e) {
         setSearchSortSlice(previous);
         toast({
@@ -135,6 +119,7 @@ export function useWorkspace(): UseWorkspaceResult {
       setRightPanelSlice(value);
       try {
         await putWorkspace({ rightPanel: value });
+        workspaceResource.patch((cur) => ({ ...cur, rightPanel: value }));
       } catch (e) {
         setRightPanelSlice(previous);
         toast({
@@ -158,6 +143,6 @@ export function useWorkspace(): UseWorkspaceResult {
 }
 
 export const __testing__ = {
-  getSubscriberCount: () => workspaceSubscribers.size,
-  simulateEvent: () => dispatchWorkspaceEvent(),
+  getSubscriberCount: () => resourcesTesting.getSubscriberCount("workspace"),
+  simulateEvent: () => publish("workspace:changed"),
 };

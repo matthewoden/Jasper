@@ -13,10 +13,17 @@ import {
   recordSearchHistory,
 } from "../lib/searchHistory";
 
-vi.mock("../lib/workspaceApi", () => ({
-  getWorkspace: vi.fn().mockResolvedValue({}),
-  putWorkspace: vi.fn().mockResolvedValue({}),
-}));
+vi.mock("../lib/workspaceApi", async () => {
+  const { createResource } = await import("../lib/resources/createResource");
+  return {
+    workspaceResource: createResource(
+      "workspace",
+      () => Promise.resolve({}),
+      { mode: "cached", invalidatedBy: ["workspace:changed"] },
+    ),
+    putWorkspace: vi.fn().mockResolvedValue({}),
+  };
+});
 
 const mkResult = (id: string, title: string): SearchResult => ({
   id,
