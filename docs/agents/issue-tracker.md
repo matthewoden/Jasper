@@ -33,7 +33,6 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 
 ```
 .scratch/
-├── security-hardening/          ← SEC-01…07; SEC-01 is HIGH
 ├── audit-findings/              ← the non-security audit remainder, triaged
 ├── flaky-tests/                 ← three known instances, two are production defects
 ├── v1.4-properties-templates-settings/   ← six remaining phases of the current milestone
@@ -42,6 +41,28 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 ```
 
 `backlog/` is the one departure from the one-directory-per-feature rule: single files for work that has been deferred repeatedly and isn't specified enough to warrant a spec plus issues. Promote a file into its own directory when it gets scoped.
+
+## Retiring a finished effort
+
+**Delete the directory once the work ships.** Tickets and specs are a queue, not a
+record — they must never become the source of truth for a decision that was made.
+
+Before deleting, move anything durable to where it actually belongs:
+
+| What | Where it goes |
+| --- | --- |
+| A decision, and the alternatives rejected | an ADR in `docs/adr/` |
+| A rule about how we work | `CONVENTIONS.md` |
+| A standing fact about the system | `CONTEXT.md` |
+| Why a specific piece of code is shaped that way | a comment on that code |
+| A follow-up that is still open | a ticket in the effort that owns it |
+
+Whatever is left — the triage notes, the verification tables, the narrative — has
+served its purpose. It stays in git history, and the commit that shipped the work
+carries the reasoning. This is the same treatment `.planning/` and `review/` got.
+
+The failure mode this avoids: a reader finding a stale ticket and treating it as
+current, or a decision surviving only in a file nobody thinks to read.
 
 ## Where the history went
 

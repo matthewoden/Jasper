@@ -157,6 +157,12 @@ cd frontend && npx playwright test        # E2E against the built binary
 - Generous `expect` timeout (10s) because a real binary boot plus UI render is genuinely slow.
 - Tag scenarios (`@first-run`, `@reveal`, …) for selective runs via `--grep`.
 - **Run `make build` first.** The suite drives the embedded binary; `npm run build` alone leaves it stale.
+- **Never assert a rejection from page context.** A browser owns `Origin` and `Host` and treats both as forbidden headers — page JavaScript cannot set them. A `page.evaluate(fetch(...))` aiming to prove a cross-origin or rebound request is refused will have those headers silently replaced with legitimate loopback values, the request will pass, and the test will look like it proved something while proving nothing. This is the trap that made earlier CSRF work hard to verify.
+
+  Route the assertion by layer instead:
+  - **Rejection (attack-path) → Go `httptest`.** `Host` and `Origin` are freely settable at the handler level. Cheap, deterministic, cross-platform. For a WebSocket upgrade, go one lower still — a raw TCP handshake, since a WS client library derives `Host` from the dial URL.
+  - **Playwright `request` (APIRequestContext) can set `Origin`** — it bypasses the browser — so it can cover an Origin-reject path. **`Host` override is unreliable through it**, so Host cases stay in Go.
+  - **Playwright page context → happy path only.** Its job is proving the app still works after a guard lands: legit-origin mutations succeed, the WS connects, the SPA loads.
 
 **Performance gate:** `make perf-vault` generates a deterministic 5,000-note vault; `make perf-check` asserts cold start (migrations + incremental re-index) stays under 5s.
 
