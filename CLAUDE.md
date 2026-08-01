@@ -1,5 +1,3 @@
-<!-- GSD:project-start source:PROJECT.md -->
-
 ## Project
 
 **Jasper**
@@ -20,10 +18,6 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - **Data integrity**: All writes atomic; never truncate before confirming write success. Filesystem is source of truth, SQLite is derived. **Why**: Migration resilience and "wiping SQLite is never data loss" depend on this property.
 - **Offline**: App fully functional offline once loaded; no CDN dependencies at runtime. **Why**: Self-hosted ethos; user's machine, user's data, user's network.
 - **Pace**: Weekend cadence — phases sized for sittable chunks. **Why**: Owner's available time.
-
-<!-- GSD:project-end -->
-
-<!-- GSD:stack-start source:codebase/STACK.md -->
 
 ## Technology Stack
 
@@ -159,9 +153,6 @@ If everything else about Jasper fails, this must work: open the browser, write n
 | **openapi-typescript 7** | OpenAPI 3.0 and 3.1 | api/openapi.yaml uses 3.1 (supported) |
 | **oapi-codegen v2.7** | chi/v5 v5.2+ | Generates chi-server interfaces; strict-server interface enforces all routes implemented |
 | **golangci-lint 1.62+** | Go 1.23+ | Keep config minimal; .golangci.yml specifies enabled linters only |
-<!-- GSD:stack-end -->
-
-<!-- GSD:conventions-start source:CONVENTIONS.md -->
 
 ## Conventions
 
@@ -273,10 +264,6 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - Deleting orphaned code without a decision (defer to next phase if unclear)
 - Carrying > 5 pre-existing failures forward (triage before opening next phase)
 - Skipping the retro (lessons feed into CONVENTIONS.md)
-
-<!-- GSD:conventions-end -->
-
-<!-- GSD:architecture-start source:ARCHITECTURE.md -->
 
 ## Architecture
 
@@ -497,34 +484,16 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - **Writes:** Single-threaded on filesystem (atomic rename is atomic; no concurrent renames of the same file). SQLite writer mutex ensures only one write transaction at a time. Service.Update() serializes conflicting writes (If-Match guards).
 - **Reads:** Multiple concurrent readers (sqlite reader conn, WebSocket clients). Index.ListNotes() acquires RLock; wshub.Broadcast acquires RLock. No Lock held across I/O.
 
-<!-- GSD:architecture-end -->
+## Agent skills
 
-<!-- GSD:skills-start source:skills/ -->
+### Issue tracker
 
-## Project Skills
+Issues and specs live as markdown files under `.scratch/<feature-slug>/` in this repo. See `docs/agents/issue-tracker.md`.
 
-No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, `.github/skills/`, or `.codex/skills/` with a `SKILL.md` index file.
-<!-- GSD:skills-end -->
+### Triage labels
 
-<!-- GSD:workflow-start source:GSD defaults -->
+The five canonical triage roles, using their default label strings. See `docs/agents/triage-labels.md`.
 
-## GSD Workflow Enforcement
+### Domain docs
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
-
-Use these entry points:
-
-- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd:debug` for investigation and bug fixing
-- `/gsd:execute-phase` for planned phase work
-
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
-
-<!-- GSD:profile-start -->
-
-## Developer Profile
-
-> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
-> This section is managed by `generate-claude-profile` -- do not edit manually.
-<!-- GSD:profile-end -->
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

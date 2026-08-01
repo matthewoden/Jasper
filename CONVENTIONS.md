@@ -1,111 +1,143 @@
 # Conventions
 
-Project-level process rules. Source of truth for the `## Conventions` block in CLAUDE.md (regenerated via GSD; see the `<!-- GSD:conventions-start source:CONVENTIONS.md -->` markers there).
+Project-level process rules — **how** we build, test, and verify.
+
+The other two documents: [`CONTEXT.md`](./CONTEXT.md) is the vocabulary and the invariants; [`docs/adr/`](./docs/adr/) holds decisions and their rationale. This file is the only one about process.
+
+Nearly every rule below was earned from a specific incident. The incidents are kept because a rule without its scar is the first thing someone talks themselves out of.
 
 ## Build & embed pipeline
 
-- **Always use `make build` for any binary that will be tested or shipped.** The Makefile's `build` target performs `cp -R frontend/dist/. backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy step bakes the previous frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI in production. Plan 05.5-15 hit this and lost a full UAT walkthrough — see `.planning/phases/05.5-sidebar-editor-shell-polish/05.5-15-SUMMARY.md` "What Got Caught Mid-Walk".
-- For any plan or task instruction that says `npm run build && go build`, treat it as a defect — replace with `make build`.
+- **Always use `make build` for any binary that will be tested or shipped.** The `build` target copies `frontend/dist/` into `backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy bakes the *previous* frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI that looks like a code bug.
+- For any instruction that says `npm run build && go build`, treat it as a defect and replace it with `make build`.
 
-## Verification policy: E2E before human UAT
+*Incident: a full UAT walkthrough was lost to this — the binary contained old UI code despite the source being correct. The instinct to type the two commands separately persisted for weeks afterward.*
 
-- **Every gap-closure plan that fixes a user-facing bug MUST include a Playwright E2E scenario that exercises the fix against `bin/jasper`** (live binary), not just a vitest unit test. The unit tests are not load-bearing for production-only regressions — Phase 5.5 had multiple bugs that passed 593 unit tests but failed in real browsers (UX-09 reflow, UX-12 create-at-level, UX-13 Cmd-click).
-- Land the E2E test BEFORE asking the user for human UAT on the affected scenario. The user's time is the most expensive thing in the loop; don't burn it on stale binaries or already-broken features.
-- E2E scenarios live in `frontend/e2e/phase{N}-uat.spec.ts` (or `phase{N}_{M}-uat.spec.ts` for sub-phases like 5.5).
-- Smoke run E2E against `make build`, not `npm run build && go build`.
+## Verification: E2E before human UAT
 
-## Halt-if-inconclusive gate (gap-closure pattern)
+- **Any fix for a user-facing bug needs a Playwright scenario against the built binary**, not just a vitest unit test. Land it *before* asking for human verification.
+- The user's time is the most expensive thing in the loop. Don't spend it on a stale binary or an already-broken feature.
+- E2E specs live in `frontend/e2e/`.
 
-- Gap-closure plans that pair `investigate → fix` tasks should set `autonomous: true` with an explicit **HALT-IF-INCONCLUSIVE GATE** in the fix task's `<action>`: re-read the investigation file's `## Recommended Fix` section; if it does not name a single file:line + concrete change, STOP and surface for human triage rather than speculatively patching. Pattern shipped in Plan 05.5-14 (toolbar regression — caught a contract drift) and Plan 05.5-17 (Bugs A/B/C).
+*Incident: 593 unit tests stayed green while the live browser had wrong computed widths, broken tree keymaps, incorrect focus, and reentrancy bugs. jsdom simulates the DOM but not layout, focus, or event timing — and it cannot verify CodeMirror rendering at all.*
 
-## Investigation-first for "behaves wrong" reports (Phase 7 retro, 2026-05-16)
+## Verify on the real surface
 
-- For any UAT item phrased as "X doesn't work / shows wrong / behaves weird", **stand up the dev server (preview_start) or use `/gsd-debug` BEFORE writing the fix plan.** Backend behavior is cheap to verify (one HTTP probe); frontend behavior shows in `preview_logs` + `preview_console_logs`. Plan 07-38 skipped this for N2 and burned a round shipping a "make it debuggable" patch instead of finding the real cause (turned out to be a deliberate backend `.md` refusal the user thought was a frontend bug).
-- The investigation can be inline (5-10 min, captured in the SUMMARY) or a dedicated `07-NN-INVESTIGATION.md` artifact (the formal pattern that closes with COMPLETE / HALT status; see Plans 07-31, 07-35 for the template).
-- Cost calibration: 15 min reproducing in the dev server saves on average ~1 full plan-round of speculative work. The N2 / N11 issues in Phase 7 round-4 cost ~24 commits of churn that could have been ~8 if the dev-server probe had happened first.
+The single most repeated lesson in this project, found the hard way in four consecutive milestones:
 
-## AskUserQuestion before drafting for ambiguous UAT items (Phase 7 retro, 2026-05-16)
+- **The bug is found by the built binary, a real mouse, a real click, or measured glyph rects** — not by the test runner.
+- **Drive UAT the way the app is actually used.** Keyboard-only E2E structurally cannot reach a click-only code path; one such bug survived a passing keyboard test and was reproduced instantly by clicking.
+- **Test the right target, not just "a test exists."** A visual assertion once measured the editor root instead of rendered text and passed while every line of prose rendered in the wrong font. Another measured an element's bounding box instead of glyph rects and couldn't see a 6px text inset. **A green check on the wrong node hides a defect the user sees immediately.**
+- **Authored is not validated.** An install harness existed for an entire milestone before anyone ran it; its first real execution surfaced roughly seven latent defects. A harness that has never gone green is untested code.
 
-- For any UAT item phrased without a direction ("alignment is off", "save indicator placement wrong", "search doesn't feel right"), **use AskUserQuestion BEFORE drafting the fix plan**, not after the fix lands. Phase 7 N5 alignment (which-piece-moves) and N9 SaveIndicator (StatusBar-vs-TopBar) each cost one extra plan-round because I made an interpretation rather than asking.
-- Good questions cluster 2-4 ambiguities into one prompt — multiple-question dispatches are cheaper than back-and-forth.
-- Save the answers in the corresponding `07-HUMAN-UAT-{N}.md` capture doc under a "User clarifications (AskUserQuestion)" section so future readers see the decision trail.
+## Investigation-first for behavioral reports
 
-## Soft-accept vs hard-accept UAT discipline (Phase 7 retro, 2026-05-16)
+- For any report phrased as "X doesn't work / shows wrong / behaves weird", **reproduce and root-cause before writing the fix.** Backend behavior is cheap to verify with one HTTP probe; frontend behavior shows in the dev server's logs and console.
+- The investigation can be inline (5–10 minutes, captured in the issue) or a dedicated investigation note for anything larger.
+- **Calibration: ~15 minutes reproducing saves roughly a full round of speculative work.** One skipped investigation shipped a "make it debuggable" patch instead of finding the cause — which turned out to be a deliberate backend refusal the reporter had assumed was a frontend bug.
 
-- A user's "accepted" in a same-day UAT walkthrough is a **soft-accept**: they tried the change once and didn't immediately reject it.
-- A **hard-accept** requires the item to survive a 24-48h period of real use without being flagged in a subsequent UAT.
-- For UI/UX items especially, design plans that depend on a previous "accepted" item should explicitly note `soft-accept (UAT-N, YYYY-MM-DD)` in their `depends_on:` rationale so the dependency is auditable. Phase 7 N10 was soft-accepted in UAT-3, then reversed in UAT-5 — the soft/hard distinction would have surfaced that risk earlier.
-- Do not delete code that was reversed under a soft-accept — orphan it (see Orphaned code rule below).
+## Stop when an investigation is inconclusive
 
-## Plan-vs-investigation consistency (Phase 7 retro, 2026-05-16)
+- When work pairs *investigate → fix*, the fix step must **re-read the investigation's conclusion first**. If it doesn't name a specific file, line, and concrete change, **stop and surface it** rather than speculatively patching.
+- This gate has caught several would-be patch cycles, including a contract drift that a speculative fix would have papered over.
 
-- When an investigation reaches a different conclusion than the plan's example code/YAML, **either amend the plan file or write investigation-first plans**. Plan 07-32a's example showed `/files/{path}` but the investigation correctly chose `/files?path=` (query-param); the plan stayed stale and three downstream executors had to be briefed about the deviation each time.
-- Acceptable patterns:
-  - **Amend-the-plan**: update the plan's `<interfaces>`/`<action>` blocks after the investigation completes; commit the amendment before dispatching the GREEN executor.
-  - **Investigation-first plan**: skip the example code in the plan entirely (no `/files/{path}` straw-man); link to the investigation doc as the single source of truth and let GREEN read the recommended fix verbatim.
-- The HALT-IF-INCONCLUSIVE gate (see above) covers the case where the investigation didn't reach a conclusion; this rule covers the case where it DID, but the plan didn't catch up.
+## Ask before drafting, when the ask is ambiguous
 
-## Orphaned code is a design signal (Phase 7 retro, 2026-05-16)
+- For any item phrased without a direction — "alignment is off", "the indicator is in the wrong place", "search doesn't feel right" — **ask before writing the fix**, not after it lands.
+- Cluster 2–4 ambiguities into one question; a single multi-question prompt is cheaper than serial back-and-forth.
+- Record the answers in the issue so the decision trail survives.
 
-- Before adding a new component or refactoring an existing surface, **grep for components that already do the thing being asked for**. If they exist and have no consumers, ask "why were these orphaned?" before re-deriving the original design the long way around.
-- Phase 7 example: `SearchInputBar.tsx` + `SearchResultsList.tsx` sat orphaned across 4 plans (07-18 → 07-39) before Plan 07-39 remounted them. If the orphan had been noticed earlier, Plans 07-33 + 07-38's "merge title-fuzzy + FTS5 in palette" arc could have been skipped — the user's mental model (separate switcher vs separate search) matched the original architecture the orphaned components implemented.
-- Useful greps: `git log --diff-filter=D -- '<file>'` (was it deleted and re-added?), `grep -r 'import.*ComponentName' --include='*.tsx'` (any consumers?), `grep -l 'data-testid="some-id"' src/` (test fixtures that reference unreachable surfaces?).
+*Incident: two UAT items each cost an extra round because an interpretation was made instead of a question asked.*
 
-## Plan sizing: bundle vs split (Phase 7 retro, 2026-05-16)
+## Soft-accept vs hard-accept
 
-- **Bundle plans** (one plan, N sequenced tasks, one executor) for small, well-scoped fixes where each task is < 30 min and the failure surface is localized. Used successfully in Plan 07-36 (3-task bundle) and Plan 07-37 (4-task bundle).
-- **Split plans** (separate plan files, optionally separate executors) for anything with investigation, design ambiguity, or cross-cutting refactor. Bundles save planning overhead at the cost of resume complexity when an agent crashes mid-flight (Plan 07-38 hit a 500 mid-Task-1; recovery worked but represented risk).
-- Rule of thumb: if any task in the bundle would benefit from its own `07-NN-INVESTIGATION.md`, split it out.
+- An "accepted" during a same-day walkthrough is a **soft-accept**: they tried it once and didn't immediately reject it.
+- A **hard-accept** requires surviving 24–48h of real use without being flagged again.
+- Work depending on a prior acceptance should note that it's a soft-accept, with the date, so the dependency is auditable.
+- **Don't delete code reversed under a soft-accept** — orphan it until the next round confirms the reversal sticks.
 
-## Worktree vs in-main execution default (Phase 7 retro, 2026-05-16)
+*Incident: an item soft-accepted in one round was reversed two rounds later.*
 
-- **Default to in-main (no worktree)** for sequential single-executor work. The cherry-pick overhead from worktree isolation exceeds the parallelism gain when ≤2 plans run concurrently. The "lost worktree merge" recovery commits (`chore: recover lost worktree merge ...`) document a recurring failure mode.
-- **Use worktree isolation** only when:
-  - ≥3 plans run in parallel AND touch disjoint code surfaces, OR
-  - The work might destabilize the main repo temporarily (e.g., a risky refactor with multiple WIP iterations), OR
-  - You explicitly want to compare two implementation approaches side-by-side.
-- After worktree work completes, cherry-pick into main and verify caches are clean (`go clean -cache && golangci-lint cache clean`) to avoid stale-path lint errors from the abandoned worktree's source.
+## For UI work, code-verified is not accepted
 
-## UAT capture, decision logging, and the deferred-items backlog
+- **Budget a subjective-feel round explicitly.** One UI-heavy phase passed all 22 of its criteria on day one and still needed five hands-on rounds; a verified decision was reverted in use.
+- No automated gate shortens this tail. Tooltip placement, caret behavior, and visual cohesion settle by eye or not at all.
 
-- Every UAT round produces a `07-HUMAN-UAT-{N}.md` capture doc in the phase directory. The doc has three required sections:
-  1. **Findings (verbatim)** — the user's raw feedback, unedited.
-  2. **Triaged items** — Claude's interpretation, with root-cause hypotheses where applicable.
-  3. **Decisions** — table of item → resolution → plan-id mapping.
-- Pre-existing failures discovered mid-execution go into `.planning/phases/{phase}/deferred-items.md` (one section per discovery date). These survive across rounds — don't try to fix them inside an unrelated plan.
-- Each Decision-of-Record (in the per-phase `07-CONTEXT.md`) gets a `D-NN` ID with the date. When a later decision supersedes or partially-reverses an earlier one, the later D-NN explicitly references the earlier (e.g., D-58 supersedes D-57). Don't delete the old D-NN entry; the chain is the history.
+## Keep the plan and the investigation in sync
+
+When an investigation concludes something different from the plan's example code, **either amend the plan or write the plan investigation-first** (no straw-man example; link the investigation as the single source of truth).
+
+*Incident: a plan's example showed one API shape while the investigation correctly chose another. The plan stayed stale and three separate executors had to be re-briefed about the deviation.*
+
+## Orphaned code is a design signal
+
+- Before adding a component, **grep for one that already does the thing.** If it exists with no consumers, ask *why was this orphaned* before re-deriving the original design the long way around.
+- Useful: `git log --diff-filter=D -- '<file>'` (deleted and re-added?), `grep -r 'import.*ComponentName' --include='*.tsx'` (any consumers?), `grep -l 'data-testid="some-id"' src/` (tests referencing unreachable surfaces?).
+
+*Incident: two search components sat orphaned across four plans before being remounted. Noticing earlier would have skipped an entire merge arc — the original architecture already matched the user's mental model.*
+
+## Work sizing: bundle vs split
+
+- **Bundle** small, well-scoped fixes where each task is under ~30 minutes and the failure surface is localized.
+- **Split** anything with investigation, design ambiguity, or a cross-cutting refactor.
+- Rule of thumb: if any task in a bundle would benefit from its own investigation note, split it out.
+- Bundles save overhead but complicate resumption when something fails mid-flight.
+
+## Worktree vs in-main
+
+- **Default to in-main** for sequential single-threaded work. Cherry-pick overhead exceeds the parallelism gain at ≤2 concurrent efforts, and recurring "recover lost worktree merge" commits document the failure mode.
+- **Use a worktree** only when ≥3 efforts run in parallel across disjoint code, or the work might destabilize main temporarily, or you want two approaches side by side.
+- After worktree work, verify caches are clean (`go clean -cache && golangci-lint cache clean`) to avoid stale-path lint errors from the abandoned source tree.
 
 ## Test discipline
 
-- TDD: RED commit → GREEN commit. Each phase's commit log should read RED→GREEN→RED→GREEN in roughly equal counts. Plans without a RED commit are doing exploration, not execution — that's fine but flag it (`type: "auto"` with `tdd="false"` and a documented reason).
-- Pre-commit hooks (`gen-check` + `golangci-lint` + `eslint`) MUST pass on every commit. No `--no-verify` unless explicitly authorized for the specific commit.
-- Pre-existing test failures are tracked in `deferred-items.md`. New failures are blockers.
+- **TDD: RED commit → GREEN commit.** A change log should read RED→GREEN→RED→GREEN in roughly equal counts. Work without a RED commit is exploration rather than execution — fine, but flag it.
+- **A regression test must be proven to fail before the fix.** If it passes on the pre-fix tree, it isn't testing the right thing.
+- Pre-commit hooks (`gen-check`, `golangci-lint`, `eslint`) must pass on every commit. No `--no-verify` unless explicitly authorized for that specific commit.
+- Pre-existing failures are tracked; **new failures are blockers**.
+- **Treat setup-phase errors as hard failures.** A flag rename once silently broke ~58 tests at setup while the suite still reported them as passing. A pass count is meaningless if errors before the assertions don't count.
 
-## Comment policy: thin, why-not-what, no planning refs (2026-06-14)
+## Flaky tests are bugs
 
-Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process/planning docs under `.planning/` and this file may cite plans freely — that rule is about source.
+**A test that fails non-deterministically is a defect — in the test or in the code under test — and must be fixed, not retried, quarantined, or skipped.**
 
-- **Comment *why*, never *what*.** The code already says what it does. A comment restating it (`// loop over notes`, `// set the addr flag`) is noise that drifts out of sync. Delete on sight.
-- **Only non-obvious decisions earn a comment.** A surprising constraint, a workaround for an upstream bug, a deliberate deviation from the obvious approach, an ordering that matters for a subtle reason. If a competent reader would not ask "why is this like this?", no comment.
-- **No planning-artifact references in code.** Strip `Phase N`, `Plan NN-NN`, `D-NN`, `ADR-NNN`, `R4-15`, `#issue`, and "see SUMMARY.md" from comments. They rot the moment the plan is archived and mean nothing to someone reading the code cold. Keep the *reason* if it is still load-bearing; drop the citation. (Counter-example done right — `.air.toml`: `# --vault requires an absolute path, hence $PWD` states the live constraint, names no plan.)
-- **Thin everywhere.** Prefer a clear name or a small refactor over a comment. When a comment is warranted, one line beats a paragraph.
-- **Stale comment = bug.** A comment that no longer matches the code is worse than none — fix or delete it the moment you notice, same as a flaky test.
-- **Functional/directive comments are exempt.** Anything the toolchain reads — `//go:generate`, `//go:embed`, `//go:build`/build tags, `// nolint`, `// eslint-disable*`, `// @ts-expect-error`, `// prettier-ignore`, codegen banners (`// Code generated ... DO NOT EDIT.`) — is code, not prose. Leave it.
+- **Never label a flake "transient" and move on.** The convenient explanations — filesystem race, CI timing, intermittent — almost always conceal a real race, a TOCTOU, shared global state, a leaked goroutine, or a missing readiness wait. One test dismissed as a "filesystem race" turned out to be a genuine TCP-port TOCTOU between the test picking a free port and the server re-binding it.
+- **Reproduce before theorizing.** Run isolated (`go test -count=N ./internal/app/`) *and* in the full sweep (`go test -count=N ./...`). Passing 30/30 isolated but flaking in `./...` means cross-package interference, not luck.
+- **HTTP readiness probes, not TCP.** A test that boots a server and asserts on application state must probe with a real HTTP round-trip. A pre-bound listener accepts TCP the moment it's bound, long before the handler chain is wired.
+- **`t.Cleanup` over `defer`** for resources outliving the test goroutine.
+- **Order discovery, then fix.** If a flake only reproduces in the full sweep, name the offender with `-shuffle=on -p 1` and `-v`. Don't guess which test leaves state behind.
+- **Allowed shortcuts: none.** Not `t.Skip` behind a build tag, not retry loops, not `time.Sleep` "to let it settle." Each encodes the flake instead of fixing it.
+- **Poll for the eventual condition** rather than sleeping a fixed interval.
 
-## Flaky tests are bugs (2026-06-05)
+**Known instances awaiting fix** (blockers, not deferred items — both verified still present):
 
-**A test that fails non-deterministically is a defect — either in the test or in the code under test — and must be fixed, not retried, quarantined, or skipped.**
+- `backend/internal/app/lifecycle.go:~290` — registry hydrate silently warns and proceeds with an empty registry when the index list fails. Under parallel filesystem load this surfaces as a boot test finding no notes. Retry, fail fast, or surface the error — warn-and-proceed-empty is wrong for tests *and* for users.
+- `TestApp_Run_DiskFull_ServesStaticPage` / `TestRun_DiskFull_PreflightHaltsBeforeOpen` — intermittent timeout in `./...` sweep mode despite a dedicated readiness probe. Root cause not isolated; likely an interaction between the forced-disk-full env timing and parallel sqlite/filesystem activity.
 
-- **Never label a flake as "transient" and move on.** The convenient explanations ("filesystem race", "CI timing", "intermittent") almost always conceal a real race condition in production code or a real test-infra bug (TOCTOU, shared global state, leaked goroutines, missing wait-for-ready synchronization). The Phase 9 surrounding work surfaced this directly: TestApp_Run_FreshDB was labelled "filesystem race / pre-existing" by an executor; the actual cause was a TCP-port TOCTOU between `pickFreePort` closing the listener and the SUT re-binding it — fixed in commit `491169d`. The "race" diagnosis was correct in spirit but the fix would never have happened without isolating it.
-- **Reproduce before you theorise.** `go test -count=N ./internal/app/` (isolated) AND `go test -count=N ./...` (full sweep). A test that passes 30/30 isolated but flakes in `./...` mode is suffering from cross-package state interference, not "luck."
-- **HTTP readiness probes, not TCP.** Any test that boots a server and then asserts on application state MUST use a probe that confirms the application is ready (HTTP round-trip to a known endpoint), not just that the kernel accepts TCP. Pre-bound listeners (`net.Listen` → close → re-bind by SUT) accept TCP the moment they're bound but the handler chain isn't wired until much later in startup. See `httpReadyProbe` / `diskFullReadyProbe` in `backend/internal/app/app_test.go` for the canonical pattern.
-- **`t.Cleanup` over `defer` for resources that outlive the test goroutine.** Listeners handed to `http.Server.Serve` are closed by `Server.Shutdown`; the `t.Cleanup` registration is a safety net for crash paths, not the primary close.
-- **Order discovery, then fix.** If a flake reproduces only in the full-suite sweep, name the offender by running with `-shuffle=on -p 1` and capturing `-v` output. Don't guess at "which test is leaving state behind."
-- **Allowed shortcuts: none.** `t.Skip` under a build tag, retries via `testing.Run` loops, `time.Sleep` "to let it settle" — all of these encode the flake into the test rather than fix it.
+When one is fixed, delete its bullet and add a one-line entry referencing the fixing commit, so "we knew and fixed it" stays in the history.
 
-**Known instances awaiting fix** (treat as blockers, not deferred items):
+## Comment policy
 
-- `backend/internal/app/lifecycle.go:297-299` — `registry.Hydrate` silently no-ops when `indexer.List(ctx)` returns an error; under parallel-package filesystem load this surfaces as `TestApp_Run_FreshDB_BootsAndIndexesScratchpad` returning `notes:[]` instead of the seeded scratchpad. Either retry, fail-fast, or surface the error to the caller — but warn-and-proceed-with-empty-registry is wrong both for tests and for users.
-- `TestApp_Run_DiskFull_ServesStaticPage` / `TestRun_DiskFull_PreflightHaltsBeforeOpen` — intermittent 5s `waitFor` timeout in `./...` sweep mode despite the dedicated `diskFullReadyProbe`. Root cause not yet isolated; likely deeper interaction between `JASPER_TEST_FORCE_DISK_FULL` env timing and parallel sqlite/filesystem activity.
+Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process and planning documents may cite freely — this rule is about source.
 
-When fixing one of the above, delete its bullet from this list AND add a one-line entry under it referencing the commit that fixed it, so the history of "we knew about this and fixed it" stays in this file.
+- **Comment *why*, never *what*.** The code already says what it does. A comment restating it (`// loop over notes`) is noise that drifts out of sync. Delete on sight.
+- **Only non-obvious decisions earn a comment** — a surprising constraint, an upstream-bug workaround, a deliberate deviation, an ordering that matters subtly. If a competent reader wouldn't ask "why is this like this?", no comment.
+- **No planning-artifact references in code.** Strip phase numbers, plan IDs, decision IDs, review IDs, and "see SUMMARY.md" from comments. They rot the moment the artifact is archived and mean nothing to someone reading the code cold. **Keep the reason if it's still load-bearing; drop the citation.** Done right: `# --vault requires an absolute path, hence $PWD` states the live constraint and names no plan.
+- **Thin everywhere.** Prefer a clear name or a small refactor over a comment. When one is warranted, one line beats a paragraph.
+- **A stale comment is a bug** — worse than none. Fix or delete it the moment you notice, same as a flaky test.
+- **Functional/directive comments are exempt.** Anything the toolchain reads — `//go:generate`, `//go:embed`, build tags, `// nolint`, `// eslint-disable*`, `// @ts-expect-error`, codegen banners — is code, not prose. Leave it.
+
+## Issue capture
+
+Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md) for the layout and [`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md) for the status vocabulary.
+
+- Capture raw feedback **verbatim** before interpreting it. The interpretation goes in a separate section, so a wrong reading can be caught against the original words.
+- Record decisions as an explicit item → resolution mapping.
+- **When a later decision supersedes an earlier one, reference the earlier one explicitly rather than deleting it.** The chain is the history — and the same rule governs ADRs (see [`docs/adr/README.md`](./docs/adr/README.md) on precedence).
+- Pre-existing failures discovered mid-work get recorded separately rather than fixed inside unrelated work.
+
+## Requirements traceability
+
+**Mark a requirement complete in the same change that ships it** — not at milestone close.
+
+*Two consecutive milestones closed with traceability tables contradicting what had actually shipped. Reconciling at close works but re-discovers the same drift every time; marking in-band is the durable fix and has held since.*
