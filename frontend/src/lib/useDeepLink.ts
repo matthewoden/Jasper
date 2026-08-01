@@ -20,7 +20,7 @@
  */
 
 import { useEffect } from "react";
-import { client } from "../api/client";
+import { getNote, getNoteByPath } from "./notesApi";
 import { usePaneStore } from "./usePaneStore";
 
 export function useDeepLink(treeReady: boolean): void {
@@ -51,16 +51,12 @@ export function useDeepLink(treeReady: boolean): void {
         let resolvedId: string | null = null;
 
         if (id) {
-          const r = await client.GET("/notes/{id}", {
-            params: { path: { id } },
-          });
+          const r = await getNote(id);
           if (r.data && typeof r.data.id === "string") {
             resolvedId = r.data.id;
           }
         } else if (path) {
-          const r = await client.GET("/notes/by-path", {
-            params: { query: { path } },
-          });
+          const r = await getNoteByPath(path);
           if (r.data && typeof r.data.id === "string") {
             resolvedId = r.data.id;
           }

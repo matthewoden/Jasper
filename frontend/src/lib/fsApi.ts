@@ -6,9 +6,33 @@
 
 import { client } from "../api/client";
 import type { components } from "../api/schema";
+import { createKeyedResource } from "./resources";
 
 export type FsListEntry = components["schemas"]["FsListEntry"];
 export type FsListResponse = components["schemas"]["FsListResponse"];
+
+async function fetchFsList(path?: string): Promise<FsListResponse> {
+  const { data, error, response } = await client.GET("/fs/list", {
+    params: { query: path === undefined ? {} : { path } },
+  });
+  if (error || !data) {
+    const body = (error as { code?: string; message?: string } | undefined) ?? {};
+    const msg = body.message ?? `fs/list failed (HTTP ${response?.status ?? "?"})`;
+    const err = new Error(msg) as Error & { code?: string; status?: number };
+    err.code = body.code;
+    err.status = response?.status;
+    throw err;
+  }
+  return data;
+}
+
+// D-05: pass-through, coalesced on path — "" stands in for the undefined
+// ($HOME-default) key since createKeyedResource requires a string param.
+const fsListResource = createKeyedResource(
+  "fsList",
+  (key: string) => fetchFsList(key === "" ? undefined : key),
+  { mode: "pass-through" },
+);
 
 export const fsApi = {
   /**
@@ -16,18 +40,7 @@ export const fsApi = {
    * When path is undefined the backend defaults to $HOME.
    */
   list: async (path?: string): Promise<FsListResponse> => {
-    const { data, error, response } = await client.GET("/fs/list", {
-      params: { query: path === undefined ? {} : { path } },
-    });
-    if (error || !data) {
-      const body = (error as { code?: string; message?: string } | undefined) ?? {};
-      const msg = body.message ?? `fs/list failed (HTTP ${response?.status ?? "?"})`;
-      const err = new Error(msg) as Error & { code?: string; status?: number };
-      err.code = body.code;
-      err.status = response?.status;
-      throw err;
-    }
-    return data;
+    return fsListResource.forKey(path ?? "").read();
   },
 
   /**

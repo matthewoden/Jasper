@@ -28,7 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeApi, TreeApi } from "react-arborist";
 
 import { extractH1FromContent, rewriteH1 } from "../lib/h1Extract";
-import { getNote, updateNote } from "../lib/notesApi";
+import { getNoteFresh, updateNote } from "../lib/notesApi";
 import { uploadFile, deleteFile, moveFile } from "../lib/filesApi";
 
 import { createNoteFromMarkdownDrop } from "../lib/notesApi";
@@ -306,7 +306,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
           useTreeStore.getState().clearLiveLabel(d.id);
 
           try {
-            const noteResp = await getNote(d.id);
+            const noteResp = await getNoteFresh(d.id);
             if (noteResp.data) {
               const currentH1 = extractH1FromContent(noteResp.data.content);
               if (currentH1 !== null && currentH1 !== newValue) {

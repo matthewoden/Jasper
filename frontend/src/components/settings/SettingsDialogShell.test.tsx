@@ -102,6 +102,7 @@ vi.mock("../toast.utils", () => ({
 
 import { client } from "../../api/client";
 import { __testing__ as resourcesTesting } from "../../lib/resources/createResource";
+import { __testing__ as configApiTesting } from "../../lib/configApi";
 import { SettingsDialogShell } from "./SettingsDialogShell";
 
 const mockClient = client as unknown as {
@@ -137,7 +138,12 @@ function renderShell(props: Partial<React.ComponentProps<typeof SettingsDialogSh
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // configResource is a module-level, boot-scoped singleton (D-15) shared
+  // by every useConfig() instance in this file's tests — without this
+  // reset, a later test's mount reads a prior test's cached config instead
+  // of issuing its own GET, breaking assertions like "GET still fires".
   resourcesTesting.reset();
+  configApiTesting.reset();
   mockClient.GET.mockResolvedValue({ data: mockConfig, response: { status: 200 } });
   mockClient.PUT.mockImplementation((_path: string, opts: { body: unknown }) =>
     Promise.resolve({ data: opts.body, response: { status: 200 } }),

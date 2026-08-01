@@ -143,11 +143,22 @@ vi.mock("./MarkdownEditor", async () => {
 });
 
 
-vi.mock("../lib/notesApi", () => ({
-    ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
-    getNote: vi.fn(),
-    updateNote: vi.fn(),
-}));
+vi.mock("../lib/notesApi", () => {
+    // getNote and getNoteFresh share one spy here: this file mocks the whole
+    // notesApi module to test EditorPane's own behavior given whatever it
+    // returns, not the read()-joins/invalidate()-never-joins distinction
+    // between them (that's notesApi.test.ts's job) — every existing
+    // "reload" test in this file configures its return value through
+    // getNoteMock regardless of which of the two production call sites
+    // (initial load vs. conflict-resolution reread) actually fires.
+    const sharedGetNote = vi.fn();
+    return {
+        ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+        getNote: sharedGetNote,
+        getNoteFresh: sharedGetNote,
+        updateNote: vi.fn(),
+    };
+});
 
 
 vi.mock("../lib/treeApi", () => ({

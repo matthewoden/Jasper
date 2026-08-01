@@ -9,6 +9,7 @@
  */
 
 import { client } from "../api/client";
+import { createKeyedResource } from "./resources";
 
 /**
  * Hard-coded UUID for the scratchpad note. Must match the backend's
@@ -17,11 +18,59 @@ import { client } from "../api/client";
 export const ScratchpadUUID =
   "00000000-0000-4000-a000-000000000001" as const;
 
-export function getNote(id: string, options?: { signal?: AbortSignal }) {
+function fetchNote(id: string, signal?: AbortSignal) {
   return client.GET("/notes/{id}", {
     params: { path: { id } },
-    ...(options?.signal ? { signal: options.signal } : {}),
+    ...(signal ? { signal } : {}),
   });
+}
+
+// D-06: note bodies are pass-through — never cached, still coalesced.
+// A cached body handed to a save path is a lost-write bug, not a
+// stale-render bug (ETag/If-Match live on the note, not this layer).
+const noteResource = createKeyedResource(
+  "note",
+  (id: string) => fetchNote(id),
+  { mode: "pass-through" },
+);
+
+export function getNote(id: string, options?: { signal?: AbortSignal }) {
+  // A signal-carrying caller owns cancellation of its own request; a
+  // shared in-flight promise can't honour one caller's abort without
+  // breaking every other caller joined to it, so this bypasses the
+  // coalescer entirely.
+  if (options?.signal) {
+    return fetchNote(id, options.signal);
+  }
+  return noteResource.forKey(id).read();
+}
+
+/**
+ * getNoteFresh — never joins a request issued before this call (D-12
+ * applied at a call site rather than a resource). Use where the caller
+ * already knows server state changed at this instant and a stale
+ * pre-change snapshot would be a lost-write risk: save-conflict
+ * resolution, an explicit "reload from disk", or the post-rename H1
+ * rewrite.
+ */
+export function getNoteFresh(id: string) {
+  return noteResource.forKey(id).invalidate();
+}
+
+function fetchNoteByPath(path: string) {
+  return client.GET("/notes/by-path", {
+    params: { query: { path } },
+  });
+}
+
+const noteByPathResource = createKeyedResource(
+  "noteByPath",
+  (path: string) => fetchNoteByPath(path),
+  { mode: "pass-through" },
+);
+
+export function getNoteByPath(path: string) {
+  return noteByPathResource.forKey(path).read();
 }
 
 export function updateNote(id: string, content: string, ifMatch?: string) {
@@ -41,6 +90,31 @@ export interface NoteSearchResult {
   proximity_score?: number | null;
 }
 
+async function fetchSearchTitles(
+  q: string,
+  limit: number,
+): Promise<NoteSearchResult[]> {
+  const { data, error } = await client.GET("/notes/search-titles", {
+    params: { query: { q, limit } },
+  });
+  if (error) {
+    throw new Error("searchTitles: " + JSON.stringify(error));
+  }
+  return data.results as NoteSearchResult[];
+}
+
+// D-05: pass-through, coalesced on q+limit — a wiki-link autocomplete
+// keystroke and any other concurrent caller asking for the same q/limit
+// collapse to one request.
+const searchTitlesResource = createKeyedResource(
+  "searchTitles",
+  (key: string) => {
+    const [q, limit] = JSON.parse(key) as [string, number];
+    return fetchSearchTitles(q, limit);
+  },
+  { mode: "pass-through" },
+);
+
 /**
  * Search note titles for wiki-link autocomplete.
  * Empty q returns most-recently-edited notes up to limit.
@@ -51,13 +125,8 @@ export async function searchTitles(
   q: string,
   limit = 10,
 ): Promise<NoteSearchResult[]> {
-  const { data, error } = await client.GET("/notes/search-titles", {
-    params: { query: { q, limit } },
-  });
-  if (error) {
-    throw new Error("searchTitles: " + JSON.stringify(error));
-  }
-  return data.results as NoteSearchResult[];
+  const key = JSON.stringify([q, limit]);
+  return searchTitlesResource.forKey(key).read();
 }
 
 /**

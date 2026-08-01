@@ -18,7 +18,7 @@
  */
 
 import { extractH1FromContent, sanitizeH1ForFilename } from "./h1Extract";
-import { getNote, updateNote } from "./notesApi";
+import { getNoteFresh, updateNote } from "./notesApi";
 import { postNoteMove } from "./treeApi";
 import { publish } from "./resources";
 import {
@@ -305,7 +305,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
     if (!this.userHasEdited && !debouncePending && !inFlightSave) {
       void (async () => {
         try {
-          const { data, error } = await getNote(p.id);
+          const { data, error } = await getNoteFresh(p.id);
           if (this.released) return;
           if (error || !data) {
             this.setConflict({ visible: true, currentUpdatedAt: p.updated_at });

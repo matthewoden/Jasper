@@ -41,7 +41,7 @@ import {
   computeChromeVisibility,
 } from "../lib/editorChromeResponsive";
 import { extractH1FromContent } from "../lib/h1Extract";
-import { getNote, updateNote } from "../lib/notesApi";
+import { getNote, getNoteFresh, updateNote } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
 import { initialSaveState } from "../lib/saveStateMachine";
 import {
@@ -962,7 +962,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                   let recoveryHint =
                     "Save failed — try Discard or close the banner and retry on next sync.";
                   try {
-                    const fresh = await getNote(id);
+                    const fresh = await getNoteFresh(id);
                     if (fresh.data) {
                       controller.setConflict({
                         visible: true,
@@ -995,7 +995,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               void (async () => {
                 const id = noteIdRef.current;
                 if (!id || !controller) return;
-                const { data, error } = await getNote(id);
+                const { data, error } = await getNoteFresh(id);
                 if (id !== noteIdRef.current) return;
                 if (error || !data) {
                   const msg =

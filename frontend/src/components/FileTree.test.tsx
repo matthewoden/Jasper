@@ -67,16 +67,23 @@ vi.mock("../lib/useTreeMutations", async () => {
 vi.mock("../lib/notesApi", () => ({
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
   getNote: vi.fn(),
+  getNoteFresh: vi.fn(),
   updateNote: vi.fn(),
   createNoteFromMarkdownDrop: vi.fn(),
 }));
 
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeMutations } from "../lib/useTreeMutations";
-import { getNote, updateNote, createNoteFromMarkdownDrop } from "../lib/notesApi";
+import {
+  getNote,
+  getNoteFresh,
+  updateNote,
+  createNoteFromMarkdownDrop,
+} from "../lib/notesApi";
 const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedUseTreeMutations = vi.mocked(useTreeMutations);
 const mockedGetNote = vi.mocked(getNote);
+const mockedGetNoteFresh = vi.mocked(getNoteFresh);
 const mockedUpdateNote = vi.mocked(updateNote);
 const mockedCreateNoteFromMarkdownDrop = vi.mocked(createNoteFromMarkdownDrop);
 
@@ -91,6 +98,7 @@ beforeEach(() => {
     allCollapsed: false,
   });
   mockedGetNote.mockReset();
+  mockedGetNoteFresh.mockReset();
   mockedUpdateNote.mockReset();
 });
 
@@ -832,7 +840,7 @@ describe("resetTreeListLayout (Gap R2-3)", () => {
 
 
 describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)", () => {
-  type GetReturn = Awaited<ReturnType<typeof getNote>>;
+  type GetReturn = Awaited<ReturnType<typeof getNoteFresh>>;
   type PutReturn = Awaited<ReturnType<typeof updateNote>>;
 
   function okGet(content: string, path = "renamed.md"): GetReturn {
@@ -898,11 +906,11 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
-    mockedGetNote.mockResolvedValue(okGet(opts.content));
+    mockedGetNoteFresh.mockResolvedValue(okGet(opts.content));
     return { muts };
   }
 
-  it("R2-6 D1: tree-rename of a note WITH an H1 → moveNote → getNote → updateNote with rewritten H1", async () => {
+  it("R2-6 D1: tree-rename of a note WITH an H1 → moveNote → getNoteFresh → updateNote with rewritten H1", async () => {
     const { muts } = setupNoteRename({ content: "# Original\n\nbody" });
     mockedUpdateNote.mockResolvedValue(okPut());
 
@@ -917,7 +925,7 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
     await waitFor(() => {
-      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+      expect(mockedGetNoteFresh).toHaveBeenCalledWith("uuid-1");
     });
     await waitFor(() => {
       expect(mockedUpdateNote).toHaveBeenCalledWith(
@@ -927,7 +935,7 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     });
   });
 
-  it("R2-6 D2: tree-rename of a note WITHOUT an H1 → no getNote/updateNote follow-up (research §2.4 — no auto-insert)", async () => {
+  it("R2-6 D2: tree-rename of a note WITHOUT an H1 → no updateNote follow-up (research §2.4 — no auto-insert)", async () => {
     const { muts } = setupNoteRename({
       content: "body without heading\nmore body",
     });
@@ -943,7 +951,7 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
     await waitFor(() => {
-      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+      expect(mockedGetNoteFresh).toHaveBeenCalledWith("uuid-1");
     });
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
@@ -988,7 +996,7 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
     await waitFor(() => {
       expect(muts.moveFolder).toHaveBeenCalledWith("projects", "renamed");
     });
-    expect(mockedGetNote).not.toHaveBeenCalled();
+    expect(mockedGetNoteFresh).not.toHaveBeenCalled();
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
 
@@ -1006,14 +1014,14 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
     await waitFor(() => {
-      expect(mockedGetNote).toHaveBeenCalledWith("uuid-1");
+      expect(mockedGetNoteFresh).toHaveBeenCalledWith("uuid-1");
     });
     expect(mockedUpdateNote).not.toHaveBeenCalled();
   });
 
-  it("R2-6 D5: getNote fails after a successful move → rename still succeeds; warn-level log; no toast", async () => {
+  it("R2-6 D5: getNoteFresh fails after a successful move → rename still succeeds; warn-level log; no toast", async () => {
     const { muts } = setupNoteRename({ content: "# unused\n\nbody" });
-    mockedGetNote.mockResolvedValue({
+    mockedGetNoteFresh.mockResolvedValue({
       data: undefined,
       error: { code: "not_found", message: "vanished" },
       response: new Response(),
@@ -1031,7 +1039,7 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       expect(muts.moveNote).toHaveBeenCalledWith("uuid-1", "renamed.md");
     });
     await waitFor(() => {
-      expect(mockedGetNote).toHaveBeenCalled();
+      expect(mockedGetNoteFresh).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalled();
