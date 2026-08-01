@@ -20,6 +20,7 @@
  */
 
 import { client } from "../api/client";
+import { createResource } from "./resources";
 import type { Bookmark, BookmarkFolder } from "./useTreeStore";
 
 export interface BookmarksDocument {
@@ -33,13 +34,18 @@ function unwrapErrorMessage(error: unknown, fallback: string): string {
     : fallback;
 }
 
-export async function getBookmarks(): Promise<BookmarksDocument> {
+async function getBookmarks(): Promise<BookmarksDocument> {
   const { data, error } = await client.GET("/bookmarks");
   if (error || !data) {
     throw new Error(unwrapErrorMessage(error, "could not load bookmarks"));
   }
   return data as BookmarksDocument;
 }
+
+export const bookmarksResource = createResource("bookmarks", getBookmarks, {
+  mode: "cached",
+  invalidatedBy: ["bookmark:changed"],
+});
 
 export async function postBookmark(
   noteId: string,

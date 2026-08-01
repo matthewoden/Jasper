@@ -1,59 +1,51 @@
 /**
- * useBookmarks — composes the bookmarks/bookmarkFolders store slices with
- * GET/POST/DELETE backend calls and a WS refresh subscription on
- * `bookmark:changed`. Mirrors useMcpGrants.ts's hydrate + subscriber-bus +
- * optimistic-mutate shape.
+ * useBookmarks — reads the shared `bookmarksResource` cache and composes it
+ * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
+ * the resource layer (D-08/D-11/D-14): subscribing (mounting) never issues a
+ * network request by itself; only the resource's own 0->1 subscriber
+ * transition and `bookmark:changed` WS invalidation do.
  *
  * Public surface:
- *   - bookmarks / bookmarkFolders: current store slices
+ *   - bookmarks / bookmarkFolders: current cache snapshot
  *   - loading / error:              true only across the INITIAL hydrate
  *                                    window (27-UI-REVIEW #1). Once bookmarks
  *                                    have loaded successfully once, a later
  *                                    transient refresh failure (WS event,
- *                                    background hiccup) is swallowed and
- *                                    NEVER regresses the panel back to the
- *                                    error state or wipes the last-known-good
- *                                    cache — see the hydratedRef comment below.
- *   - refresh():                    re-fetch GET /bookmarks
+ *                                    background hiccup) is swallowed by the
+ *                                    resource layer's preserve-last-good-value
+ *                                    policy — see the `error`/`loading`
+ *                                    derivation below.
+ *   - refresh():                    invalidate the shared cache entry
  *   - toggleBookmark(noteId):       the entry-point-agnostic seam — adds a
  *                                   bookmark if absent, removes it if present
  *                                   (breadcrumb star, palette command, future
  *                                   context menu all hang off this one call)
- *   - moveToFolder(id, folderId):   POST /bookmarks/{id}/folder, then refresh
- *   - createFolder(name):           POST /bookmark-folders, then refresh
+ *   - moveToFolder(id, folderId):   POST /bookmarks/{id}/folder, then invalidate
+ *   - createFolder(name):           POST /bookmark-folders, then invalidate
  *   - reorder(folderId, orderedIds): POST /bookmarks/reorder — optimistic
  *                                    in-scope reorder with revert-on-failure
  *                                    (mirrors toggleBookmark's optimistic shape)
  *   - isBookmarked(noteId):         convenience lookup for UI state
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useToast } from "../components/toast.utils";
+import type { Bookmark, BookmarkFolder } from "./useTreeStore";
 import {
-  useTreeStore,
-  type Bookmark,
-  type BookmarkFolder,
-} from "./useTreeStore";
-import {
-  getBookmarks,
+  bookmarksResource,
   postBookmark,
   deleteBookmark,
   postBookmarkMove,
   postBookmarkFolder,
   reorderBookmarks,
+  type BookmarksDocument,
 } from "./bookmarksApi";
+import { publish, useResource } from "./resources";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
-const bookmarksSubscribers = new Set<() => void>();
-
-/**
- * Called by useSessionSync when a `bookmark:changed` WS event arrives.
- * Iterates a snapshot of the subscriber set so mid-iteration
- * register/unregister doesn't cause a concurrent-mutation error.
- */
-export function dispatchBookmarksEvent(): void {
-  const snapshot = Array.from(bookmarksSubscribers);
-  for (const fn of snapshot) fn();
-}
+const EMPTY_DOC: BookmarksDocument = { folders: [], bookmarks: [] };
+const EMPTY_BOOKMARKS: Bookmark[] = [];
+const EMPTY_FOLDERS: BookmarkFolder[] = [];
 
 export interface UseBookmarksResult {
   bookmarks: Bookmark[];
@@ -69,45 +61,32 @@ export interface UseBookmarksResult {
 }
 
 export function useBookmarks(): UseBookmarksResult {
-  const bookmarks = useTreeStore((s) => s.bookmarks);
-  const setBookmarks = useTreeStore((s) => s.setBookmarks);
-  const bookmarkFolders = useTreeStore((s) => s.bookmarkFolders);
-  const setBookmarkFolders = useTreeStore((s) => s.setBookmarkFolders);
+  const snapshot = useResource(bookmarksResource);
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  // True once ANY fetch has ever succeeded. Gates whether a subsequent
-  // failure surfaces `error` (initial hydrate only, 27-UI-REVIEW #1) or is
-  // swallowed (every later refresh — WS `bookmark:changed` events,
-  // post-mutation re-fetches — must never wipe an already-populated cache
-  // on a transient backend hiccup).
-  const hydratedRef = useRef(false);
+
+  // snapshot.data?.x ?? [] would allocate a new array identity every render
+  // when data is still undefined, which would make isBookmarked's
+  // useCallback below think its deps changed each render (matches
+  // useMcpGrants.ts's identical fix).
+  const bookmarks = useMemo(
+    () => snapshot.data?.bookmarks ?? EMPTY_BOOKMARKS,
+    [snapshot.data],
+  );
+  const bookmarkFolders = useMemo(
+    () => snapshot.data?.folders ?? EMPTY_FOLDERS,
+    [snapshot.data],
+  );
+  // 27-UI-REVIEW #1: error surfaces on the initial hydrate only. Once
+  // anything has succeeded (snapshot.hydrated), a later failure is
+  // swallowed by the resource layer's preserve-last-good-value policy and
+  // the populated cache stays on screen instead of flipping to the error
+  // state.
+  const error = snapshot.error !== null && !snapshot.hydrated;
+  const loading = !snapshot.hydrated && snapshot.error === null;
 
   const refresh = useCallback(async () => {
-    try {
-      const doc = await getBookmarks();
-      setBookmarks(doc.bookmarks);
-      setBookmarkFolders(doc.folders);
-      hydratedRef.current = true;
-      setError(false);
-    } catch {
-      if (!hydratedRef.current) {
-        setError(true);
-      }
-      // else: silent — preserve the existing slices, matching the
-      // pre-existing swallow-on-refresh-failure contract.
-    } finally {
-      setLoading(false);
-    }
-  }, [setBookmarks, setBookmarkFolders]);
-
-  useEffect(() => {
-    void refresh();
-    bookmarksSubscribers.add(refresh);
-    return () => {
-      bookmarksSubscribers.delete(refresh);
-    };
-  }, [refresh]);
+    await bookmarksResource.invalidate();
+  }, []);
 
   const isBookmarked = useCallback(
     (noteId: string): boolean => bookmarks.some((b) => b.note_id === noteId),
@@ -121,19 +100,20 @@ export function useBookmarks(): UseBookmarksResult {
   // DELETE for an id the backend never created; that DELETE fails, state
   // reverts, and then the FIRST call's postBookmark resolves and
   // unconditionally re-adds the bookmark — silently overriding the
-  // user's second click.
+  // user's second click. Kept as a useRef (per-hook-instance) rather than
+  // promoted to module scope — promoting it would make the guard stricter
+  // than today (locking out every mounted consumer, not just this one),
+  // which is a behavior change outside this refactor's scope.
   const inFlightNoteIds = useRef<Set<string>>(new Set());
 
   /**
-   * toggleBookmark — the single entry-point seam. Reads the LIVE store
-   * slice (via useTreeStore.getState()) at each decision/mutation point
-   * rather than the render-time closure — sequential calls (e.g. a bulk
-   * "Bookmark N notes" loop) each see the previous call's committed write
-   * and accumulate instead of clobbering it with a stale snapshot. Both
-   * branches optimistically update the local slice before the network
-   * call resolves and revert + toast on failure. Ignores re-entrant calls
-   * for the same noteId while a mutation is already in flight (WR-07)
-   * rather than racing it.
+   * toggleBookmark — the single entry-point seam. Both branches optimistically
+   * update the shared cache before the network call resolves and revert +
+   * toast on failure via bookmarksResource.mutate(). The add branch's commit
+   * reconciles against the LIVE cache at success time (not the closed-over
+   * snapshot) — this is why a bulk "Bookmark N notes" loop accumulates
+   * instead of clobbering. Ignores re-entrant calls for the same noteId
+   * while a mutation is already in flight (WR-07) rather than racing it.
    */
   const toggleBookmark = useCallback(
     async (noteId: string) => {
@@ -142,16 +122,22 @@ export function useBookmarks(): UseBookmarksResult {
       }
       inFlightNoteIds.current.add(noteId);
       try {
-        const live = useTreeStore.getState().bookmarks;
-        const existing = live.find((b) => b.note_id === noteId);
-        const previous = live;
+        const live = bookmarksResource.peek().data ?? EMPTY_DOC;
+        const existing = live.bookmarks.find((b) => b.note_id === noteId);
 
         if (existing) {
-          setBookmarks(live.filter((b) => b.id !== existing.id));
           try {
-            await deleteBookmark(existing.id);
+            await bookmarksResource.mutate({
+              optimistic: (cur) => ({
+                ...(cur ?? EMPTY_DOC),
+                bookmarks: (cur ?? EMPTY_DOC).bookmarks.filter(
+                  (b) => b.id !== existing.id,
+                ),
+              }),
+              request: () => deleteBookmark(existing.id),
+              rollback: (prev) => prev ?? EMPTY_DOC,
+            });
           } catch (e) {
-            setBookmarks(previous);
             toast({
               title: "Couldn't remove bookmark",
               description: String(e instanceof Error ? e.message : e),
@@ -161,22 +147,36 @@ export function useBookmarks(): UseBookmarksResult {
           return;
         }
 
+        const optimisticId = `pending-${noteId}`;
         const optimistic: Bookmark = {
-          id: `pending-${noteId}`,
+          id: optimisticId,
           note_id: noteId,
           folder_id: null,
-          order: live.length,
+          order: live.bookmarks.length,
         };
-        setBookmarks([...live, optimistic]);
         try {
-          const created = await postBookmark(noteId);
-          const liveAtSuccess = useTreeStore.getState().bookmarks;
-          setBookmarks([
-            ...liveAtSuccess.filter((b) => b.id !== optimistic.id),
-            created,
-          ]);
+          await bookmarksResource.mutate({
+            optimistic: (cur) => ({
+              ...(cur ?? EMPTY_DOC),
+              bookmarks: [...(cur ?? EMPTY_DOC).bookmarks, optimistic],
+            }),
+            request: () => postBookmark(noteId),
+            // Reconciled against the LIVE cache at success time — a
+            // concurrent WS update or a sibling toggleBookmark call
+            // could have landed while the request was in flight.
+            commit: (liveAtSuccess, created) => {
+              const base = liveAtSuccess ?? EMPTY_DOC;
+              return {
+                ...base,
+                bookmarks: [
+                  ...base.bookmarks.filter((b) => b.id !== optimisticId),
+                  created,
+                ],
+              };
+            },
+            rollback: (prev) => prev ?? EMPTY_DOC,
+          });
         } catch (e) {
-          setBookmarks(previous);
           toast({
             title: "Couldn't add bookmark",
             description: String(e instanceof Error ? e.message : e),
@@ -187,14 +187,14 @@ export function useBookmarks(): UseBookmarksResult {
         inFlightNoteIds.current.delete(noteId);
       }
     },
-    [setBookmarks, toast],
+    [toast],
   );
 
   const moveToFolder = useCallback(
     async (id: string, folderId: string | null) => {
       try {
         await postBookmarkMove(id, folderId);
-        await refresh();
+        await bookmarksResource.invalidate();
       } catch (e) {
         toast({
           title: "Couldn't move bookmark",
@@ -203,14 +203,14 @@ export function useBookmarks(): UseBookmarksResult {
         });
       }
     },
-    [refresh, toast],
+    [toast],
   );
 
   const createFolder = useCallback(
     async (name: string) => {
       try {
         await postBookmarkFolder(name);
-        await refresh();
+        await bookmarksResource.invalidate();
       } catch (e) {
         toast({
           title: "Couldn't create folder",
@@ -219,30 +219,36 @@ export function useBookmarks(): UseBookmarksResult {
         });
       }
     },
-    [refresh, toast],
+    [toast],
   );
 
   /**
    * reorder — optimistically reassigns Order = index (within orderedIds)
    * for exactly the bookmarks named in orderedIds, leaving every bookmark
    * OUTSIDE that scope untouched (mirrors the backend's per-folder Order
-   * semantics, WR-02). Reverts to the pre-mutation slice and toasts on
+   * semantics, WR-02). Reverts to the pre-mutation snapshot and toasts on
    * failure — same shape as toggleBookmark's optimistic-mutate-then-revert.
    */
   const reorder = useCallback(
     async (folderId: string | null, orderedIds: string[]) => {
-      const previous = bookmarks;
       const orderIndex = new Map(orderedIds.map((id, index) => [id, index]));
-      const optimistic = bookmarks.map((b) => {
-        const index = orderIndex.get(b.id);
-        return index === undefined ? b : { ...b, order: index };
-      });
-      setBookmarks(optimistic);
       try {
-        await reorderBookmarks(folderId, orderedIds);
-        await refresh();
+        await bookmarksResource.mutate({
+          optimistic: (cur) => {
+            const base = cur ?? EMPTY_DOC;
+            return {
+              ...base,
+              bookmarks: base.bookmarks.map((b) => {
+                const index = orderIndex.get(b.id);
+                return index === undefined ? b : { ...b, order: index };
+              }),
+            };
+          },
+          request: () => reorderBookmarks(folderId, orderedIds),
+          rollback: (prev) => prev ?? EMPTY_DOC,
+        });
+        await bookmarksResource.invalidate();
       } catch (e) {
-        setBookmarks(previous);
         toast({
           title: "Couldn't reorder bookmarks",
           description: String(e instanceof Error ? e.message : e),
@@ -250,7 +256,7 @@ export function useBookmarks(): UseBookmarksResult {
         });
       }
     },
-    [bookmarks, setBookmarks, refresh, toast],
+    [toast],
   );
 
   return {
@@ -268,6 +274,6 @@ export function useBookmarks(): UseBookmarksResult {
 }
 
 export const __testing__ = {
-  getSubscriberCount: () => bookmarksSubscribers.size,
-  simulateEvent: () => dispatchBookmarksEvent(),
+  getSubscriberCount: () => resourcesTesting.getSubscriberCount("bookmarks"),
+  simulateEvent: () => publish("bookmark:changed"),
 };

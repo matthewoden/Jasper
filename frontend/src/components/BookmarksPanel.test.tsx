@@ -13,6 +13,7 @@ import { BookmarksPanel } from "./BookmarksPanel";
 import { TooltipProvider } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
+import { bookmarksResource } from "../lib/bookmarksApi";
 import type { Tree } from "../lib/treeApi";
 
 const getBookmarksMock = vi.fn();
@@ -20,14 +21,24 @@ const postBookmarkMock = vi.fn();
 const deleteBookmarkMock = vi.fn();
 const postBookmarkMoveMock = vi.fn();
 const postBookmarkFolderMock = vi.fn();
+const reorderBookmarksMock = vi.fn();
 
-vi.mock("../lib/bookmarksApi", () => ({
-  getBookmarks: (...args: unknown[]) => getBookmarksMock(...args),
-  postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
-  deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
-  postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
-  postBookmarkFolder: (...args: unknown[]) => postBookmarkFolderMock(...args),
-}));
+vi.mock("../lib/bookmarksApi", async () => {
+  const { createResource } = await import("../lib/resources/createResource");
+  return {
+    bookmarksResource: createResource(
+      "bookmarks",
+      () => getBookmarksMock(),
+      { mode: "cached", invalidatedBy: ["bookmark:changed"] },
+    ),
+    postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
+    deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
+    postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
+    postBookmarkFolder: (...args: unknown[]) =>
+      postBookmarkFolderMock(...args),
+    reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
+  };
+});
 
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
@@ -95,7 +106,13 @@ describe("BookmarksPanel", () => {
     deleteBookmarkMock.mockReset();
     postBookmarkMoveMock.mockReset();
     postBookmarkFolderMock.mockReset();
+    reorderBookmarksMock.mockReset();
     toastSpy.mockReset();
+    // Per-entry reset (not the global registry reset): the eventBus
+    // subscription createResource() wires up at module-load time inside
+    // the mock factory above must survive across tests. clear() resets
+    // cached data/hydrated/error without touching that subscription.
+    bookmarksResource.clear();
     mockUseFileTree.mockReset().mockReturnValue({
       tree: mockTree,
       loading: false,
@@ -103,7 +120,7 @@ describe("BookmarksPanel", () => {
       refresh: vi.fn(),
       mutate: vi.fn(),
     });
-    useTreeStore.setState({ bookmarks: [], bookmarkFolders: [], activeNoteId: null });
+    useTreeStore.setState({ activeNoteId: null });
     usePaneStore.setState({ openInActivePane: vi.fn() });
   });
 

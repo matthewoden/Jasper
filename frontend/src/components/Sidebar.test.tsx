@@ -19,6 +19,26 @@ vi.mock("../lib/adminApi", () => ({
   postAdminReindex: vi.fn(),
 }));
 
+// BookmarksPanel (via Sidebar) reads bookmarksResource — mock the fetcher
+// so mounting Sidebar never issues a real network call (the file has no
+// other bookmarksApi mock).
+const getBookmarksMock = vi.fn();
+vi.mock("../lib/bookmarksApi", async () => {
+  const { createResource } = await import("../lib/resources/createResource");
+  return {
+    bookmarksResource: createResource(
+      "bookmarks",
+      () => getBookmarksMock(),
+      { mode: "cached", invalidatedBy: ["bookmark:changed"] },
+    ),
+    postBookmark: vi.fn(),
+    deleteBookmark: vi.fn(),
+    postBookmarkMove: vi.fn(),
+    postBookmarkFolder: vi.fn(),
+    reorderBookmarks: vi.fn(),
+  };
+});
+
 
 vi.mock("../lib/useSearch", () => ({
   useSearch: vi.fn(() => ({ results: [], isSearching: false })),
@@ -109,11 +129,18 @@ function renderWithProvider(ui: React.ReactElement) {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mockedUseFileTree.mockReset();
   mockedPostAdminReindex.mockReset();
   mockedUseTreeMutations.mockReset();
   mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
+  // FileTree.tsx hoists a single useBookmarks() instance (D-08's
+  // props-threading template), so bookmarksResource's fetcher must have a
+  // default resolved value for every test in this file, not just the
+  // BookmarksPanel-specific describe block below.
+  getBookmarksMock.mockReset().mockResolvedValue({ folders: [], bookmarks: [] });
+  const { bookmarksResource } = await import("../lib/bookmarksApi");
+  bookmarksResource.clear();
   useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
   useTreeStore.setState({ selectedRow: null });
   useTreeStore.setState({
@@ -742,8 +769,6 @@ describe("<Sidebar /> — Phase 27 Plan 06: BookmarksPanel wiring", () => {
     useTreeStore.setState({
       notesSidebarVisible: true,
       sidebarPanel: "bookmarks",
-      bookmarks: [],
-      bookmarkFolders: [],
     });
   });
 

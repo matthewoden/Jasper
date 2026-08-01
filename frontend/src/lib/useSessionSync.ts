@@ -4,7 +4,6 @@ import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
 import { dispatchLinksEvent } from "./useBacklinks";
-import { dispatchBookmarksEvent } from "./useBookmarks";
 import { dispatchWorkspaceEvent } from "./useWorkspace";
 import { publish } from "./resources";
 import type { components } from "../api/schema";
@@ -166,7 +165,7 @@ export function useSessionSync(
             publish("mcp:grant_changed");
             break;
           case "bookmark:changed":
-            dispatchBookmarksEvent();
+            publish("bookmark:changed");
             break;
           case "workspace:changed":
             dispatchWorkspaceEvent();
