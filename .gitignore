@@ -46,3 +46,12 @@ frontend/test-results/
 # Phase 8 Plan 08-14 / D-42: synthetic 5k-note vault for PERF-01 cold-start
 # benchmark. Populated by `make perf-vault`; never committed.
 /_perf-vault/
+
+# Regenerable local artifacts that kept reappearing as untracked clutter.
+# backend/test-results/ is the Go-side sibling of the already-ignored
+# frontend/test-results/. .parity-shots/ is written by phase26-divider-uat's
+# SHOTS_DIR. scratchpad/ and agent-history.json are agent-local scratch.
+backend/test-results/
+/.parity-shots/
+/scratchpad/
+.planning/agent-history.json
