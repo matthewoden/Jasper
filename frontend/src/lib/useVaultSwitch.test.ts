@@ -39,6 +39,11 @@ vi.mock("./useTreeStore", () => {
   };
 });
 
+import {
+  __testing__ as resourcesTesting,
+  createKeyedResource,
+  createResource,
+} from "./resources/createResource";
 import { useVaultSwitch } from "./useVaultSwitch";
 
 
@@ -55,6 +60,7 @@ describe("useVaultSwitch", () => {
     setVaultSwitchingMock.mockClear();
     setActiveNoteMock.mockClear();
     setActiveFilePathMock.mockClear();
+    resourcesTesting.reset();
     vaultSwitchingState.active = false;
     vaultSwitchingState.targetName = "";
   });
@@ -97,5 +103,39 @@ describe("useVaultSwitch", () => {
       result.current.markSwitched();
     });
     expect(reloadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("markSwitching clears every hydrated resource's cache entry (T-32.2-01)", async () => {
+    const cached = createResource(
+      "test-vault-switch-cached",
+      vi.fn().mockResolvedValue("cached-value"),
+      { mode: "cached", invalidatedBy: ["note:created"] },
+    );
+    const keyedBase = createKeyedResource(
+      "test-vault-switch-keyed",
+      (param: string) => Promise.resolve(`${param}-value`),
+      { mode: "cached", invalidatedBy: ["note:created"] },
+    );
+    const keyedA = keyedBase.forKey("a");
+
+    await cached.read();
+    await keyedA.read();
+
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-cached")?.hydrated).toBe(true);
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-keyed::a")?.hydrated).toBe(true);
+
+    const { result } = renderHook(() => useVaultSwitch());
+    act(() => {
+      result.current.markSwitching("Other Vault");
+    });
+
+    // clearAllResources() resets each entry's fields rather than deleting
+    // the map key, so "cleared" is asserted as hydrated:false/data:undefined
+    // — the cached VALUE is gone, matching the plan's "cache entry is
+    // undefined" intent.
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-cached")?.hydrated).toBe(false);
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-cached")?.data).toBeUndefined();
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-keyed::a")?.hydrated).toBe(false);
+    expect(resourcesTesting.getCacheEntry("test-vault-switch-keyed::a")?.data).toBeUndefined();
   });
 });

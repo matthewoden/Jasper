@@ -63,19 +63,34 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../../lib/vaultAboutApi", () => ({
-  getVaultAbout: vi.fn().mockResolvedValue({
-    data: {
-      vaultName: "my-vault",
-      noteCount: 3,
-      folderCount: 1,
-      path: "/vault",
-      appVersion: "1.4.0",
-      mcpPort: 6684,
-      mcpGrantCount: 0,
-    },
-  }),
+// vi.hoisted keeps `mockVaultAboutFetcher` addressable both inside the
+// vi.mock factory below and in this file's test bodies.
+const { mockVaultAboutFetcher } = vi.hoisted(() => ({
+  mockVaultAboutFetcher: vi.fn(),
 }));
+
+// Built on the REAL createResource primitive (like AboutSection.test.tsx)
+// so the shell's nav-footer subscription and a later About-pane
+// subscription share the same cache entry for real — that sharing IS the
+// D-07 double-fetch fix under test below.
+vi.mock("../../lib/vaultAboutApi", async () => {
+  const { createResource } = await import("../../lib/resources");
+  return {
+    vaultAboutResource: createResource("vaultAbout", mockVaultAboutFetcher, {
+      mode: "cached",
+      invalidatedBy: [
+        "note:created",
+        "note:deleted",
+        "note:moved",
+        "folder:created",
+        "folder:deleted",
+        "folder:moved",
+        "mcp:grant_changed",
+        "reindex:complete",
+      ],
+    }),
+  };
+});
 
 vi.mock("../../lib/useReveal", () => ({
   useReveal: () => ({ reveal: vi.fn(), revealVaultRoot: vi.fn(), loading: false }),
@@ -86,6 +101,7 @@ vi.mock("../toast.utils", () => ({
 }));
 
 import { client } from "../../api/client";
+import { __testing__ as resourcesTesting } from "../../lib/resources/createResource";
 import { SettingsDialogShell } from "./SettingsDialogShell";
 
 const mockClient = client as unknown as {
@@ -121,6 +137,7 @@ function renderShell(props: Partial<React.ComponentProps<typeof SettingsDialogSh
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resourcesTesting.reset();
   mockClient.GET.mockResolvedValue({ data: mockConfig, response: { status: 200 } });
   mockClient.PUT.mockImplementation((_path: string, opts: { body: unknown }) =>
     Promise.resolve({ data: opts.body, response: { status: 200 } }),
@@ -129,6 +146,17 @@ beforeEach(() => {
   // per-section Reset tests below, which assert on PUT); an undefined
   // client.PATCH throws, so every shell test needs this wired.
   mockClient.PATCH.mockResolvedValue({ data: mockConfig, response: { status: 200 } });
+  mockVaultAboutFetcher.mockResolvedValue({
+    data: {
+      vaultName: "my-vault",
+      noteCount: 3,
+      folderCount: 1,
+      path: "/vault",
+      appVersion: "1.4.0",
+      mcpPort: 6684,
+      mcpGrantCount: 0,
+    },
+  });
 });
 
 describe("<SettingsDialogShell />", () => {
@@ -151,6 +179,21 @@ describe("<SettingsDialogShell />", () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("my-vault · v1.4.0")).toBeInTheDocument());
+  });
+
+  it("mounting the shell (open) and then opening About produces exactly one GET /vault/about fetch (D-07 double-fetch closed)", async () => {
+    renderShell();
+    await waitFor(() => expect(screen.getByText("my-vault · v1.4.0")).toBeInTheDocument());
+    expect(mockVaultAboutFetcher).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /About/ }));
+    await waitFor(() => expect(screen.getByText("Vault name")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("my-vault")).toBeInTheDocument());
+
+    // About subscribes to the SAME cache entry the shell already hydrated —
+    // a second mount site reading the shared resource is a cache hit, not
+    // a second request.
+    expect(mockVaultAboutFetcher).toHaveBeenCalledTimes(1);
   });
 
   it("clicking each nav item swaps the pane content", async () => {

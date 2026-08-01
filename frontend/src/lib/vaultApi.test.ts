@@ -106,6 +106,21 @@ describe("vaultApi openapi-fetch wrappers", () => {
     expect(result).toEqual(entry);
   });
 
+  it("getCurrent coalesces concurrent callers into one client.GET (D-05)", async () => {
+    let resolveGet!: (v: { data: unknown; error: undefined }) => void;
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGet = resolve;
+        }),
+    );
+    const p1 = vaultApi.getCurrent();
+    const p2 = vaultApi.getCurrent();
+    resolveGet({ data: {}, error: undefined });
+    await Promise.all([p1, p2]);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
   it("getRecent returns vaults and banner", async () => {
     const recent = {
       vaults: [
