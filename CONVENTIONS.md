@@ -109,12 +109,56 @@ When an investigation concludes something different from the plan's example code
 - **Allowed shortcuts: none.** Not `t.Skip` behind a build tag, not retry loops, not `time.Sleep` "to let it settle." Each encodes the flake instead of fixing it.
 - **Poll for the eventual condition** rather than sleeping a fixed interval.
 
-**Known instances awaiting fix** (blockers, not deferred items — both verified still present):
+**Known instances awaiting fix** (blockers, not deferred items — all three verified still present):
 
 - `backend/internal/app/lifecycle.go:~290` — registry hydrate silently warns and proceeds with an empty registry when the index list fails. Under parallel filesystem load this surfaces as a boot test finding no notes. Retry, fail fast, or surface the error — warn-and-proceed-empty is wrong for tests *and* for users.
 - `TestApp_Run_DiskFull_ServesStaticPage` / `TestRun_DiskFull_PreflightHaltsBeforeOpen` — intermittent timeout in `./...` sweep mode despite a dedicated readiness probe. Root cause not isolated; likely an interaction between the forced-disk-full env timing and parallel sqlite/filesystem activity.
+- **`panic("boom")` escapes under full-suite `go test ./...`.** The panic originates in `backend/internal/app/middleware_test.go:150` (`TestSecurityHeadersMiddleware_HeadersPresentOn500`, which deliberately panics through `middleware.Recoverer`), but Go reports it against whichever test ran concurrently — usually `TestApp_Run_FreshDB_BootsAndIndexesScratchpad`, which is **not** the culprit.
+
+  This is a textbook case of the reproduction rule above. It passes every isolated form — the app package alone 8/8, `-race -count=5`, the named test at `-count=20` — and fails *only* under cross-package parallelism. A debt gate that ran the app package in isolation never caught it.
+
+  Repro: `cd backend && for i in $(seq 1 10); do go test ./... -count=1 >/dev/null 2>&1 || echo "run $i FAIL"; done`
+
+  For the fixer: does `middleware.Recoverer` re-panic, or is there an unrecovered goroutine in the app-boot path the panic rides on? Diagnose the real race — don't skip or retry.
 
 When one is fixed, delete its bullet and add a one-line entry referencing the fixing commit, so "we knew and fixed it" stays in the history.
+
+## Testing patterns
+
+Commands:
+
+```bash
+cd backend  && go test -race ./...        # always with the race detector
+cd frontend && npm test -- --run          # vitest, single run (CI mode)
+cd frontend && npx playwright test        # E2E against the built binary
+```
+
+**Backend**
+
+- Tests are colocated (`foo.go` ↔ `foo_test.go`, same package). Table-driven throughout.
+- `t.Helper()` in helpers so failures point at the caller; `t.TempDir()` for isolation; `t.Cleanup()` for resources that outlive the test goroutine.
+- **In-test fakes over mocking frameworks.** Lightweight structs implementing the real interface, capturing call counts and last-call arguments. Zero-valued fields default to no-ops so setup stays minimal.
+- **A shared `observedSeq` slice pointer across fakes asserts *ordering*** — this is how the file-first-then-index contract is actually enforced in tests rather than assumed. See [ADR-0007](./docs/adr/0007-file-first-save-path.md).
+- **Mock the dependencies, never the thing under test.** Always instantiate the real struct being tested.
+- Sentinel errors are checked with `errors.Is()` — never `==`, never string matching.
+- Concurrency correctness gets stress coverage, not just unit coverage (a 5,000-note concurrent-write stress runs clean with zero `SQLITE_BUSY`).
+
+**Frontend**
+
+- vitest + jsdom, colocated (`Foo.tsx` ↔ `Foo.test.tsx`), `@testing-library/react`.
+- `vi.mock()` at module level for external APIs and environment-dependent hooks. **Don't mock the component under test or the components it directly composes** — those should be integrated.
+- `waitFor()` for async state; it retries until pass or timeout.
+- Remember what jsdom cannot do: layout measurement, real focus, true event dispatch, and **any CodeMirror rendering**. Green component tests are not coverage for those.
+
+**E2E**
+
+- Specs live in `frontend/e2e/`. `spawnJasper()` gives each test a fresh data directory and an **ephemeral port** — never the default 6683.
+- **Fully parallel** (`fullyParallel: true`, 4 workers locally / 2 in CI). **`retries: 0` on purpose** — an E2E flake is a real bug, and a retry hides it.
+- Generous `expect` timeout (10s) because a real binary boot plus UI render is genuinely slow.
+- Tag scenarios (`@first-run`, `@reveal`, …) for selective runs via `--grep`.
+- **Run `make build` first.** The suite drives the embedded binary; `npm run build` alone leaves it stale.
+
+**Performance gate:** `make perf-vault` generates a deterministic 5,000-note vault; `make perf-check` asserts cold start (migrations + incremental re-index) stays under 5s.
 
 ## Comment policy
 

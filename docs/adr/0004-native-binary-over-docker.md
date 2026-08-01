@@ -23,6 +23,7 @@ For single-user desktop self-hosting, native install gives a smaller footprint, 
 - The binary must have **no native dependencies**, which forces [ADR-0005](./0005-pure-go-sqlite.md).
 - Install correctness is platform-specific and has to be validated per platform, not assumed. macOS is validated by real use; WSL2 is validated by a Dockerized systemd harness in CI (the one place Docker *is* used — as a test fixture, not a delivery mechanism).
 - Code signing and notarization on macOS are deferred; the README documents the Gatekeeper workaround. This is an external blocker (needs an Apple Developer ID), not a design gap.
+- **The launchd plist uses the dict form `KeepAlive: {Crashed: true}` plus `ThrottleInterval=60`, not `<key>KeepAlive</key><true/>`.** The plain boolean form restarts the service even after a graceful `launchctl bootout` — meaning the user cannot stop Jasper. A regression test pins the dict form; don't "simplify" it.
 - Docker may exist as a secondary artifact post-v1. It is not the supported path.
 
 ## Lesson recorded

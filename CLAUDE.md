@@ -82,7 +82,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - First-run wizard configures data directory, theme, daily notes, editor preferences, MCP opt-in
 - `frontend/vite.config.ts` - Vite config; reads canonical port from `scripts/port.sh` (resolves `~/.jasper/storage/config.json` or defaults to 6683)
 - `frontend/vitest.config.ts` - Vitest config; jsdom environment, excludes `e2e/` from unit test runs
-- `frontend/playwright.config.ts` - Playwright config; baseURL = canonical port; 1 worker (serial test execution); spawnJasper() allocates ephemeral ports per test
+- `frontend/playwright.config.ts` - Playwright config; baseURL = canonical port; fullyParallel with 4 workers locally / 2 in CI; retries 0 (a flake is a real bug); spawnJasper() allocates ephemeral ports + a fresh data dir per test
 - `frontend/tsconfig.json` - TypeScript config; ES2022 target, strict mode, module resolution bundler
 - `frontend/eslint.config.js` - ESLint flat config (v9+); extends @eslint/js + typescript-eslint + react-hooks + react-refresh
 - `backend/.golangci.yml` - golangci-lint config; enables errcheck, govet, staticcheck, revive; gofumpt formatter
