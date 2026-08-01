@@ -231,17 +231,27 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 });
 
 /**
- * D-07 baseline census — the never-measured sibling endpoints.
- * `32.2-INVESTIGATION.md` names `useBacklinks`/`useBookmarks` as sharing the
- * defective per-mount-fetch shape but says explicitly they were NOT part of
- * its measured evidence. This block is the before-count D-07 requires.
+ * D-07 standing per-endpoint request budget.
  *
- * Kept `test.fixme` in the committed tree — its purpose is to be run
- * manually (temporarily un-fixme'd, or via a working-tree-only edit), once
- * now (pre-migration, recorded in 32.2-02-SUMMARY.md) and once again after
- * plan 09's migration lands, so the two counts can be diffed.
+ * `32.2-INVESTIGATION.md` root-caused fetch-on-mount with zero sharing; the
+ * ESLint gate (32.2-09 task 1) catches a NEW raw `client.GET` call, but it
+ * structurally cannot catch a NEW mount effect that calls an
+ * already-legitimate wrapper on every mount — only a request-count
+ * assertion closes that half of the defect class (D-07's rationale).
+ *
+ * One scripted session drives every endpoint plan 02's before-count table
+ * measured: open the app, open a note, expand every folder, open the
+ * right-rail backlinks panel, open the right-rail tag panel, open Settings
+ * and its About section, close Settings, open a split pane. Ceilings are
+ * the AFTER counts plans 03/05/06/07/08 measured against the migrated
+ * binary (not guesses) — see each `expect(...)` call's inline comment for
+ * its source. `toBe` is used wherever the migration makes the count
+ * deterministic; `toBeLessThanOrEqual` only for `/tree`, which
+ * `phase5_5-uat.spec.ts`'s UX-14 comment already documents as carrying a
+ * genuine race window (a joiner that arrives while a fetch is in flight can
+ * cost one extra GET when the never-join invalidation path is hit).
  */
-test.describe("@phase32.2 baseline census (D-07)", () => {
+test.describe("@phase32.2 standing request budget (D-07)", () => {
   let jasper: JasperHandle;
 
   test.use({ viewport: { width: 1280, height: 1400 } });
@@ -254,75 +264,147 @@ test.describe("@phase32.2 baseline census (D-07)", () => {
     if (jasper) await jasper.kill();
   });
 
-  test.fixme(
-    "census: scripted session logs a before-count for every D-07 endpoint",
-    async ({ page }) => {
-      const endpoints: Record<string, RegExp> = {
-        "GET /mcp/grants": GRANTS_PATTERN,
-        "GET /tags": TAGS_PATTERN,
-        "GET /tree": /\/api\/v1\/tree(?:\?|$)/,
-        "GET /bookmarks": /\/api\/v1\/bookmarks(?:\?|$)/,
-        "GET /notes/{id}/backlinks": /\/api\/v1\/notes\/[^/]+\/backlinks(?:\?|$)/,
-        "GET /vault/about": /\/api\/v1\/vault\/about(?:\?|$)/,
-        "GET /vault/workspace": /\/api\/v1\/vault\/workspace(?:\?|$)/,
-        "GET /config": /\/api\/v1\/config(?:\?|$)/,
-        "GET /vault/current": /\/api\/v1\/vault\/current(?:\?|$)/,
-        "GET /vault/recent": /\/api\/v1\/vault\/recent(?:\?|$)/,
-        "GET /admin/status": /\/api\/v1\/admin\/status(?:\?|$)/,
-      };
+  test("scripted session stays within the per-endpoint request budget", async ({
+    page,
+  }) => {
+    const endpoints: Record<string, RegExp> = {
+      "GET /mcp/grants": GRANTS_PATTERN,
+      "GET /tags": TAGS_PATTERN,
+      "GET /tree": /\/api\/v1\/tree(?:\?|$)/,
+      "GET /bookmarks": /\/api\/v1\/bookmarks(?:\?|$)/,
+      "GET /notes/{id}/backlinks": /\/api\/v1\/notes\/[^/]+\/backlinks(?:\?|$)/,
+      "GET /vault/about": /\/api\/v1\/vault\/about(?:\?|$)/,
+      "GET /vault/workspace": /\/api\/v1\/vault\/workspace(?:\?|$)/,
+      "GET /config": /\/api\/v1\/config(?:\?|$)/,
+      "GET /vault/current": /\/api\/v1\/vault\/current(?:\?|$)/,
+      "GET /vault/recent": /\/api\/v1\/vault\/recent(?:\?|$)/,
+      "GET /admin/status": /\/api\/v1\/admin\/status(?:\?|$)/,
+    };
 
-      const { firstNoteId } = await seedInvestigationVault(page, jasper.baseURL);
-      const counters = Object.fromEntries(
-        Object.entries(endpoints).map(([label, pattern]) => [
-          label,
-          countRequests(page, pattern),
-        ]),
-      );
+    const { firstNoteId } = await seedInvestigationVault(page, jasper.baseURL);
+    const counters = Object.fromEntries(
+      Object.entries(endpoints).map(([label, pattern]) => [
+        label,
+        countRequests(page, pattern),
+      ]),
+    );
 
-      // 1. Open the app.
-      await openApp(page, jasper);
-      await settle(page);
+    // 1. Open the app.
+    await openApp(page, jasper);
+    await settle(page);
 
-      // 2. Open a note.
-      await openNoteFromTree(page, firstNoteId);
-      await settle(page);
+    // 2. Open a note.
+    await openNoteFromTree(page, firstNoteId);
+    await settle(page);
 
-      // 3. Open the right-rail backlinks panel ("Linked mentions" tab).
-      const tabRow = page.getByTestId("right-rail-tab-row");
-      if ((await tabRow.count()) === 0) {
-        const showPanelsBtn = page.getByRole("button", { name: "Show panels" });
-        if ((await showPanelsBtn.count()) > 0) await showPanelsBtn.click();
-        await expect(tabRow).toBeVisible({ timeout: 5_000 });
-      }
-      await tabRow.getByRole("button", { name: "Linked mentions" }).click();
-      await settle(page);
-
-      // 4. Open Settings, navigate to About.
-      await page.getByTestId("settings-menu-trigger").click();
-      const dialog = page.getByRole("dialog", { name: "Settings" });
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
-      await dialog.getByRole("button", { name: "About", exact: true }).click();
-      await settle(page);
-
-      // 5. Close Settings.
-      await page.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0, { timeout: 5_000 });
-      await settle(page);
-
-      // 6. Open a split pane.
-      await runCommand(page, "Split right");
-      await expect(page.getByTestId("tab-strip")).toHaveCount(2, {
-        timeout: 5_000,
+    // 3. Expand every folder.
+    const folderRows = page.locator('[data-tree-row-kind="folder"]');
+    const folderCount = await folderRows.count();
+    expect(folderCount, "expected all 12 seeded folders to be visible").toBe(12);
+    for (let i = 0; i < folderCount; i++) {
+      const row = folderRows.nth(i);
+      await row.click();
+      await expect(row).toHaveAttribute("aria-expanded", "true", {
+        timeout: 3_000,
       });
-      await settle(page);
+    }
+    await settle(page);
 
-      const results: Record<string, number> = {};
-      for (const [label, counter] of Object.entries(counters)) {
-        results[label] = counter.count();
-      }
-      // This case's entire purpose is to be run manually and its console
-      // output transcribed into the SUMMARY's before-count table (D-07).
-      console.log("D-07 baseline census:", JSON.stringify(results, null, 2));
-    },
-  );
+    // 4. Open the right-rail backlinks panel ("Linked mentions" tab).
+    const tabRow = page.getByTestId("right-rail-tab-row");
+    if ((await tabRow.count()) === 0) {
+      const showPanelsBtn = page.getByRole("button", { name: "Show panels" });
+      if ((await showPanelsBtn.count()) > 0) await showPanelsBtn.click();
+      await expect(tabRow).toBeVisible({ timeout: 5_000 });
+    }
+    await tabRow.getByRole("button", { name: "Linked mentions" }).click();
+    await settle(page);
+
+    // 5. Open the right-rail tag panel — a second, independent
+    // useTagBrowser() mount site alongside the editor pane's.
+    await tabRow.getByRole("button", { name: "Tags" }).click();
+    await settle(page);
+
+    // 6. Open Settings, navigate to About.
+    await page.getByTestId("settings-menu-trigger").click();
+    const dialog = page.getByRole("dialog", { name: "Settings" });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    await dialog.getByRole("button", { name: "About", exact: true }).click();
+    await settle(page);
+
+    // 7. Close Settings.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0, { timeout: 5_000 });
+    await settle(page);
+
+    // 8. Open a split pane — a third useTagBrowser()/second
+    // useBookmarks()/useFileTree() mount site.
+    await runCommand(page, "Split right");
+    await expect(page.getByTestId("tab-strip")).toHaveCount(2, {
+      timeout: 5_000,
+    });
+    await settle(page);
+
+    const results: Record<string, number> = {};
+    for (const [label, counter] of Object.entries(counters)) {
+      results[label] = counter.count();
+    }
+    // Printed unconditionally so a CI failure's actual counts are visible
+    // in the log without re-running locally.
+    console.log("D-07 standing budget — observed counts:", JSON.stringify(results, null, 2));
+
+    // Cached singleton resources: first-subscriber-triggers-fetch (D-14)
+    // means N mount sites (TreeRow x21, editor pane(s), right-rail panel,
+    // settings shell) share exactly one fetch — no invalidating WS event
+    // fires in this session (no grant/tag/bookmark/note/folder mutation
+    // through the UI). Plan 03 measured these exact-1 counts against the
+    // migrated binary for the grants/tags DoD cases.
+    expect(results["GET /mcp/grants"], JSON.stringify(counters["GET /mcp/grants"].urls())).toBe(1);
+    expect(results["GET /tags"], JSON.stringify(counters["GET /tags"].urls())).toBe(1);
+
+    // Cached singletons closed by plans 05/06/07 — each plan's own
+    // Before/After table recorded the post-migration count as exactly 1.
+    expect(results["GET /bookmarks"], JSON.stringify(counters["GET /bookmarks"].urls())).toBe(1);
+    expect(results["GET /vault/workspace"], JSON.stringify(counters["GET /vault/workspace"].urls())).toBe(1);
+    expect(results["GET /vault/about"], JSON.stringify(counters["GET /vault/about"].urls())).toBe(1);
+    expect(results["GET /notes/{id}/backlinks"], JSON.stringify(counters["GET /notes/{id}/backlinks"].urls())).toBe(1);
+
+    // Boot-scoped /config (D-15) — one shared fetch across every
+    // useConfig() mount site (App.tsx, SettingsDialogShell.tsx); no WS
+    // invalidation exists for config, so it never refetches mid-session.
+    expect(results["GET /config"], JSON.stringify(counters["GET /config"].urls())).toBe(1);
+
+    // Pass-through singletons (D-15 amended) — coalesced, never cached,
+    // called imperatively from TWO independent, legitimate boot-time
+    // mount sites that don't overlap in time (so they don't coalesce):
+    // App.tsx's BootGate (its own inline getCurrent() call) AND
+    // useVaultPicker() — hoisted by StatusBar.tsx/ActivityRibbon.tsx for
+    // the vault-switcher menu, which is mounted even when a vault is
+    // already open, not just inside <VaultPicker>. useVaultPicker.ts
+    // fires both getCurrent() and getRecent() together
+    // (Promise.all), so /vault/current sees both call sites (2) while
+    // /vault/recent sees only useVaultPicker's (1). Measured against the
+    // migrated binary, not assumed — the mount site was not obvious from
+    // this file's own imports alone.
+    expect(results["GET /vault/current"], JSON.stringify(counters["GET /vault/current"].urls())).toBe(2);
+    expect(results["GET /vault/recent"], JSON.stringify(counters["GET /vault/recent"].urls())).toBe(1);
+
+    // Cached, invalidatedBy: ["reindex:complete"] (D-15 amended) — one
+    // useMigrationStatus() mount site (App.tsx); no reindex runs in this
+    // session.
+    expect(results["GET /admin/status"], JSON.stringify(counters["GET /admin/status"].urls())).toBe(1);
+
+    // /tree carries a genuine race window (commit 7494174d /
+    // phase5_5-uat.spec.ts's UX-14 comment): a read that joins an
+    // in-flight fetch is occasionally followed by one extra never-join
+    // fetch if an invalidation lands in the same window. Plan 08 measured
+    // 2 for a session ending in a split pane (mount fetch + one further
+    // legitimate fetch from the second useFileTree()-subscribing screen
+    // transition); this session adds folder-expand and tag-panel steps
+    // that read the already-hydrated cache and do not themselves fetch.
+    expect(
+      results["GET /tree"],
+      JSON.stringify(counters["GET /tree"].urls()),
+    ).toBeLessThanOrEqual(3);
+  });
 });
