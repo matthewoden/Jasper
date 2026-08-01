@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,52 +14,13 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-//nolint:revive // generated interface name
-func (s *Server) GetFile(
-	_ context.Context,
-	req GetFileRequestObject,
-) (GetFileResponseObject, error) {
-	res := s.resolveFileUnderNotes(req.Params.Path)
-	if !res.ok {
-		if res.isMd {
-			return GetFile404JSONResponse(newError("not_found",
-				"markdown files are served via /notes/{id}")), nil
-		}
-		switch res.status {
-		case 400:
-			return GetFile400JSONResponse(newError(res.errCode, res.errMsg)), nil
-		case 403:
-			return GetFile403JSONResponse(newError(res.errCode, res.errMsg)), nil
-		case 404:
-			return GetFile404JSONResponse(newError(res.errCode, res.errMsg)), nil
-		default:
-			s.log.Error("GetFile: resolve", "path", req.Params.Path, "code", res.errCode)
-			return nil, errors.New("could not read file")
-		}
-	}
-	if res.fi.IsDir() {
-		return GetFile404JSONResponse(newError("not_found",
-			"path is a directory")), nil
-	}
-
-	fileData, readErr := os.ReadFile(res.abs)
-	if readErr != nil {
-		s.log.Error("GetFile: ReadFile", "path", res.abs, "err", readErr)
-		return nil, errors.New("could not read file")
-	}
-
-	return GetFile200ApplicationoctetStreamResponse{
-		Body:          bytes.NewReader(fileData),
-		ContentLength: int64(len(fileData)),
-	}, nil
-}
-
 // CreateFile implements POST /api/v1/files?path=<targetDir>.
 //
 // Pipeline:
 //
-//  1. Path-traversal hardening on the TARGET DIRECTORY (req.Params.Path).
-//     Rules 1–4 from GetFile; empty path (vault root) is accepted here.
+//  1. Path-traversal hardening on the TARGET DIRECTORY (req.Params.Path),
+//     via the same containment gate the read path uses; an empty path (the
+//     vault root) is accepted here.
 //  2. Lstat the cleaned target — must exist (NO auto-mkdir for safety),
 //     must NOT be a symlink (403), must be a directory (400 otherwise).
 //  3. Read multipart body's "file" part.
@@ -250,7 +210,7 @@ func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
 }
 
 // DeleteFile implements DELETE /api/v1/files?path=...
-// Mirrors GetFile's pipeline; refuses .md (those are notes); refuses
+// Shares resolveFileUnderNotes with the read path; refuses .md (those are notes); refuses
 // directories (those are folders).
 //
 //nolint:revive // generated interface name

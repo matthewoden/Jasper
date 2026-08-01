@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -240,6 +241,65 @@ func (r *Runner) preflight() error {
 	return nil
 }
 
+// Queryer is the read-only subset of *sql.DB the migration-state helpers need.
+// Exists so diagnostics (jasper doctor) can ask the same questions the runner
+// asks, over their own read-only connection, without constructing a Runner.
+type Queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// PendingMigrations reports which embedded migrations are not yet recorded in
+// schema_migrations, applying the same discovery and the same filename
+// validation the runner applies before it will run anything.
+//
+// Sharing this matters more than the deduplication: a diagnostic that
+// enumerates migrations by its own looser rule will call a file "pending" that
+// the runner would refuse outright, and tell the user to restart a server that
+// then declines to boot.
+//
+// Read-only — safe to call against a `?mode=ro` connection.
+func PendingMigrations(ctx context.Context, reader Queryer, fsys fs.FS) ([]string, error) {
+	applied, err := AppliedMigrations(ctx, reader)
+	if err != nil {
+		return nil, err
+	}
+	return pendingFromApplied(applied, fsys)
+}
+
+// AppliedMigrations returns the set of versions recorded in schema_migrations.
+// An absent table is not an error — it means nothing has been applied yet.
+func AppliedMigrations(ctx context.Context, reader Queryer) (map[string]struct{}, error) {
+	out := make(map[string]struct{})
+
+	var tableName string
+	row := reader.QueryRowContext(ctx,
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`)
+	if err := row.Scan(&tableName); err != nil {
+		if errors.Is(err, sqlNoRows()) {
+			return out, nil
+		}
+		return nil, fmt.Errorf("check schema_migrations table: %w", err)
+	}
+
+	rows, err := reader.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	if err != nil {
+		return nil, fmt.Errorf("query schema_migrations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("scan version: %w", err)
+		}
+		out[v] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows.Err: %w", err)
+	}
+	return out, nil
+}
+
 func (r *Runner) discoverPending(ctx context.Context) ([]string, error) {
 	applied, err := r.appliedMigrations(ctx)
 	if err != nil {
@@ -249,7 +309,11 @@ func (r *Runner) discoverPending(ctx context.Context) ([]string, error) {
 }
 
 func (r *Runner) pendingFromApplied(_ context.Context, applied map[string]struct{}) ([]string, error) {
-	entries, err := fs.ReadDir(r.Migrations, ".")
+	return pendingFromApplied(applied, r.Migrations)
+}
+
+func pendingFromApplied(applied map[string]struct{}, fsys fs.FS) ([]string, error) {
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return nil, fmt.Errorf("read migrations FS: %w", err)
 	}
@@ -277,34 +341,7 @@ func (r *Runner) pendingFromApplied(_ context.Context, applied map[string]struct
 }
 
 func (r *Runner) appliedMigrations(ctx context.Context) (map[string]struct{}, error) {
-	out := make(map[string]struct{})
-
-	var tableName string
-	row := r.Pair.Reader.QueryRowContext(ctx,
-		`SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'`)
-	if err := row.Scan(&tableName); err != nil {
-		if errors.Is(err, sqlNoRows()) {
-			return out, nil
-		}
-		return nil, fmt.Errorf("check schema_migrations table: %w", err)
-	}
-
-	rows, err := r.Pair.Reader.QueryContext(ctx, `SELECT version FROM schema_migrations`)
-	if err != nil {
-		return nil, fmt.Errorf("query schema_migrations: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var v string
-		if err := rows.Scan(&v); err != nil {
-			return nil, fmt.Errorf("scan version: %w", err)
-		}
-		out[v] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows.Err: %w", err)
-	}
-	return out, nil
+	return AppliedMigrations(ctx, r.Pair.Reader)
 }
 
 func (r *Runner) applyAll(ctx context.Context, pending []string) string {

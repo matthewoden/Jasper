@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,15 +21,47 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-func callGetFile(t *testing.T, srv *Server, relPath string) GetFileResponseObject {
+// callServeFile drives the handler actually mounted at GET /api/v1/files.
+// The generated GetFile is a stub (see files_stub.go) — asserting against it
+// would be testing dead code.
+func callServeFile(t *testing.T, srv *Server, relPath string) (*httptest.ResponseRecorder, string) {
 	t.Helper()
-	resp, err := srv.GetFile(context.Background(), GetFileRequestObject{
-		Params: GetFileParams{Path: relPath},
-	})
-	if err != nil {
-		t.Fatalf("GetFile error: %v", err)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files?path="+url.QueryEscape(relPath), nil)
+	rec := httptest.NewRecorder()
+	srv.ServeFile(rec, req)
+	return rec, rec.Body.String()
+}
+
+// fileResponse is the wire shape of a GET /api/v1/files response: the status,
+// and the JSON error code when the status is not 200.
+type fileResponse struct {
+	status int
+	code   string
+	body   string
+}
+
+func callGetFile(t *testing.T, srv *Server, relPath string) fileResponse {
+	t.Helper()
+	rec, body := callServeFile(t, srv, relPath)
+	out := fileResponse{status: rec.Code, body: body}
+	if rec.Code != http.StatusOK {
+		var e struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal([]byte(body), &e); err != nil {
+			t.Fatalf("path=%q: status %d body is not a JSON error: %q", relPath, rec.Code, body)
+		}
+		out.code = e.Code
 	}
-	return resp
+	return out
+}
+
+// expectFileError asserts the status and error code of a rejected request.
+func expectFileError(t *testing.T, got fileResponse, path string, wantStatus int, wantCode string) {
+	t.Helper()
+	if got.status != wantStatus || got.code != wantCode {
+		t.Errorf("path=%q: got %d/%q, want %d/%q", path, got.status, got.code, wantStatus, wantCode)
+	}
 }
 
 // TestGetFile_HappyPath: a real file under notes/sub/ returns 200 with its bytes.
@@ -48,20 +82,12 @@ func TestGetFile_HappyPath(t *testing.T) {
 		t.Fatalf("write photo.png: %v", err)
 	}
 
-	resp := callGetFile(t, srv, "sub/photo.png")
-	got200, ok := resp.(GetFile200ApplicationoctetStreamResponse)
-	if !ok {
-		t.Fatalf("expected GetFile200ApplicationoctetStreamResponse, got %T", resp)
+	got := callGetFile(t, srv, "sub/photo.png")
+	if got.status != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body %q)", got.status, got.body)
 	}
-	body, err := io.ReadAll(got200.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	if string(body) != string(want) {
-		t.Errorf("body: got %q, want %q", body, want)
-	}
-	if got200.ContentLength != int64(len(want)) {
-		t.Errorf("ContentLength: got %d, want %d", got200.ContentLength, len(want))
+	if got.body != string(want) {
+		t.Errorf("body: got %q, want %q", got.body, want)
 	}
 }
 
@@ -77,15 +103,7 @@ func TestGetFile_PathTraversal(t *testing.T) {
 		"sub/..",
 	}
 	for _, p := range bad {
-		resp := callGetFile(t, srv, p)
-		got400, ok := resp.(GetFile400JSONResponse)
-		if !ok {
-			t.Errorf("path=%q: expected GetFile400JSONResponse, got %T", p, resp)
-			continue
-		}
-		if got400.Code != "invalid_path" {
-			t.Errorf("path=%q: code: got %q, want %q", p, got400.Code, "invalid_path")
-		}
+		expectFileError(t, callGetFile(t, srv, p), p, http.StatusBadRequest, "invalid_path")
 	}
 }
 
@@ -99,14 +117,8 @@ func TestGetFile_AbsolutePath(t *testing.T) {
 	t.Parallel()
 	srv, _ := newAttachmentTestServer(t, nil)
 
-	resp := callGetFile(t, srv, "/etc/passwd")
-	got400, ok := resp.(GetFile400JSONResponse)
-	if !ok {
-		t.Fatalf("expected GetFile400JSONResponse, got %T", resp)
-	}
-	if got400.Code != "invalid_path" {
-		t.Errorf("code: got %q, want %q", got400.Code, "invalid_path")
-	}
+	expectFileError(t, callGetFile(t, srv, "/etc/passwd"), "/etc/passwd",
+		http.StatusBadRequest, "invalid_path")
 }
 
 // TestGetFile_Symlink: a symlink under notes/ pointing outside the vault
@@ -127,14 +139,8 @@ func TestGetFile_Symlink(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Remove(symlinkPath) })
 
-	resp := callGetFile(t, srv, "evil.bin")
-	got403, ok := resp.(GetFile403JSONResponse)
-	if !ok {
-		t.Fatalf("expected GetFile403JSONResponse, got %T", resp)
-	}
-	if got403.Code != "symlink_rejected" {
-		t.Errorf("code: got %q, want %q", got403.Code, "symlink_rejected")
-	}
+	expectFileError(t, callGetFile(t, srv, "evil.bin"), "evil.bin",
+		http.StatusForbidden, "symlink_rejected")
 }
 
 // TestGetFile_NotFound: an absent file returns 404.
@@ -142,14 +148,8 @@ func TestGetFile_NotFound(t *testing.T) {
 	t.Parallel()
 	srv, _ := newAttachmentTestServer(t, nil)
 
-	resp := callGetFile(t, srv, "nope.png")
-	got404, ok := resp.(GetFile404JSONResponse)
-	if !ok {
-		t.Fatalf("expected GetFile404JSONResponse, got %T", resp)
-	}
-	if got404.Code != "not_found" {
-		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
-	}
+	expectFileError(t, callGetFile(t, srv, "nope.png"), "nope.png",
+		http.StatusNotFound, "not_found")
 }
 
 // TestGetFile_RootMd_Rejected: .md files (any case) are refused with 404 to
@@ -164,15 +164,7 @@ func TestGetFile_RootMd_Rejected(t *testing.T) {
 	}
 
 	for _, p := range []string{"leak.md", "leak.MD", "sub/leak.md"} {
-		resp := callGetFile(t, srv, p)
-		got404, ok := resp.(GetFile404JSONResponse)
-		if !ok {
-			t.Errorf("path=%q: expected GetFile404JSONResponse, got %T", p, resp)
-			continue
-		}
-		if got404.Code != "not_found" {
-			t.Errorf("path=%q: code: got %q, want %q", p, got404.Code, "not_found")
-		}
+		expectFileError(t, callGetFile(t, srv, p), p, http.StatusNotFound, "not_found")
 	}
 }
 

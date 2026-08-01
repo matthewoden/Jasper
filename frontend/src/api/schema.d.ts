@@ -131,18 +131,47 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Stream any file under the notes vault by relative path (UAT-3 R7 / Plan 07-32a).
+         * Stream any file under the notes vault by relative path.
          * @description Generic file streamer. Returns ANY file located under <dataDir>/notes/<path>
          *     without requiring a note context. Used by the sidebar tree's file-click
          *     handler when the user selects a non-markdown file (image attachments,
-         *     PDFs, etc.). Path-traversal hardened with the same 5-rule pipeline as
-         *     GetAttachment. Returns 404 for .md files (use /notes/{id} instead).
+         *     PDFs, etc.). Returns 404 for .md files (use /notes/{id} instead).
          *
          *     path is passed as a query parameter (mirroring DELETE /folders) because
          *     OpenAPI 3.1 has no native multi-segment path-wildcard syntax and
          *     oapi-codegen does not emit chi `*` catch-all routes. The query-param
          *     approach handles slash-containing relative paths cleanly while keeping
          *     the route inside the generated StrictServerInterface.
+         *
+         *     **The generated handler for this route is a stub and is unreachable.**
+         *     app.go and lifecycle.go mount `api.Server.ServeFile` AFTER
+         *     `api.HandlerFromMux`, so it wins under chi's last-registration-wins —
+         *     the same arrangement `/ws` uses. The path stays in this spec so every
+         *     HTTP route the server answers is described here.
+         *
+         *     The hand-mounted handler exists because the generated response type can
+         *     set only Content-Type and Content-Length, and hard-codes the former to
+         *     `application/octet-stream`. The live route needs neither value:
+         *
+         *     - **Content-Type is sniffed** via http.DetectContentType, with an
+         *       explicit `image/svg+xml` override for `.svg` — DetectContentType
+         *       returns `text/xml` for SVG, which browsers refuse to render in `<img>`.
+         *     - **Content-Disposition** is `inline` for an allowlist of media types
+         *       (images including SVG, audio, video, PDF) and `attachment` for
+         *       everything else, so a planted `.html` or `.xhtml` cannot be navigated
+         *       to as a live document.
+         *     - **Content-Security-Policy** is `default-src 'none'; sandbox` on every
+         *       response, alongside `X-Content-Type-Options: nosniff`. Files are
+         *       served from the app's own origin, so without this an SVG containing
+         *       `<script>`, opened as a top-level document, would execute with full
+         *       same-origin API access to every note. `sandbox` loads it into an
+         *       opaque origin with scripting disabled; it does not affect subresource
+         *       loads, so images embedded in notes still render.
+         *
+         *     Containment: the path is resolved through `fsstore.ResolveContained`,
+         *     which decides containment before stat'ing the leaf, so a path escaping
+         *     the vault via a symlinked ancestor is rejected identically whether or
+         *     not the target exists.
          */
         get: operations["getFile"];
         put?: never;
@@ -2522,7 +2551,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Binary stream with Content-Type header. */
+            /**
+             * @description Binary stream. The declared `application/octet-stream` reflects the
+             *     generated stub, NOT the live handler, which sends a sniffed media
+             *     type plus Content-Disposition and the raw-file security headers
+             *     described above. oapi-codegen has no way to express "whatever the
+             *     handler decides"; treat the description as authoritative here.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
 
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/platform"
 	"github.com/matthewoden/jasper/backend/internal/static"
@@ -66,23 +68,17 @@ type DoctorCheck struct {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	appJSONPath, _ := vault.AppJSONPath()
-	appState, _ := vault.LoadAppJSON(appJSONPath)
+	res := vault.ResolveForCLI(vaultFlag)
+	appJSONPath := res.AppJSONPath
+	dataDir := res.DataDir
 
+	// checkCurrentVaultExists reports on the SELECTED vault, which is empty
+	// when none is selected — distinct from dataDir, which always falls back.
 	currentVault := ""
-	if vaultFlag != "" {
-		if c, err := vault.Canonicalize(vaultFlag); err == nil {
-			currentVault = c
-		} else {
-			currentVault = vaultFlag
-		}
-	} else if appState != nil {
-		currentVault = appState.CurrentVault
-	}
-
-	dataDir := currentVault
-	if dataDir == "" {
-		dataDir = config.DefaultDataDir()
+	if res.Overridden {
+		currentVault = res.DataDir
+	} else if res.State != nil {
+		currentVault = res.State.CurrentVault
 	}
 
 	cfg, _ := config.Load(dataDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -264,6 +260,12 @@ func pathIsDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// checkMigrationState asks migrate.PendingMigrations rather than re-deriving
+// the answer. The previous local implementation had already drifted: it counted
+// any *.sql as a migration, while the runner validates every filename against
+// `^[0-9]{3}_[a-z0-9_]+\.sql$` and refuses to run if one does not match. A
+// misnamed file was therefore reported as merely "pending", with a hint telling
+// the user to restart a server that would then decline to boot.
 func checkMigrationState(dir string) DoctorCheck {
 	dbPath := vault.AppDBPath(dir)
 	if _, err := os.Stat(dbPath); err != nil {
@@ -279,55 +281,15 @@ func checkMigrationState(dir string) DoctorCheck {
 	}
 	defer func() { _ = db.Close() }()
 
-	applied := map[string]bool{}
-	rows, queryErr := db.Query(`SELECT version FROM schema_migrations`)
-	if queryErr != nil {
-		msg := queryErr.Error()
-		if strings.Contains(msg, "no such table") {
-			return DoctorCheck{
-				Name:   "migration state",
-				Status: "fail",
-				Hint:   "schema_migrations table missing — restart 'jasper serve' to apply migrations",
-			}
-		}
-		return DoctorCheck{
-			Name:   "migration state",
-			Status: "fail",
-			Hint:   "query schema_migrations: " + msg,
-		}
-	}
-	for rows.Next() {
-		var v string
-		if scanErr := rows.Scan(&v); scanErr != nil {
-			_ = rows.Close()
-			return DoctorCheck{Name: "migration state", Status: "fail", Hint: "scan schema_migrations.version: " + scanErr.Error()}
-		}
-		applied[v] = true
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "iterate schema_migrations: " + rowsErr.Error()}
-	}
-	_ = rows.Close()
-
-	entries, err := migrations.FS.ReadDir(".")
+	pending, err := migrate.PendingMigrations(context.Background(), db, migrations.FS)
 	if err != nil {
-		return DoctorCheck{Name: "migration state", Status: "fail", Hint: "could not enumerate embedded migrations"}
+		return DoctorCheck{Name: "migration state", Status: "fail", Hint: err.Error()}
 	}
-	var missing []string
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".sql") {
-			continue
-		}
-		if !applied[name] {
-			missing = append(missing, name)
-		}
-	}
-	if len(missing) > 0 {
+	if len(pending) > 0 {
 		return DoctorCheck{
 			Name:   "migration state",
 			Status: "fail",
-			Hint:   fmt.Sprintf("pending migrations: %s — restart 'jasper serve' to apply", strings.Join(missing, ", ")),
+			Hint:   fmt.Sprintf("pending migrations: %s — restart 'jasper serve' to apply", strings.Join(pending, ", ")),
 		}
 	}
 	return DoctorCheck{Name: "migration state", Status: "ok"}

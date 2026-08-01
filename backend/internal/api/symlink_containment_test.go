@@ -2,10 +2,7 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,28 +49,16 @@ func newSymlinkEscapeVault(t *testing.T, summaries []notes.NoteSummary) (*Server
 	return srv, dataDir, external
 }
 
-// callServeFile drives the hand-mounted ServeFile handler and returns the
-// recorder plus the body.
-func callServeFile(t *testing.T, srv *Server, relPath string) (*httptest.ResponseRecorder, string) {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/files?path="+url.QueryEscape(relPath), nil)
-	rec := httptest.NewRecorder()
-	srv.ServeFile(rec, req)
-	return rec, rec.Body.String()
-}
-
 // TestGetFile_RejectsSymlinkedAncestor covers GET /api/v1/files.
 func TestGetFile_RejectsSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
 	srv, _, _ := newSymlinkEscapeVault(t, nil)
 
-	resp := callGetFile(t, srv, "shared/secret.txt")
-	if _, leaked := resp.(GetFile200ApplicationoctetStreamResponse); leaked {
-		t.Fatal("GET /files read a file outside the vault through a symlinked parent directory")
+	got := callGetFile(t, srv, "shared/secret.txt")
+	if got.status == http.StatusOK {
+		t.Fatalf("GET /files read a file outside the vault through a symlinked parent: %q", got.body)
 	}
-	if _, ok := resp.(GetFile400JSONResponse); !ok {
-		t.Errorf("expected GetFile400JSONResponse, got %T", resp)
-	}
+	expectFileError(t, got, "shared/secret.txt", http.StatusBadRequest, "invalid_path")
 }
 
 // TestServeFile_RejectsSymlinkedAncestor covers the hand-mounted ServeFile,
@@ -197,16 +182,9 @@ func TestContainment_RevealsNothingAboutFilesOutsideTheVault(t *testing.T) {
 	existing := callGetFile(t, srv, "shared/secret.txt") // exists outside the vault
 	missing := callGetFile(t, srv, "shared/nope.txt")    // does not exist
 
-	if fmt.Sprintf("%T", existing) != fmt.Sprintf("%T", missing) {
-		t.Errorf("escaped paths must be indistinguishable, got %T for an existing file and %T for a missing one",
-			existing, missing)
-	}
-
-	existingRec, _ := callServeFile(t, srv, "shared/secret.txt")
-	missingRec, _ := callServeFile(t, srv, "shared/nope.txt")
-	if existingRec.Code != missingRec.Code {
-		t.Errorf("ServeFile: status %d for an existing file vs %d for a missing one — leaks existence outside the vault",
-			existingRec.Code, missingRec.Code)
+	if existing.status != missing.status || existing.code != missing.code {
+		t.Errorf("escaped paths must be indistinguishable: existing gave %d/%q, missing gave %d/%q",
+			existing.status, existing.code, missing.status, missing.code)
 	}
 }
 

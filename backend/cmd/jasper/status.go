@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/installer"
+	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
@@ -48,28 +50,10 @@ This is read-only; it does not modify any service files.`,
 func runStatus(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 
-	appJSONPath, appJSONErr := vault.AppJSONPath()
-	appHome, appHomeErr := vault.AppHomePath()
-
-	var appState *vault.AppState
-	if appJSONErr == nil {
-		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
-			appState = state
-		}
-	}
-
-	var dataDir string
-	if vaultFlag != "" {
-		if c, err := vault.Canonicalize(vaultFlag); err == nil {
-			dataDir = c
-		} else {
-			dataDir = vaultFlag
-		}
-	} else if appState != nil && appState.CurrentVault != "" {
-		dataDir = appState.CurrentVault
-	} else {
-		dataDir = config.DefaultDataDir()
-	}
+	res := vault.ResolveForCLI(vaultFlag)
+	appHome, appHomeErr := res.AppHomePath, res.AppHomeErr
+	appState := res.State
+	dataDir := res.DataDir
 
 	if vaultFlag != "" {
 		canonical := dataDir
@@ -195,6 +179,9 @@ func humanState(s service.Status) string {
 	}
 }
 
+// summarizeGrants reads through mcp.ACL rather than querying mcp_write_grants
+// directly, so the grant schema has one reader. The hand-rolled query here had
+// already diverged in its ordering and silently skipped rows whose scan failed.
 func summarizeGrants(dataDir string) (int, string) {
 	dbPath := vault.AppDBPath(dataDir)
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
@@ -202,26 +189,20 @@ func summarizeGrants(dataDir string) (int, string) {
 		return 0, "could not read grants"
 	}
 	defer func() { _ = db.Close() }()
-	rows, err := db.Query(`SELECT folder_path, level FROM mcp_write_grants ORDER BY folder_path`)
+
+	grants, err := mcp.NewACL(db).List(context.Background())
 	if err != nil {
 		return 0, "could not read grants"
 	}
-	defer func() { _ = rows.Close() }()
-	var parts []string
-	n := 0
-	for rows.Next() {
-		var folder string
-		var level int
-		if err := rows.Scan(&folder, &level); err != nil {
-			continue
-		}
+	parts := make([]string, 0, len(grants))
+	for _, g := range grants {
 		tier := "Tier 1"
-		if level == 2 {
+		if g.Level == mcp.TierFull {
 			tier = "Tier 2"
 		}
-		parts = append(parts, fmt.Sprintf("%s in %s/", tier, folder))
-		n++
+		parts = append(parts, fmt.Sprintf("%s in %s/", tier, g.FolderPath))
 	}
+	n := len(parts)
 	sort.Strings(parts)
 	if n == 0 {
 		return 0, "no grants yet"

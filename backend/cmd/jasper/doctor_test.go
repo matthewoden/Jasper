@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/app"
 	"github.com/matthewoden/jasper/backend/internal/config"
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/platform"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
@@ -644,5 +646,65 @@ func TestCheckDataDirPerms_PassesOnFreshlyCreatedVault(t *testing.T) {
 
 	if r := checkDataDirPerms(dir); r.Status != "ok" {
 		t.Errorf("doctor fails on a vault Jasper just created: %+v", r)
+	}
+}
+
+// TestCheckMigrationState_MisnamedMigrationIsNotReportedAsPending pins the
+// drift that motivated sharing migrate.PendingMigrations.
+//
+// The runner validates every embedded migration filename against
+// `^[0-9]{3}_[a-z0-9_]+\.sql$` and refuses to run when one does not match.
+// doctor's own enumeration counted any *.sql, so it called such a file
+// "pending" and told the user to restart 'jasper serve' — which would then
+// decline to boot. A diagnostic that sends the user in a circle is worse than
+// one that says nothing.
+func TestCheckMigrationState_MisnamedMigrationIsNotReportedAsPending(t *testing.T) {
+	dir := t.TempDir()
+	jasperDir := filepath.Join(dir, vault.SubdirName)
+	if err := os.MkdirAll(jasperDir, 0o700); err != nil {
+		t.Fatalf("mkdir .jasper: %v", err)
+	}
+
+	// A database with every real migration applied, so the only thing that can
+	// make the check fail is the misnamed file.
+	dbPath := vault.AppDBPath(dir)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version TEXT PRIMARY KEY)`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	entries, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	for _, e := range entries {
+		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, e.Name()); err != nil {
+			t.Fatalf("insert %s: %v", e.Name(), err)
+		}
+	}
+	_ = db.Close()
+
+	if r := checkMigrationState(dir); r.Status != "ok" {
+		t.Fatalf("precondition: all-applied vault should pass, got %+v", r)
+	}
+
+	// Now the misnamed file, injected the same way the runner would see it.
+	bad := fstest.MapFS{
+		"001_initial.sql":  &fstest.MapFile{Data: []byte("SELECT 1;")},
+		"002_Bad-Name.sql": &fstest.MapFile{Data: []byte("SELECT 1;")},
+	}
+	db2, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	_, err = migrate.PendingMigrations(context.Background(), db2, bad)
+	if err == nil {
+		t.Error("a migration filename the runner would reject must surface as an error, not as a pending migration")
+	} else if !strings.Contains(err.Error(), "002_Bad-Name.sql") {
+		t.Errorf("error should name the offending file, got: %v", err)
 	}
 }

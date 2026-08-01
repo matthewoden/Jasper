@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"mime/multipart"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -65,18 +66,13 @@ func TestPathTraversal_AllEndpoints(t *testing.T) {
 		for _, tc := range baseTraversalPayloads {
 			tc := tc
 			t.Run(tc.Name, func(t *testing.T) {
-				resp, err := f.srv.GetFile(context.Background(), GetFileRequestObject{
-					Params: GetFileParams{Path: tc.Payload},
-				})
-				if err != nil {
-					t.Fatalf("GetFile returned err: %v", err)
-				}
+				got := callGetFile(t, f.srv, tc.Payload)
 
-				switch resp.(type) {
-				case GetFile400JSONResponse, GetFile403JSONResponse, GetFile404JSONResponse:
+				switch got.status {
+				case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
 
 				default:
-					t.Errorf("payload=%q: expected GetFile{400,403,404}JSONResponse, got %T", tc.Payload, resp)
+					t.Errorf("payload=%q: expected 400/403/404, got %d (%q)", tc.Payload, got.status, got.body)
 				}
 			})
 		}
