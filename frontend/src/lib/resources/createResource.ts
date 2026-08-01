@@ -209,12 +209,16 @@ function invalidateEntry<T>(
 ): Promise<T> {
   // A resource nobody is looking at costs nothing: mark it stale instead
   // of fetching. The next 0->1 subscribe transition sees a non-hydrated
-  // entry and fetches fresh via read().
-  if (entry.listeners.size === 0) {
+  // entry and fetches fresh via read(). This only applies to cached/
+  // boot-scoped modes, which retain a value to serve on that next
+  // subscribe. A pass-through resource retains nothing, and its callers
+  // (e.g. notesApi's getNoteFresh) never subscribe — they call invalidate()
+  // directly and await the result. Skipping the fetch there would resolve
+  // every such call to undefined instead of the server truth it was asked
+  // for (D-06 lost-write risk), so pass-through always fetches.
+  if (mode !== "pass-through" && entry.listeners.size === 0) {
     entry.hydrated = false;
-    if (mode === "cached" || mode === "boot-scoped") {
-      entry.data = undefined;
-    }
+    entry.data = undefined;
     notify(entry);
     return Promise.resolve(entry.data as T);
   }

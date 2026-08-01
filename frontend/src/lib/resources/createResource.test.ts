@@ -264,6 +264,19 @@ describe("createResource — coalescer", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("REGRESSION pass-through invalidate with zero subscribers still fetches (D-06): a pass-through resource has no persistent subscriber by construction, so the zero-subscriber stale-mark shortcut must not apply to it", async () => {
+    const fetcher = vi.fn((id: string) => Promise.resolve(`fresh-${id}`));
+    const keyed = createKeyedResource("test-pass-through-invalidate", fetcher, {
+      mode: "pass-through",
+    });
+
+    const result = await keyed.forKey("abc").invalidate();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith("abc");
+    expect(result).toBe("fresh-abc");
+  });
+
   it("clearAllResources drops every entry's data", async () => {
     const fetcher = vi.fn().mockResolvedValue("value");
     const resource = createResource("test-clear-all", fetcher, {

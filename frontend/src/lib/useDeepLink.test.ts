@@ -5,12 +5,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
-const getMock = vi.fn();
+const getNoteMock = vi.fn();
+const getNoteByPathMock = vi.fn();
 
-vi.mock("../api/client", () => ({
-  client: {
-    GET: (...args: unknown[]) => getMock(...args),
-  },
+vi.mock("./notesApi", () => ({
+  getNote: (...args: unknown[]) => getNoteMock(...args),
+  getNoteByPath: (...args: unknown[]) => getNoteByPathMock(...args),
 }));
 
 import { useDeepLink } from "./useDeepLink";
@@ -53,7 +53,8 @@ function setUrl(search: string): void {
 }
 
 beforeEach(() => {
-  getMock.mockReset();
+  getNoteMock.mockReset();
+  getNoteByPathMock.mockReset();
   usePaneStore.getState().clearAll();
   openInActivePaneSpy = vi.spyOn(usePaneStore.getState(), "openInActivePane");
 
@@ -76,7 +77,7 @@ afterEach(() => {
 describe("useDeepLink", () => {
   it("DL-1: ?note=<uuid> resolves → openInActivePane called + URL cleaned", async () => {
     setUrl(`note=${NOTE_ID}`);
-    getMock.mockResolvedValue({
+    getNoteMock.mockResolvedValue({
       data: { id: NOTE_ID, path: "foo.md", content: "", updated_at: "" },
       error: undefined,
     });
@@ -84,9 +85,8 @@ describe("useDeepLink", () => {
     renderHook(() => useDeepLink(true));
 
     await waitFor(() => expect(openInActivePaneSpy).toHaveBeenCalledWith(NOTE_ID));
-    expect(getMock).toHaveBeenCalledWith("/notes/{id}", {
-      params: { path: { id: NOTE_ID } },
-    });
+    expect(getNoteMock).toHaveBeenCalledWith(NOTE_ID);
+    expect(getNoteByPathMock).not.toHaveBeenCalled();
     await waitFor(() => expect(replaceStateSpy).toHaveBeenCalled());
     const lastCallUrl = replaceStateSpy.mock.calls[0]?.[2] as string;
     expect(lastCallUrl).not.toMatch(/note=/);
@@ -95,7 +95,7 @@ describe("useDeepLink", () => {
 
   it("DL-2: ?path=<rel> resolves → openInActivePane called + URL cleaned", async () => {
     setUrl("path=projects%2Falpha.md");
-    getMock.mockResolvedValue({
+    getNoteByPathMock.mockResolvedValue({
       data: {
         id: NOTE_ID,
         path: "projects/alpha.md",
@@ -108,9 +108,8 @@ describe("useDeepLink", () => {
     renderHook(() => useDeepLink(true));
 
     await waitFor(() => expect(openInActivePaneSpy).toHaveBeenCalledWith(NOTE_ID));
-    expect(getMock).toHaveBeenCalledWith("/notes/by-path", {
-      params: { query: { path: "projects/alpha.md" } },
-    });
+    expect(getNoteByPathMock).toHaveBeenCalledWith("projects/alpha.md");
+    expect(getNoteMock).not.toHaveBeenCalled();
     await waitFor(() => expect(replaceStateSpy).toHaveBeenCalled());
     expect(assignSpy).not.toHaveBeenCalled();
   });
@@ -118,14 +117,15 @@ describe("useDeepLink", () => {
   it("DL-3: no query params → no API call, no navigation", () => {
     setUrl("");
     renderHook(() => useDeepLink(true));
-    expect(getMock).not.toHaveBeenCalled();
+    expect(getNoteMock).not.toHaveBeenCalled();
+    expect(getNoteByPathMock).not.toHaveBeenCalled();
     expect(openInActivePaneSpy).not.toHaveBeenCalled();
     expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("DL-4: ?note=<uuid> miss → window.location.assign /note-not-found", async () => {
     setUrl(`note=${NOTE_ID}`);
-    getMock.mockResolvedValue({
+    getNoteMock.mockResolvedValue({
       data: undefined,
       error: { code: "not_found", message: "no such note" },
     });
@@ -141,31 +141,29 @@ describe("useDeepLink", () => {
 
   it("DL-5: both ?note= and ?path= → ?note wins (D-30)", async () => {
     setUrl(`note=${NOTE_ID}&path=foo.md`);
-    getMock.mockResolvedValue({
+    getNoteMock.mockResolvedValue({
       data: { id: NOTE_ID, path: "foo.md", content: "", updated_at: "" },
       error: undefined,
     });
 
     renderHook(() => useDeepLink(true));
 
-    await waitFor(() => expect(getMock).toHaveBeenCalled());
-    expect(getMock).toHaveBeenCalledWith("/notes/{id}", {
-      params: { path: { id: NOTE_ID } },
-    });
-    expect(getMock).not.toHaveBeenCalledWith("/notes/by-path", expect.anything());
+    await waitFor(() => expect(getNoteMock).toHaveBeenCalled());
+    expect(getNoteMock).toHaveBeenCalledWith(NOTE_ID);
+    expect(getNoteByPathMock).not.toHaveBeenCalled();
   });
 
   it("DL-6: treeReady=false → no API call (gate honored)", () => {
     setUrl(`note=${NOTE_ID}`);
     renderHook(() => useDeepLink(false));
-    expect(getMock).not.toHaveBeenCalled();
+    expect(getNoteMock).not.toHaveBeenCalled();
     expect(openInActivePaneSpy).not.toHaveBeenCalled();
     expect(assignSpy).not.toHaveBeenCalled();
   });
 
   it("DL-7: ?note= network error → navigates to /note-not-found", async () => {
     setUrl(`note=${NOTE_ID}`);
-    getMock.mockRejectedValue(new Error("network down"));
+    getNoteMock.mockRejectedValue(new Error("network down"));
 
     renderHook(() => useDeepLink(true));
 

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./notesApi", () => ({
   getNote: vi.fn(),
+  getNoteFresh: vi.fn(),
   updateNote: vi.fn(),
 }));
 
@@ -18,7 +19,7 @@ vi.mock("./treeApi", () => ({
   postNoteMove: vi.fn(),
 }));
 
-import { getNote, updateNote } from "./notesApi";
+import { getNoteFresh, updateNote } from "./notesApi";
 import { postNoteMove } from "./treeApi";
 import {
   __resetAllControllersForTest,
@@ -26,12 +27,12 @@ import {
   releaseController,
 } from "./noteBufferController";
 
-const getNoteMock = vi.mocked(getNote);
+const getNoteFreshMock = vi.mocked(getNoteFresh);
 const updateNoteMock = vi.mocked(updateNote);
 const postNoteMoveMock = vi.mocked(postNoteMove);
 
 type UpdateReturn = Awaited<ReturnType<typeof updateNote>>;
-type GetReturn = Awaited<ReturnType<typeof getNote>>;
+type GetReturn = Awaited<ReturnType<typeof getNoteFresh>>;
 
 function okUpdate(updatedAt = "2026-01-01T00:00:00Z"): UpdateReturn {
   return {
@@ -57,7 +58,7 @@ function okGet(content: string, path = "n1.md"): GetReturn {
 beforeEach(() => {
   vi.useFakeTimers();
   __resetAllControllersForTest();
-  getNoteMock.mockReset();
+  getNoteFreshMock.mockReset();
   updateNoteMock.mockReset();
   postNoteMoveMock.mockReset();
   updateNoteMock.mockResolvedValue(okUpdate());
@@ -205,7 +206,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
 
-    getNoteMock.mockResolvedValueOnce(okGet("server content"));
+    getNoteFreshMock.mockResolvedValueOnce(okGet("server content"));
 
     c.onNoteUpdated({ id: "note-1", path: "n1.md", updated_at: "2026-01-01T00:00:00Z" });
     await Promise.resolve();
@@ -224,7 +225,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     c.onNoteUpdated({ id: "note-1", path: "n1.md", updated_at: "2026-01-02T00:00:00Z" });
     await Promise.resolve();
 
-    expect(getNoteMock).not.toHaveBeenCalled();
+    expect(getNoteFreshMock).not.toHaveBeenCalled();
     expect(c.getConflict()).toEqual({
       visible: true,
       currentUpdatedAt: "2026-01-02T00:00:00Z",
@@ -237,7 +238,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
 
-    getNoteMock.mockResolvedValueOnce(okGet("server content v2"));
+    getNoteFreshMock.mockResolvedValueOnce(okGet("server content v2"));
 
     const seen: Array<string> = [];
     const unsubscribe = c.subscribe(() => {
@@ -262,7 +263,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     c.onNoteUpdated({ id: "some-other-note", path: "other.md", updated_at: "2026-01-01T00:00:00Z" });
     await Promise.resolve();
 
-    expect(getNoteMock).not.toHaveBeenCalled();
+    expect(getNoteFreshMock).not.toHaveBeenCalled();
     expect(c.getConflict()).toBeNull();
     expect(c.getContent()).toBe("initial");
   });
@@ -274,7 +275,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     // Another session renamed the note via its own H1 edit (H1<->filename
     // binding already applied server-side). This controller has no pending
     // local edit, so onNoteUpdated silently adopts the fresh server content.
-    getNoteMock.mockResolvedValueOnce(
+    getNoteFreshMock.mockResolvedValueOnce(
       okGet("# Renamed Title\n\nbody", "renamed-title.md"),
     );
     c.onNoteUpdated({
@@ -309,7 +310,7 @@ describe("subscribeContentReplaced (Plan 05: uncontrolled CM6 ref push on silent
   it("fires with the new content right after a silent onNoteUpdated adopt", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
-    getNoteMock.mockResolvedValueOnce(okGet("server content"));
+    getNoteFreshMock.mockResolvedValueOnce(okGet("server content"));
 
     const onReplaced = vi.fn();
     c.subscribeContentReplaced(onReplaced);
@@ -338,7 +339,7 @@ describe("subscribeContentReplaced (Plan 05: uncontrolled CM6 ref push on silent
   it("unsubscribe stops further notifications", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
-    getNoteMock.mockResolvedValueOnce(okGet("server content"));
+    getNoteFreshMock.mockResolvedValueOnce(okGet("server content"));
 
     const onReplaced = vi.fn();
     const unsubscribe = c.subscribeContentReplaced(onReplaced);
