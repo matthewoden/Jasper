@@ -3,7 +3,7 @@
  * All calls route through the openapi-fetch client; no hand-written request shapes.
  *
  * Endpoints:
- *   GET    /api/v1/mcp/grants                → listGrants(): McpGrant[]
+ *   GET    /api/v1/mcp/grants                → mcpGrantsResource (module-private listGrants fetcher)
  *   POST   /api/v1/mcp/grants                → postGrant(path, level): McpGrant
  *   DELETE /api/v1/mcp/grants?path=<encoded> → deleteGrant(path): void
  *
@@ -11,17 +11,31 @@
  */
 
 import { client } from "../api/client";
+import { createResource } from "./resources";
 import type { McpGrant } from "./useTreeStore";
 
 /**
- * List all MCP write grants. Returns [] on error so a transient backend
- * hiccup doesn't wipe previously-cached grants from the store.
+ * List all MCP write grants. Throws on error — the resource layer's own
+ * preserve-last-good-value-on-failure policy is now responsible for the
+ * "don't wipe previously-cached grants on a transient hiccup" contract that
+ * this fetcher used to implement itself by swallowing and returning [].
  */
-export async function listGrants(): Promise<McpGrant[]> {
+async function listGrants(): Promise<McpGrant[]> {
   const { data, error } = await client.GET("/mcp/grants");
-  if (error || !data) return [];
+  if (error || !data) {
+    const msg =
+      error && typeof error === "object" && "message" in error
+        ? String((error as { message: unknown }).message)
+        : JSON.stringify(error);
+    throw new Error("listGrants: " + msg);
+  }
   return (data.grants ?? []) as McpGrant[];
 }
+
+export const mcpGrantsResource = createResource("mcpGrants", listGrants, {
+  mode: "cached",
+  invalidatedBy: ["mcp:grant_changed"],
+});
 
 /**
  * Grant (or upgrade / downgrade) MCP write access for a folder. Backend

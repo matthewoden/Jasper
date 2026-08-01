@@ -2353,7 +2353,6 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
 
 
 vi.mock("../lib/useTagBrowser", () => ({
-    dispatchTagEvent: vi.fn(),
     useTagBrowser: vi.fn(() => ({
         tags: [],
         loading: false,
@@ -2366,15 +2365,26 @@ vi.mock("../lib/useTagBrowser", () => ({
     },
 }));
 
-import { dispatchTagEvent } from "../lib/useTagBrowser";
-const dispatchTagEventMock = vi.mocked(dispatchTagEvent);
+// noteBufferController's local "tags:updated" notification moved from the
+// retired dispatchTagEvent() to the shared resource-layer event bus (D-13) —
+// only `publish` is stubbed here; every other resources export (createResource,
+// useResource, subscribe, ...) stays real so other hooks in this render tree
+// are unaffected.
+vi.mock("../lib/resources", async () => {
+    const actual =
+        await vi.importActual<typeof import("../lib/resources")>("../lib/resources");
+    return { ...actual, publish: vi.fn() };
+});
+
+import { publish } from "../lib/resources";
+const publishMock = vi.mocked(publish);
 
 describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally", () => {
     beforeEach(() => {
-        dispatchTagEventMock.mockClear();
+        publishMock.mockClear();
     });
 
-    it("BUG-01: dispatchTagEvent('tags:updated') is called after a successful save", async () => {
+    it("BUG-01: publish('tags:updated') is called after a successful save", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2391,10 +2401,10 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         await flushMicrotasks();
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(dispatchTagEventMock).toHaveBeenCalledWith("tags:updated");
+        expect(publishMock).toHaveBeenCalledWith("tags:updated");
     });
 
-    it("BUG-01: dispatchTagEvent is NOT called when save fails", async () => {
+    it("BUG-01: publish is NOT called when save fails", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(errPut("disk full"));
 
@@ -2411,7 +2421,7 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         await flushMicrotasks();
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(dispatchTagEventMock).not.toHaveBeenCalled();
+        expect(publishMock).not.toHaveBeenCalled();
     });
 });
 

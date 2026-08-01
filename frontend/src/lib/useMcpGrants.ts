@@ -1,10 +1,13 @@
 /**
- * useMcpGrants — composes the mcpGrants store slice with GET/POST/DELETE
- * backend calls and a WS refresh subscription on `mcp:grant_changed`.
+ * useMcpGrants — reads the shared `mcpGrantsResource` cache and composes it
+ * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
+ * the resource layer (D-08/D-11/D-14): subscribing (mounting) never issues a
+ * network request by itself; only the resource's own 0->1 subscriber
+ * transition and `mcp:grant_changed` WS invalidation do.
  *
  * Public surface:
- *   - grants:            current store slice (McpGrant[])
- *   - refresh():         re-fetch GET /mcp/grants
+ *   - grants:            current cache snapshot (McpGrant[])
+ *   - refresh():         invalidate the shared cache entry
  *   - grant(path, lv):   POST /mcp/grants — emits LOCKED toast
  *   - revoke(path):      DELETE /mcp/grants?path=... — emits LOCKED toast
  *   - levelFor(path):    recursive ancestor walk (backend resolves writes the same way)
@@ -19,23 +22,12 @@
  *   grant revoked:  "AI access revoked"   / "{path}"
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useMemo } from "react";
 import { useToast } from "../components/toast.utils";
-import { useTreeStore, type McpGrant } from "./useTreeStore";
-import { listGrants, postGrant, deleteGrant } from "./mcpGrantsApi";
-
-
-const mcpGrantsSubscribers = new Set<() => void>();
-
-/**
- * Called by useSessionSync when a `mcp:grant_changed` WS event arrives.
- * Iterates a snapshot of the subscriber set so mid-iteration
- * register/unregister doesn't cause a concurrent-mutation error.
- */
-export function dispatchMcpGrantsEvent(): void {
-  const snapshot = Array.from(mcpGrantsSubscribers);
-  for (const fn of snapshot) fn();
-}
+import type { McpGrant } from "./useTreeStore";
+import { mcpGrantsResource, postGrant, deleteGrant } from "./mcpGrantsApi";
+import { publish, useResource } from "./resources";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 /**
  * Normalize a folder path to match backend canonicalization (NFC + lowercase).
@@ -71,27 +63,16 @@ export interface UseMcpGrantsResult {
 }
 
 export function useMcpGrants(): UseMcpGrantsResult {
-  const grants = useTreeStore((s) => s.mcpGrants);
-  const setGrants = useTreeStore((s) => s.setMcpGrants);
+  const snapshot = useResource(mcpGrantsResource);
+  // Memoized so `snapshot.data ?? []` doesn't allocate a new array identity
+  // on every render when data is still undefined — that would otherwise
+  // make every derived useCallback below think its deps changed each render.
+  const grants = useMemo(() => snapshot.data ?? [], [snapshot.data]);
   const { toast } = useToast();
 
   const refresh = useCallback(async () => {
-    try {
-      const g = await listGrants();
-      setGrants(g);
-    } catch {
-      // Silent — preserve the existing slice so a transient backend hiccup
-      // doesn't wipe the indicator UI.
-    }
-  }, [setGrants]);
-
-  useEffect(() => {
-    void refresh();
-    mcpGrantsSubscribers.add(refresh);
-    return () => {
-      mcpGrantsSubscribers.delete(refresh);
-    };
-  }, [refresh]);
+    await mcpGrantsResource.invalidate().catch(() => undefined);
+  }, []);
 
   /**
    * levelFor — recursive ancestor walk. A grant on `projects/` covers
@@ -167,19 +148,21 @@ export function useMcpGrants(): UseMcpGrantsResult {
    *   - before === 2 && level === 1  → "AI access changed"
    *   - same level                   → no toast (no-op confirm)
    *
-   * Optimistic update keeps the indicator snappy; the WS broadcast
-   * fires a refresh that converges to the same state.
+   * Matches today's exact sequencing: the grant list change is applied
+   * AFTER the POST resolves (via mutate's commit), not optimistically —
+   * the WS broadcast converges every other tab to the same state.
    */
   const grant = useCallback(
     async (folderPath: string, level: 1 | 2) => {
       const before = directLevelFor(folderPath);
       try {
-        const g = await postGrant(folderPath, level);
-        const next = [
-          ...grants.filter((x) => x.folder_path !== g.folder_path),
-          g,
-        ];
-        setGrants(next);
+        await mcpGrantsResource.mutate({
+          request: () => postGrant(folderPath, level),
+          commit: (live, g) => [
+            ...(live ?? []).filter((x) => x.folder_path !== g.folder_path),
+            g,
+          ],
+        });
         if (before === null) {
           toast({
             title: "AI access granted",
@@ -208,14 +191,16 @@ export function useMcpGrants(): UseMcpGrantsResult {
         });
       }
     },
-    [grants, setGrants, toast, directLevelFor],
+    [toast, directLevelFor],
   );
 
   const revoke = useCallback(
     async (folderPath: string) => {
       try {
-        await deleteGrant(folderPath);
-        setGrants(grants.filter((g) => g.folder_path !== folderPath));
+        await mcpGrantsResource.mutate({
+          request: () => deleteGrant(folderPath),
+          commit: (live) => (live ?? []).filter((g) => g.folder_path !== folderPath),
+        });
         toast({
           title: "AI access revoked",
           description: folderPath,
@@ -229,7 +214,7 @@ export function useMcpGrants(): UseMcpGrantsResult {
         });
       }
     },
-    [grants, setGrants, toast],
+    [toast],
   );
 
   return {
@@ -243,8 +228,7 @@ export function useMcpGrants(): UseMcpGrantsResult {
   };
 }
 
-
 export const __testing__ = {
-  getSubscriberCount: () => mcpGrantsSubscribers.size,
-  simulateEvent: () => dispatchMcpGrantsEvent(),
+  getSubscriberCount: () => resourcesTesting.getSubscriberCount("mcpGrants"),
+  simulateEvent: () => publish("mcp:grant_changed"),
 };

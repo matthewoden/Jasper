@@ -2,25 +2,36 @@
  * Tests for useTagBrowser hook. Validates:
  *   U1: mount triggers a listTags fetch; data populates; loading transitions true -> false
  *   U2: refresh() triggers a refetch
- *   U3: subscribing to a `tags:updated` event triggers refresh
- *   U4: subscribing to a `tags:rewritten` event triggers refresh
- *   U5: unmount sets cancelled=true so in-flight fetch results are ignored
+ *   U3: publishing a `tags:updated` event triggers a refetch
+ *   U4: publishing a `tags:rewritten` event triggers a refetch
+ *   U5: a fetch resolving after unmount does not throw / does not affect the
+ *       frozen pre-unmount snapshot
  *   U6: errors surface via the `error` field; loading=false; data remains the previous value
+ *   U7: two mounted consumers (the split-pane shape) produce exactly 1 fetcher call
+ *
+ * `tagsResource` is built with the REAL `createResource` (not mocked) so the
+ * resource layer's coalescing/invalidation semantics are exercised for real —
+ * only the network-facing `listTags` fetcher is mocked via `./tagsApi`.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
-
 
 const listTagsMock = vi.fn();
 
-vi.mock("./tagsApi", () => ({
-  listTags: (...args: unknown[]) => listTagsMock(...args),
-  listTagNotes: vi.fn(),
-  renameTag: vi.fn(),
-  deleteTag: vi.fn(),
-}));
+vi.mock("./tagsApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    tagsResource: createResource("tags", () => listTagsMock(), {
+      mode: "cached",
+      invalidatedBy: ["tags:updated", "tags:rewritten"],
+    }),
+    listTagNotes: vi.fn(),
+    renameTag: vi.fn(),
+    deleteTag: vi.fn(),
+  };
+});
 
-
+import { tagsResource } from "./tagsApi";
 import { useTagBrowser, __testing__ } from "./useTagBrowser";
 
 const fakeTags = [
@@ -31,10 +42,10 @@ const fakeTags = [
 describe("useTagBrowser", () => {
   beforeEach(() => {
     listTagsMock.mockReset();
-  });
-
-  afterEach(() => {
-    vi.clearAllTimers();
+    // Per-entry reset (not the global registry reset) — see useMcpGrants.test.ts
+    // for why: it preserves the eventBus subscription createResource() wires
+    // up at module-load time, which U3/U4 depend on working across tests.
+    tagsResource.clear();
   });
 
   it("U1: mount triggers listTags fetch; tags populate; loading transitions true -> false", async () => {
@@ -71,7 +82,7 @@ describe("useTagBrowser", () => {
     expect(listTagsMock).toHaveBeenCalledTimes(2);
   });
 
-  it("U3: emitting tags:updated event triggers refresh", async () => {
+  it("U3: publishing tags:updated triggers a refetch", async () => {
     listTagsMock.mockResolvedValue(fakeTags);
 
     const { result } = renderHook(() => useTagBrowser());
@@ -91,7 +102,7 @@ describe("useTagBrowser", () => {
     expect(listTagsMock).toHaveBeenCalledTimes(2);
   });
 
-  it("U4: emitting tags:rewritten event triggers refresh", async () => {
+  it("U4: publishing tags:rewritten triggers a refetch", async () => {
     listTagsMock.mockResolvedValue(fakeTags);
 
     const { result } = renderHook(() => useTagBrowser());
@@ -111,7 +122,7 @@ describe("useTagBrowser", () => {
     expect(listTagsMock).toHaveBeenCalledTimes(2);
   });
 
-  it("U5: unmount cancels in-flight fetch; setState is not called after unmount", async () => {
+  it("U5: a fetch resolving after unmount does not throw; pre-unmount snapshot is unaffected", async () => {
     let resolvePromise!: (value: typeof fakeTags) => void;
     listTagsMock.mockReturnValue(
       new Promise<typeof fakeTags>((res) => {
@@ -124,10 +135,15 @@ describe("useTagBrowser", () => {
 
     unmount();
 
-    act(() => {
-      resolvePromise(fakeTags);
-    });
+    expect(() => {
+      act(() => {
+        resolvePromise(fakeTags);
+      });
+    }).not.toThrow();
 
+    // result.current is frozen at the last render before unmount — React
+    // stops re-rendering an unmounted hook, so this reflects the
+    // pre-resolution state, not a post-unmount setState.
     expect(result.current.loading).toBe(true);
     expect(result.current.tags).toEqual([]);
   });
@@ -140,13 +156,30 @@ describe("useTagBrowser", () => {
 
     listTagsMock.mockRejectedValue(new Error("network error"));
 
+    // refresh() deliberately does NOT swallow — unlike grants, useTagBrowser
+    // surfaces its error — so the test catches the rejection itself while
+    // asserting on the resulting snapshot.
     await act(async () => {
-      await result.current.refresh();
+      await result.current.refresh().catch(() => undefined);
     });
 
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error?.message).toBe("network error");
     expect(result.current.loading).toBe(false);
     expect(result.current.tags).toEqual(fakeTags);
+  });
+
+  it("U7: two mounted consumers (split-pane shape) produce exactly 1 fetcher call", async () => {
+    listTagsMock.mockResolvedValue(fakeTags);
+
+    const { result: r1 } = renderHook(() => useTagBrowser());
+    const { result: r2 } = renderHook(() => useTagBrowser());
+
+    await waitFor(() => {
+      expect(r1.current.tags).toEqual(fakeTags);
+      expect(r2.current.tags).toEqual(fakeTags);
+    });
+
+    expect(listTagsMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,8 +4,9 @@
  * isolation (no React tree, no DOM).
  *
  * Mocking strategy mirrors EditorPane.test.tsx: notesApi/treeApi are the
- * network seam, mocked at the module boundary; useTagBrowser's dispatchTagEvent
- * is a plain function (no React needed) so it is left un-mocked.
+ * network seam, mocked at the module boundary; the resource-layer event
+ * bus's publish() is a plain function (no React needed) so it is left
+ * un-mocked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
