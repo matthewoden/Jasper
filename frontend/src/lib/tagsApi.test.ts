@@ -25,7 +25,7 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-import { listTagNotes, renameTag, deleteTag, tagsResource } from "./tagsApi";
+import { renameTag, deleteTag, tagsResource, tagNotesResource } from "./tagsApi";
 import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 describe("tagsApi", () => {
@@ -61,14 +61,14 @@ describe("tagsApi", () => {
     });
   });
 
-  describe("listTagNotes", () => {
+  describe("tagNotesResource (listTagNotes fetcher)", () => {
     it("T3: routes through client.GET /tags/{name}/notes with path param", async () => {
       const fakeNotes = [
         { id: "uuid-1", path: "note1.md", title: "Note One", updated_at: "2026-01-01T00:00:00Z" },
       ];
       getMock.mockResolvedValue({ data: { notes: fakeNotes }, error: undefined });
 
-      const result = await listTagNotes("project");
+      const result = await tagNotesResource.forKey("project").read();
 
       expect(getMock).toHaveBeenCalledTimes(1);
       expect(getMock).toHaveBeenCalledWith("/tags/{name}/notes", {
@@ -83,7 +83,7 @@ describe("tagsApi", () => {
         error: { code: "not_found", message: "tag not found" },
       });
 
-      await expect(listTagNotes("nonexistent")).rejects.toThrow();
+      await expect(tagNotesResource.forKey("nonexistent").read()).rejects.toThrow();
     });
   });
 

@@ -5,13 +5,14 @@
  *
  * Endpoints:
  *   GET    /api/v1/tags              → tagsResource (module-private listTags fetcher)
- *   GET    /api/v1/tags/{name}/notes → listTagNotes(name): NoteSummary[]
+ *   GET    /api/v1/tags/{name}/notes → tagNotesResource, keyed on tag name (D-10 single-slot;
+ *                                       module-private listTagNotes fetcher)
  *   PUT    /api/v1/tags/{name}       → renameTag(old, new): TagRenameResponse
  *   DELETE /api/v1/tags/{name}       → deleteTag(name): TagDeleteResponse
  */
 
 import { client } from "../api/client";
-import { createResource } from "./resources";
+import { createKeyedResource, createResource } from "./resources";
 import type { components } from "../api/schema";
 
 export type TagWithCount = components["schemas"]["TagWithCount"];
@@ -40,7 +41,7 @@ export const tagsResource = createResource("tags", listTags, {
 /**
  * List notes carrying a specific tag. Returns 404 if the tag does not exist.
  */
-export async function listTagNotes(name: string): Promise<NoteSummary[]> {
+async function listTagNotes(name: string): Promise<NoteSummary[]> {
   const { data, error } = await client.GET("/tags/{name}/notes", {
     params: { path: { name } },
   });
@@ -53,6 +54,18 @@ export async function listTagNotes(name: string): Promise<NoteSummary[]> {
   }
   return data.notes;
 }
+
+/**
+ * Today this list has no refresh path at all — it is fetched once when
+ * activeTagFilter changes and is otherwise stale for the session. Declaring
+ * tags:updated/tags:rewritten is strictly more correct: toggling the same
+ * tag filter off and on again now reads cache instead of refetching,
+ * bounded by those two events.
+ */
+export const tagNotesResource = createKeyedResource("tagNotes", listTagNotes, {
+  mode: "cached",
+  invalidatedBy: ["tags:updated", "tags:rewritten"],
+});
 
 /**
  * Rename a tag across all notes. Rewrites frontmatter in a single backend

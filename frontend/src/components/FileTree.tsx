@@ -42,7 +42,8 @@ import { useTreeCreateActions } from "../lib/useTreeCreateActions";
 import { useBookmarks } from "../lib/useBookmarks";
 import { usePaneStore } from "../lib/usePaneStore";
 import type { TreeNode as WireTreeNode } from "../lib/treeApi";
-import { listTagNotes, type NoteSummary } from "../lib/tagsApi";
+import { tagNotesResource } from "../lib/tagsApi";
+import { useResource } from "../lib/resources";
 import { TreeRow, type NoteNodeData, type TreeRowData } from "./TreeRow";
 import { TreeView } from "./TreeView";
 import { TreeEmptyState } from "./TreeEmptyState";
@@ -127,33 +128,13 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   useEffect(() => {
     if (expandAllNonce > 0) treeRef.current?.openAll();
   }, [expandAllNonce]);
-  const [flatNotes, setFlatNotes] = useState<NoteSummary[] | null>(null);
-  const [flatLoading, setFlatLoading] = useState(false);
-
-  useEffect(() => {
-    if (!activeTagFilter) {
-      setFlatNotes(null);
-      return;
-    }
-    let cancelled = false;
-    setFlatLoading(true);
-    void listTagNotes(activeTagFilter)
-      .then((notes) => {
-        if (!cancelled) {
-          setFlatNotes(notes);
-          setFlatLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFlatNotes([]);
-          setFlatLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTagFilter]);
+  // D-10 keyed single-slot: toggling the same filter off/on reads cache.
+  const tagNotes = useResource(
+    useMemo(() => (activeTagFilter ? tagNotesResource.forKey(activeTagFilter) : null), [activeTagFilter]),
+  );
+  // On error, render an empty flat list rather than falling back to the tree.
+  const flatNotes = activeTagFilter ? (tagNotes.data ?? (tagNotes.error ? [] : null)) : null;
+  const flatLoading = tagNotes.loading;
 
   // D-08: no in-tree fuzzy filter exists here to gate against (confirmed via
   // grep — Cmd+O's fuzzysort ranking lives entirely in useQuickSwitcher.ts,

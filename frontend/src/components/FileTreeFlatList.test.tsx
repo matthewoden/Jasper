@@ -1,9 +1,13 @@
 /**
  * FileTree flat-list mode tests — the activeTagFilter branch.
  *
- * When activeTagFilter is non-null, FileTree fetches via tagsApi.listTagNotes
- * and renders a simple list (no arborist tree). When null, the normal tree renders.
- * Scoped to the flat-list branch only.
+ * When activeTagFilter is non-null, FileTree reads tagsApi.tagNotesResource
+ * (keyed on tag name, D-10 single-slot) and renders a simple list (no
+ * arborist tree). When null, the normal tree renders. Scoped to the
+ * flat-list branch only. `tagNotesResource` is built with the REAL
+ * `createKeyedResource` (not mocked) so the layer's fetch-once/subscribe
+ * semantics are exercised for real — only the network-facing fetcher is
+ * mocked.
  */
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,12 +38,19 @@ vi.mock("../lib/notesApi", () => ({
 }));
 
 const listTagNotesMock = vi.fn();
-vi.mock("../lib/tagsApi", () => ({
-  listTags: vi.fn(),
-  listTagNotes: (...args: unknown[]) => listTagNotesMock(...args),
-  renameTag: vi.fn(),
-  deleteTag: vi.fn(),
-}));
+vi.mock("../lib/tagsApi", async () => {
+  const { createKeyedResource } = await import("../lib/resources/createResource");
+  return {
+    listTags: vi.fn(),
+    tagNotesResource: createKeyedResource(
+      "tagNotes",
+      (name: string) => listTagNotesMock(name),
+      { mode: "cached", invalidatedBy: ["tags:updated", "tags:rewritten"] },
+    ),
+    renameTag: vi.fn(),
+    deleteTag: vi.fn(),
+  };
+});
 
 
 vi.mock("../lib/useTagBrowser", () => ({
@@ -58,6 +69,7 @@ vi.mock("../lib/useTheme", () => ({
 
 import { useFileTree } from "../lib/useFileTree";
 import { useTreeMutations } from "../lib/useTreeMutations";
+import { tagNotesResource } from "../lib/tagsApi";
 import { FileTree } from "./FileTree";
 
 const mockedUseFileTree = vi.mocked(useFileTree);
@@ -118,6 +130,11 @@ beforeEach(() => {
     activeTagFilter: null,
   });
   listTagNotesMock.mockReset();
+  // tagNotesResource is a module-level singleton (D-10 single-slot); each
+  // test reuses tag names like "foo" with different mocked data, so the
+  // per-key cache must be cleared or a later test would read a prior
+  // test's stale hydrated entry instead of refetching.
+  tagNotesResource.clear();
   mockedUseFileTree.mockReset();
   mockedUseTreeMutations.mockReset();
   mockedUseTreeMutations.mockReturnValue(defaultMuts());
