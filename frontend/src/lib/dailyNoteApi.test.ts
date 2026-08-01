@@ -1,5 +1,6 @@
 /**
- * Tests for dailyNoteApi — typed GET /daily-notes/{date} wrapper.
+ * Tests for dailyNoteApi — typed GET /daily-notes/{date} wrapper, backed by
+ * a pass-through keyed resource (D-05: never cached, still coalesced).
  *
  * The client module is mocked so tests can spy on .GET calls without
  * a real network connection. Coverage:
@@ -7,6 +8,7 @@
  *   - Error path: throws on client error
  *   - Empty response: throws on missing data
  *   - Correct path key + params passed through
+ *   - Concurrent same-date calls coalesce into one client.GET
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,6 +21,7 @@ vi.mock("../api/client", () => ({
 }));
 
 import { openTodayDailyNote } from "./dailyNoteApi";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 const TODAY = "2026-05-14";
 
@@ -32,6 +35,7 @@ const fakeNote = {
 describe("openTodayDailyNote", () => {
   beforeEach(() => {
     getMock.mockReset();
+    resourcesTesting.reset();
   });
 
   it("DN-API-1: calls client.GET with correct path key and date param", async () => {
@@ -71,5 +75,34 @@ describe("openTodayDailyNote", () => {
     await expect(openTodayDailyNote(TODAY)).rejects.toThrow(
       "openTodayDailyNote: empty response",
     );
+  });
+
+  it("DN-API-5: two concurrent calls for the same date coalesce into one client.GET (D-05)", async () => {
+    let resolveGet!: (v: { data: typeof fakeNote; error: undefined }) => void;
+    getMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveGet = resolve;
+      }),
+    );
+
+    const call1 = openTodayDailyNote(TODAY);
+    const call2 = openTodayDailyNote(TODAY);
+
+    resolveGet({ data: fakeNote, error: undefined });
+
+    const [result1, result2] = await Promise.all([call1, call2]);
+
+    expect(getMock).toHaveBeenCalledTimes(1);
+    expect(result1.id).toBe(fakeNote.id);
+    expect(result2.id).toBe(fakeNote.id);
+  });
+
+  it("DN-API-6: sequential calls (no overlap) each issue their own client.GET — pass-through is never cached", async () => {
+    getMock.mockResolvedValue({ data: fakeNote, error: undefined });
+
+    await openTodayDailyNote(TODAY);
+    await openTodayDailyNote(TODAY);
+
+    expect(getMock).toHaveBeenCalledTimes(2);
   });
 });
