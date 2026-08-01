@@ -55,7 +55,7 @@ This matters because these records were reconstructed from four shipped mileston
 
 ## Renumbering note
 
-0008 and 0014 were previously `ADR-001` and `ADR-002` under `.planning/decisions/`. Their reasoning is preserved here; the phase and plan cross-references from that era were dropped, since they point into an execution record that is historical rather than authoritative. The originals remain in `.planning/decisions/` for as long as that directory exists.
+0008 and 0014 were previously `ADR-001` and `ADR-002`, the only two formal ADRs the earlier planning system produced. Their reasoning is preserved here in full; the phase and plan cross-references from that era were dropped, since they pointed into an execution record that has since been removed. The originals are retrievable from git history.
 
 ## Adding one
 

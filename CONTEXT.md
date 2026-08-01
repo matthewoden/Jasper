@@ -160,10 +160,16 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 ---
 
-## Where the history lives
+## Where everything lives
 
-`.planning/` holds this project's phase-by-phase execution record from v1.0 through v1.4 — roadmaps, plans, verification logs, UAT rounds, retrospectives. It is **historical context, not authority**. When it disagrees with `CONTEXT.md`, `docs/adr/`, or the code, it is out of date.
+| | |
+|---|---|
+| **This file** | Vocabulary and invariants |
+| [`docs/adr/`](./docs/adr/) | Decisions and their rationale — the complete record |
+| [`CONVENTIONS.md`](./CONVENTIONS.md) | Process: how we build, test, and verify |
+| [`.scratch/`](./.scratch/) | Live work — in-flight, ready-to-start, and backlog |
+| `DESIGN.md` | Pre-implementation architectural reference, still accurate on the locked shape |
 
-Active work is **not** in there. In-flight and ready-to-start work lives in [`.scratch/`](./.scratch/) — including the remaining v1.4 phases (Properties, Templates, MCP controls, editor behaviors, docs site), whose per-phase risks and locked decisions were carried over in full.
+Four milestones (v1.0–v1.4) were built under a planning system whose artifacts — roadmaps, phase plans, verification logs, UAT rounds, retrospectives — have been removed after their durable content was mined into the files above. They remain retrievable from git history if you need the execution record behind a decision.
 
-The one thing in `.planning/` still worth reading directly is `RETROSPECTIVE.md`, for per-milestone lessons at a level of narrative detail this file doesn't carry.
+**Don't reconstruct that structure.** New work goes in `.scratch/`; new decisions amend or extend `docs/adr/`.

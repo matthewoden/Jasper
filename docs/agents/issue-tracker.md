@@ -29,6 +29,20 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
 
-## Relationship to `.planning/`
+## What's in `.scratch/` today
 
-`.planning/` holds this project's legacy phase and quick-task artifacts. It is historical context, not the issue tracker — read it when you need background on a past phase, but create new issues and specs under `.scratch/`.
+```
+.scratch/
+├── security-hardening/          ← SEC-01…07; SEC-01 is HIGH
+├── audit-findings/              ← the non-security audit remainder, triaged
+├── flaky-tests/                 ← three known instances, two are production defects
+├── v1.4-properties-templates-settings/   ← six remaining phases of the current milestone
+├── bookmarks-sorting-and-menus/ ← specified, ready to build
+└── backlog/                     ← unbuilt ideas with no committed home yet
+```
+
+`backlog/` is the one departure from the one-directory-per-feature rule: single files for work that has been deferred repeatedly and isn't specified enough to warrant a spec plus issues. Promote a file into its own directory when it gets scoped.
+
+## Where the history went
+
+An earlier planning system's artifacts (`.planning/`) were removed once their durable content was mined into `CONTEXT.md`, `docs/adr/`, `CONVENTIONS.md`, and this tracker. They remain in git history. **Don't recreate that structure** — new work goes here.

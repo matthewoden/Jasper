@@ -16,10 +16,12 @@ This is a single-context repo:
 
 ```
 /
-├── CONTEXT.md
+├── CONTEXT.md                  ← vocabulary + invariants
+├── CONVENTIONS.md              ← process rules
 ├── docs/adr/
-│   ├── 0001-vault-model.md
-│   └── 0002-file-first-save-path.md
+│   ├── README.md               ← index, and the precedence rule
+│   ├── 0001-filesystem-is-the-source-of-truth.md
+│   └── …                       ← 29 and counting
 ├── backend/
 └── frontend/
 ```
@@ -51,6 +53,13 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 
 > _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
 
-## Historical decision record
+## The decision record is `docs/adr/`, and it is complete
 
-Much of this project's decision history currently lives in `.planning/` (phase plans, verification notes, retros) and in the root `DESIGN.md` / `CONVENTIONS.md`. Those are unstructured and incomplete relative to a real ADR set. Treat them as source material to mine, not as ADRs — when a decision from them gets reconfirmed, capture it properly under `docs/adr/`.
+This project shipped four milestones under a planning system whose artifacts have since been removed. Their durable content was mined into `docs/adr/` first — **so `docs/adr/` is the record, not a partial view of one.** If a decision isn't there, it wasn't recorded, not "recorded elsewhere."
+
+Two caveats worth knowing:
+
+- **`DESIGN.md`** at the repo root is the pre-implementation architectural reference, authored before the project began. It is still accurate about the locked architectural shape and is cited by several ADRs. It is *not* a decision log.
+- **Numbers are identifiers, not precedence.** Read [`docs/adr/README.md`](../adr/README.md) before adding or amending — a decision that evolves amends its existing ADR rather than getting a new number, so an older release can't outrank a newer decision by numbering.
+
+Historical planning artifacts remain retrievable from git history if you ever need the execution record behind a decision.
