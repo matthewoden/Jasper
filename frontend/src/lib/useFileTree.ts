@@ -1,6 +1,8 @@
 /**
- * useFileTree — single-flight GET /tree on mount, with manual `refresh()`
- * and optimistic `mutate(recipe)` for in-tree updates that skip a round-trip.
+ * useFileTree — reads GET /tree off the shared resource layer (treeResource,
+ * a createResource "cached" singleton in treeApi.ts). No coalescer, no boot
+ * fetch, and no subscriber Set of its own: those all live in createResource.ts
+ * now, generalized from this hook's original hand-rolled coalescer.
  *
  * Public shape:
  *   useFileTree(): {
@@ -8,219 +10,47 @@
  *     loading: boolean
  *     error:   Error | null
  *     refresh: () => Promise<void>
- *     mutate:  (recipe: (cur: Tree) => Tree) => void
  *   }
  *
- * After every successful fetch, the hook calls pruneStaleTreeState() to
- * silently drop localStorage entries for nodes that no longer exist.
- *
- * Broadcast refresh: refresh() triggers every mounted useFileTree instance,
- * not just the one whose `refresh` was called. Without broadcasting, a
- * mutation caller's instance would refresh but the rendered FileTree instance
- * would stay stale. Module-level Set of subscriber callbacks, registered on
- * mount and removed on unmount.
+ * The fetcher's T is { data?: Tree; error?: ApiError } — a transport-level
+ * failure (fetch threw) surfaces as snapshot.error; an API-level error (a
+ * well-formed error response) surfaces as snapshot.data.error. Both paths
+ * are preserved below.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useResource } from "./resources";
+import { treeResource, type Tree } from "./treeApi";
 
-import { getTree, type ApiError, type Tree, type TreeNode } from "./treeApi";
-import { pruneStaleTreeState } from "./useTreeStore";
-
-
-const COALESCE_TAIL_MS = 100;
-let inFlightTreePromise: Promise<{ data?: Tree; error?: ApiError }> | null =
-  null;
-let lastResolvedAt = 0;
-let pendingTrailingPromise: Promise<{ data?: Tree; error?: ApiError }> | null =
-  null;
-let pendingTrailingResolve:
-  | ((v: { data?: Tree; error?: ApiError }) => void)
-  | null = null;
-let pendingTrailingReject: ((e: unknown) => void) | null = null;
-let pendingTrailingTimer: ReturnType<typeof setTimeout> | null = null;
-
-function startInFlight(): Promise<{ data?: Tree; error?: ApiError }> {
-  inFlightTreePromise = getTree().finally(() => {
-    inFlightTreePromise = null;
-    lastResolvedAt = Date.now();
-  });
-  return inFlightTreePromise;
-}
-
-async function coalescedGetTree(): Promise<{ data?: Tree; error?: ApiError }> {
-  // A fetch already in flight was necessarily *issued* before this call, so
-  // its eventual snapshot cannot be trusted to reflect anything that changed
-  // between then and now (e.g. a note created by a raw API call, surfaced
-  // only via a WS event racing this in-flight request — see
-  // opennotefromtree-row-missing). Never hand the caller that stale promise
-  // directly; queue them for a fetch that starts strictly after the current
-  // one resolves.
-  if (inFlightTreePromise !== null) {
-    return queueTrailing(0);
-  }
-
-  const elapsed = Date.now() - lastResolvedAt;
-  if (lastResolvedAt > 0 && elapsed < COALESCE_TAIL_MS) {
-    return queueTrailing(COALESCE_TAIL_MS - elapsed);
-  }
-
-  return startInFlight();
-}
-
-function queueTrailing(
-  delayMs: number,
-): Promise<{ data?: Tree; error?: ApiError }> {
-  if (pendingTrailingPromise === null) {
-    pendingTrailingPromise = new Promise((resolve, reject) => {
-      pendingTrailingResolve = resolve;
-      pendingTrailingReject = reject;
-    });
-  }
-  if (pendingTrailingTimer !== null) clearTimeout(pendingTrailingTimer);
-  pendingTrailingTimer = setTimeout(flushTrailing, delayMs);
-  return pendingTrailingPromise;
-}
-
-function flushTrailing(): void {
-  if (pendingTrailingTimer !== null) {
-    clearTimeout(pendingTrailingTimer);
-    pendingTrailingTimer = null;
-  }
-  // Something started fetching after we were queued but hasn't resolved yet
-  // (either the original in-flight fetch we deferred behind, or a trailing
-  // fetch from an earlier flush). Its request predates us too — wait for it
-  // to finish, then re-evaluate, rather than joining it.
-  if (inFlightTreePromise !== null) {
-    void inFlightTreePromise.finally(flushTrailing);
-    return;
-  }
-  const resolve = pendingTrailingResolve;
-  const reject = pendingTrailingReject;
-  pendingTrailingResolve = null;
-  pendingTrailingReject = null;
-  pendingTrailingPromise = null;
-  if (resolve === null || reject === null) return;
-  startInFlight().then(resolve, reject);
-}
-
-
-const treeFetchSubscribers = new Set<() => Promise<void>>();
-
-
-let bootFetchStarted = false;
-function startBootFetch(): void {
-  if (bootFetchStarted) return;
-  if (typeof window === "undefined") return;
-  bootFetchStarted = true;
-  coalescedGetTree().catch(() => undefined);
-}
-
-startBootFetch();
-
-/**
- * Trigger every mounted useFileTree instance to re-fetch. Exported so
- * non-display callers (mutations, WS event handlers) can refresh the tree
- * without instantiating their own useFileTree subscriber. Adding a subscriber
- * per non-display caller inflates the broadcast Set by N (one per TreeRow's
- * useTreeMutations), which collapses the single-flight coalescer on any
- * parent re-render. Display surfaces still call useFileTree() to render tree state.
- */
-export async function broadcastRefresh(): Promise<void> {
-  const snapshot = Array.from(treeFetchSubscribers);
-  await Promise.all(snapshot.map((fn) => fn()));
-}
+export { walkTreeCollect } from "./treeApi";
 
 export interface UseFileTreeResult {
   tree: Tree | null;
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  mutate: (recipe: (current: Tree) => Tree) => void;
 }
 
-/** Walk the tree collecting every folder path and note id. */
-export function walkTreeCollect(tree: Tree): {
-  folders: Set<string>;
-  notes: Set<string>;
-} {
-  const folders = new Set<string>();
-  const notes = new Set<string>();
-  const visit = (node: TreeNode): void => {
-    if (node.kind === "folder") {
-      folders.add(node.path);
-      if (node.children) {
-        for (const child of node.children) visit(child);
-      }
-    } else if (node.kind === "note") {
-      notes.add(node.id);
-    }
-    // "file" kind nodes have no note id and are not tracked here.
-  };
-  for (const node of tree.root) visit(node);
-  return { folders, notes };
+/**
+ * Trigger a tree refresh without mounting a display subscriber. Exported so
+ * non-display callers (mutations, WS event handlers) can invalidate the
+ * shared cache directly — every mounted useFileTree() instance picks up the
+ * result via useSyncExternalStore, structurally rather than via a broadcast
+ * Set.
+ */
+export async function broadcastRefresh(): Promise<void> {
+  await treeResource.invalidate();
 }
 
 export function useFileTree(): UseFileTreeResult {
-  const [tree, setTree] = useState<Tree | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const cancelled = useRef(false);
+  const snapshot = useResource(treeResource);
 
-  const fetchTree = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error: respErr } = await coalescedGetTree();
-      if (cancelled.current) return;
-      if (respErr) {
-        setError(new Error(respErr.message));
-        setLoading(false);
-        return;
-      }
-      if (data) {
-        setTree(data);
-        const { folders, notes } = walkTreeCollect(data);
-        pruneStaleTreeState(folders, notes);
-      }
-      setLoading(false);
-    } catch (e) {
-      if (cancelled.current) return;
-      setError(e instanceof Error ? e : new Error(String(e)));
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    cancelled.current = false;
-    void fetchTree();
-    treeFetchSubscribers.add(fetchTree);
-    return () => {
-      cancelled.current = true;
-      treeFetchSubscribers.delete(fetchTree);
-    };
-  }, [fetchTree]);
-
-  const refresh = useCallback(async () => {
-    cancelled.current = false;
-    await broadcastRefresh();
-  }, []);
-
-  const mutate = useCallback((recipe: (current: Tree) => Tree) => {
-    setTree((cur) => (cur ? recipe(cur) : cur));
-  }, []);
-
-  return { tree, loading, error, refresh, mutate };
+  return {
+    tree: snapshot.data?.data ?? null,
+    loading: snapshot.loading,
+    error: snapshot.data?.error
+      ? new Error(snapshot.data.error.message)
+      : snapshot.error,
+    refresh: async () => {
+      await treeResource.invalidate();
+    },
+  };
 }
-
-
-function __resetCoalescer(): void {
-  if (pendingTrailingTimer !== null) {
-    clearTimeout(pendingTrailingTimer);
-    pendingTrailingTimer = null;
-  }
-  inFlightTreePromise = null;
-  lastResolvedAt = 0;
-  pendingTrailingPromise = null;
-  pendingTrailingResolve = null;
-  pendingTrailingReject = null;
-}
-export const __testing__ = { coalescedGetTree, __resetCoalescer };

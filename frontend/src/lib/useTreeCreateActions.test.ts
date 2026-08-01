@@ -53,7 +53,6 @@ function setUseFileTree(tree: Tree | null) {
     loading: false,
     error: null,
     refresh: () => Promise.resolve(),
-    mutate: () => {},
   });
 }
 

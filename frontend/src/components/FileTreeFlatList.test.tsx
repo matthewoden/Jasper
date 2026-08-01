@@ -76,7 +76,6 @@ const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedUseTreeMutations = vi.mocked(useTreeMutations);
 
 const noopRefresh = () => Promise.resolve();
-const noopMutate = () => {};
 
 function defaultMuts() {
   return {
@@ -143,7 +142,6 @@ beforeEach(() => {
     loading: false,
     error: null,
     refresh: noopRefresh,
-    mutate: noopMutate,
   });
 });
 

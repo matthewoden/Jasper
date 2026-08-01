@@ -103,7 +103,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result } = renderHook(() => useResolvedTitleSet());
     expect(result.current.titleSet.size).toBe(0);
@@ -116,7 +115,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result } = renderHook(() => useResolvedTitleSet());
     expect(result.current.titleSet.size).toBe(0);
@@ -134,7 +132,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result } = renderHook(() => useResolvedTitleSet());
     expect(result.current.titleSet.size).toBe(3);
@@ -153,7 +150,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result } = renderHook(() => useResolvedTitleSet());
     expect(result.current.idMap.get("foo")).toBe("uuid-1");
@@ -177,7 +173,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result } = renderHook(() => useResolvedTitleSet());
     expect(result.current.titleSet.has("nested")).toBe(true);
@@ -195,7 +190,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result, rerender } = renderHook(() => useResolvedTitleSet());
     const firstSet = result.current.titleSet;
@@ -218,7 +212,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     const { result, rerender } = renderHook(() => useResolvedTitleSet());
     const firstSet = result.current.titleSet;
@@ -229,7 +222,6 @@ describe("useResolvedTitleSet", () => {
       loading: false,
       error: null,
       refresh: vi.fn(),
-      mutate: vi.fn(),
     });
     rerender();
     expect(result.current.titleSet.size).toBe(2);

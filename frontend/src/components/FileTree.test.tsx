@@ -108,7 +108,6 @@ afterEach(() => {
 });
 
 const noopRefresh = () => Promise.resolve();
-const noopMutate = () => {};
 
 function defaultMutsResult() {
   return {
@@ -143,7 +142,6 @@ describe("<FileTree />", () => {
       loading: true,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -156,7 +154,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: new Error("boom"),
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -170,7 +167,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -200,7 +196,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -235,7 +230,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -269,7 +263,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -304,7 +297,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     const onSelectNote = vi.fn();
@@ -362,7 +354,6 @@ describe("<FileTree />", () => {
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     const { container } = renderWithProvider(
@@ -447,7 +438,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -508,7 +498,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -556,7 +545,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -601,7 +589,6 @@ describe("<FileTree /> — Plan 03-07 wiring", () => {
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -903,7 +890,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
     mockedGetNoteFresh.mockResolvedValue(okGet(opts.content));
@@ -982,7 +968,6 @@ describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)",
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -1130,7 +1115,6 @@ describe('Bug F — file/folder duplicate-name validation', () => {
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -1738,7 +1722,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -1785,7 +1768,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -1851,7 +1833,6 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
       loading: false,
       error: null,
       refresh: vi.fn().mockResolvedValue(undefined),
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(muts);
 
@@ -1922,7 +1903,6 @@ describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)",
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -1943,7 +1923,6 @@ describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)",
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -2023,7 +2002,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);
@@ -2050,7 +2028,6 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
       loading: false,
       error: null,
       refresh: noopRefresh,
-      mutate: noopMutate,
     });
     mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
     renderWithProvider(<FileTree onSelectNote={vi.fn()} />);

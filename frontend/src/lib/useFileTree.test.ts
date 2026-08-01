@@ -1,38 +1,21 @@
 /**
- * Tests for useFileTree — single-flight tree fetch hook with optimistic
- * mutate, manual refresh, and stale-state pruning into the zustand store.
+ * Tests for useFileTree — the resource-layer-backed tree hook. Drives the
+ * REAL treeResource (not mocked) against a mocked client.GET, so the whole
+ * pipeline (treeResource -> treeApi's private fetchTree -> pruneStaleTreeState)
+ * exercises for real; only the network boundary is faked.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getTreeMock = vi.fn();
-
-vi.mock("./treeApi", () => ({
-  getTree: (...args: unknown[]) => getTreeMock(...args),
+const getMock = vi.fn();
+vi.mock("../api/client", () => ({
+  client: { GET: (...args: unknown[]) => getMock(...args) },
 }));
 
 import { useTreeStore } from "./useTreeStore";
-import { __testing__, useFileTree } from "./useFileTree";
-
-const { coalescedGetTree, __resetCoalescer } = __testing__;
-
-type Tree = {
-  root: Array<
-    | {
-        kind: "folder";
-        path: string;
-        name: string;
-        children?: Tree["root"];
-      }
-    | {
-        kind: "note";
-        id: string;
-        path: string;
-        title: string;
-        updated_at: string;
-      }
-  >;
-};
+import { treeResource, type Tree } from "./treeApi";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
+import { broadcastRefresh, useFileTree } from "./useFileTree";
 
 const tinyTree: Tree = {
   root: [
@@ -60,9 +43,17 @@ const tinyTree: Tree = {
   ],
 };
 
+function okResponse(data: unknown) {
+  return { data, error: undefined, response: { status: 200 } };
+}
+
 describe("useFileTree", () => {
   beforeEach(() => {
-    getTreeMock.mockReset();
+    getMock.mockReset();
+    // treeResource is a module-level "cached" singleton — reset between
+    // tests so each test's mount issues its own fresh fetch instead of
+    // reading a previous test's cached value.
+    resourcesTesting.reset();
     useTreeStore.setState({
       expanded: new Set(),
       activeNoteId: null,
@@ -72,7 +63,7 @@ describe("useFileTree", () => {
   });
 
   it("TestUseFileTree_FetchesOnMount: data resolves into hook.tree, loading flips false", async () => {
-    getTreeMock.mockResolvedValue({ data: tinyTree });
+    getMock.mockResolvedValue(okResponse(tinyTree));
 
     const { result } = renderHook(() => useFileTree());
 
@@ -85,8 +76,10 @@ describe("useFileTree", () => {
   });
 
   it("TestUseFileTree_HandlesError: error response sets hook.error and clears loading", async () => {
-    getTreeMock.mockResolvedValue({
-      error: { code: "tree_projection_failed", message: "boom", status: 500 },
+    getMock.mockResolvedValue({
+      data: undefined,
+      error: { code: "tree_projection_failed", message: "boom" },
+      response: { status: 500 },
     });
 
     const { result } = renderHook(() => useFileTree());
@@ -97,8 +90,8 @@ describe("useFileTree", () => {
     expect(result.current.error?.message).toBe("boom");
   });
 
-  it("TestUseFileTree_Refresh_Re-Fetches: refresh() picks up the new mock response", async () => {
-    getTreeMock.mockResolvedValueOnce({ data: tinyTree });
+  it("TestUseFileTree_Refresh_ReFetches: refresh() picks up the new mock response", async () => {
+    getMock.mockResolvedValueOnce(okResponse(tinyTree));
     const { result } = renderHook(() => useFileTree());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.tree).toEqual(tinyTree);
@@ -114,44 +107,14 @@ describe("useFileTree", () => {
         },
       ],
     };
-    getTreeMock.mockResolvedValueOnce({ data: v2 });
+    getMock.mockResolvedValueOnce(okResponse(v2));
 
     await act(async () => {
       await result.current.refresh();
     });
 
     expect(result.current.tree).toEqual(v2);
-    expect(getTreeMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("TestUseFileTree_Mutate_AppliesOptimisticRecipe: mutate updates tree without re-fetching", async () => {
-    getTreeMock.mockResolvedValue({ data: tinyTree });
-    const { result } = renderHook(() => useFileTree());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    const callCountBeforeMutate = getTreeMock.mock.calls.length;
-
-    act(() => {
-      result.current.mutate((cur) => ({
-        ...cur,
-        root: [
-          ...cur.root,
-          {
-            kind: "folder",
-            path: "added",
-            name: "added",
-            children: [],
-          },
-        ],
-      }));
-    });
-
-    expect(result.current.tree?.root.length).toBe(3);
-    expect(result.current.tree?.root[2]).toMatchObject({
-      kind: "folder",
-      path: "added",
-    });
-    expect(getTreeMock.mock.calls.length).toBe(callCountBeforeMutate);
+    expect(getMock).toHaveBeenCalledTimes(2);
   });
 
   it("TestUseFileTree_PrunesStaleTreeState: expanded paths absent in fresh tree are dropped", async () => {
@@ -160,7 +123,7 @@ describe("useFileTree", () => {
       activeNoteId: "stale-uuid",
     });
 
-    getTreeMock.mockResolvedValue({ data: tinyTree });
+    getMock.mockResolvedValue(okResponse(tinyTree));
     const { result } = renderHook(() => useFileTree());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -170,12 +133,8 @@ describe("useFileTree", () => {
     expect(s.activeNoteId).toBeNull();
   });
 
-  it("TestUseFileTree_StrictMode_NoDuplicateFetch: cancelled flag prevents stale resolution", async () => {
-    let resolveCount = 0;
-    getTreeMock.mockImplementation(async () => {
-      resolveCount++;
-      return { data: tinyTree };
-    });
+  it("TestUseFileTree_StrictMode_NoDuplicateFetch: an unmount immediately followed by a remount still resolves the real tree", async () => {
+    getMock.mockResolvedValue(okResponse(tinyTree));
 
     const first = renderHook(() => useFileTree());
     first.unmount();
@@ -185,72 +144,27 @@ describe("useFileTree", () => {
 
     expect(second.result.current.error).toBeNull();
     expect(second.result.current.tree).toEqual(tinyTree);
-    expect(resolveCount).toBeGreaterThanOrEqual(1);
-  });
-});
-
-
-describe("UFT-eager-boot — tree fetch fires on module import (UAT-2 R1-2/R1-3)", () => {
-  it("useFileTree fires boot fetch on app start", async () => {
-    const getTreeForBoot = vi.fn().mockResolvedValue({ data: tinyTree });
-
-    vi.resetModules();
-    vi.doMock("./treeApi", () => ({
-      getTree: (...args: unknown[]) => getTreeForBoot(...args),
-    }));
-    vi.doMock("./useTreeStore", () => ({
-      pruneStaleTreeState: vi.fn(),
-      useTreeStore: vi.fn(),
-    }));
-
-    await import("./useFileTree");
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(getTreeForBoot).toHaveBeenCalledTimes(1);
-
-    vi.doUnmock("./treeApi");
-    vi.doUnmock("./useTreeStore");
-    vi.resetModules();
-  });
-});
-
-describe("UX-14 single-flight", () => {
-  beforeEach(() => {
-    getTreeMock.mockReset();
-    __resetCoalescer();
   });
 
-  it("coalesces concurrent fetchTree calls into one network request", async () => {
-    let resolveDelayed!: (v: { data: Tree }) => void;
-    const delayed = new Promise<{ data: Tree }>((resolve) => {
-      resolveDelayed = resolve;
-    });
-    getTreeMock.mockImplementation(() => delayed);
+  it("twelve simultaneous useFileTree() consumers produce exactly one fetcher call", async () => {
+    getMock.mockResolvedValue(okResponse(tinyTree));
 
-    const calls = [coalescedGetTree(), coalescedGetTree(), coalescedGetTree()];
-    expect(getTreeMock).toHaveBeenCalledTimes(1);
+    const hooks = Array.from({ length: 12 }, () => renderHook(() => useFileTree()));
 
-    resolveDelayed({ data: tinyTree as unknown as Tree });
-    const results = await Promise.all(calls);
-    expect(results).toHaveLength(3);
-    expect(results.every((r) => r.data?.root)).toBe(true);
+    await waitFor(() =>
+      expect(hooks.every((h) => h.result.current.loading === false)).toBe(true),
+    );
+
+    for (const h of hooks) {
+      expect(h.result.current.tree).toEqual(tinyTree);
+    }
+    expect(getMock).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the in-flight slot on rejection so subsequent calls retry", async () => {
-    getTreeMock
-      .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({ data: tinyTree });
-
-    await expect(coalescedGetTree()).rejects.toThrow("network");
-    const second = await coalescedGetTree();
-    expect(second.data?.root).toEqual(tinyTree.root);
-    expect(getTreeMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("REGRESSION opennotefromtree-row-missing: a call that arrives while a fetch is already in flight must not resolve against that stale (pre-call) snapshot", async () => {
-    // call #1 represents an already-running fetch (e.g. mount, or a prior
-    // WS-triggered refresh) that was issued BEFORE some mutation happened.
+  it("REGRESSION opennotefromtree-row-missing: an invalidate() arriving while a read() is in flight must not resolve against that stale (pre-mutation) snapshot", async () => {
+    // A mounted subscriber is required, or invalidate() takes the
+    // zero-subscriber "mark stale, don't fetch" path instead of actually
+    // refetching (see createResource.ts's invalidateEntry).
     let resolveStale!: (v: { data: Tree }) => void;
     const staleFetch = new Promise<{ data: Tree }>((resolve) => {
       resolveStale = resolve;
@@ -266,35 +180,40 @@ describe("UX-14 single-flight", () => {
           updated_at: "2026-01-03T00:00:00Z",
         },
       ],
-    } as unknown as Tree;
+    };
 
-    getTreeMock
-      .mockImplementationOnce(() => staleFetch)
-      .mockResolvedValueOnce({ data: withNewNote });
+    getMock
+      .mockImplementationOnce(() => staleFetch.then((v) => okResponse(v.data)))
+      .mockResolvedValueOnce(okResponse(withNewNote));
 
-    // call #1: e.g. mount fetch, still pending.
-    const call1 = coalescedGetTree();
-    expect(getTreeMock).toHaveBeenCalledTimes(1);
+    // Mount issues call #1 (still pending — the "already-running fetch,
+    // issued before a mutation happened" case).
+    const { result } = renderHook(() => useFileTree());
+    expect(getMock).toHaveBeenCalledTimes(1);
 
-    // call #2: e.g. the WS `note:created` handler's refresh, arriving WHILE
-    // call #1 is still in flight — this is the exact race from
-    // opennotefromtree-row-missing.
-    const call2 = coalescedGetTree();
+    // call #2: e.g. the WS `note:created` handler's invalidate, arriving
+    // WHILE call #1 is still in flight — this is the exact race from
+    // opennotefromtree-row-missing (commit 7494174d), ported onto treeResource.
+    const invalidatePromise = act(async () => treeResource.invalidate());
 
     // call #1's HTTP request was issued before the mutation, so it resolves
     // without the new note.
     resolveStale({ data: tinyTree });
 
-    const [result1, result2] = await Promise.all([call1, call2]);
+    await invalidatePromise;
 
-    expect(result1.data).toEqual(tinyTree);
-    // call #2 must NOT be satisfied by call #1's stale, pre-mutation
-    // snapshot — it must reflect a fetch issued after call #2's own request.
-    expect(result2.data).toEqual(withNewNote);
-    expect(getTreeMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.tree).toEqual(withNewNote));
+    // call #2 (the invalidation) must NOT have been satisfied by call #1's
+    // stale, pre-mutation snapshot — it must reflect a fetch issued after
+    // its own call.
+    expect(getMock).toHaveBeenCalledTimes(2);
   });
 
-  it("a fresh call AFTER the in-flight resolves issues a new fetch", async () => {
+  it("broadcastRefresh() invalidates the shared cache without mounting a display subscriber", async () => {
+    getMock.mockResolvedValue(okResponse(tinyTree));
+    const { result } = renderHook(() => useFileTree());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
     const v2: Tree = {
       root: [
         {
@@ -305,15 +224,13 @@ describe("UX-14 single-flight", () => {
           updated_at: "2026-01-02T00:00:00Z",
         },
       ],
-    } as unknown as Tree;
-    getTreeMock
-      .mockResolvedValueOnce({ data: tinyTree })
-      .mockResolvedValueOnce({ data: v2 });
+    };
+    getMock.mockResolvedValueOnce(okResponse(v2));
 
-    const first = await coalescedGetTree();
-    expect(first.data?.root).toEqual(tinyTree.root);
-    const second = await coalescedGetTree();
-    expect(second.data?.root).toEqual(v2.root);
-    expect(getTreeMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await broadcastRefresh();
+    });
+
+    await waitFor(() => expect(result.current.tree).toEqual(v2));
   });
 });
