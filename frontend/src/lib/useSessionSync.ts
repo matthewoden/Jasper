@@ -5,9 +5,9 @@ import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
 import { dispatchTagEvent } from "./useTagBrowser";
 import { dispatchLinksEvent } from "./useBacklinks";
-import { dispatchMcpGrantsEvent } from "./useMcpGrants";
 import { dispatchBookmarksEvent } from "./useBookmarks";
 import { dispatchWorkspaceEvent } from "./useWorkspace";
+import { publish } from "./resources";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -164,7 +164,7 @@ export function useSessionSync(
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
             break;
           case "mcp:grant_changed":
-            dispatchMcpGrantsEvent();
+            publish("mcp:grant_changed");
             break;
           case "bookmark:changed":
             dispatchBookmarksEvent();

@@ -199,9 +199,6 @@ export interface TreeStore {
   saveState: import("./saveStateMachine").SaveState;
   setSaveState: (s: import("./saveStateMachine").SaveState) => void;
 
-  mcpGrants: McpGrant[];
-  setMcpGrants: (grants: McpGrant[]) => void;
-
   bookmarks: Bookmark[];
   setBookmarks: (bookmarks: Bookmark[]) => void;
   bookmarkFolders: BookmarkFolder[];
@@ -393,9 +390,6 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   saveState: { status: "idle" },
   setSaveState: (s) => set({ saveState: s }),
-
-  mcpGrants: [],
-  setMcpGrants: (grants) => set({ mcpGrants: grants }),
 
   bookmarks: [],
   setBookmarks: (bookmarks) => set({ bookmarks }),

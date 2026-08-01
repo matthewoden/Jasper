@@ -1,7 +1,14 @@
 /**
  * Tests for useMcpGrants hook.
- * Covers mount, WS-triggered refresh, levelFor ancestor walk,
- * directLevelFor direct-only match, toast copy for grant/upgrade/downgrade/revoke/error.
+ * Covers mount (fetch-once via the shared resource cache), WS-triggered
+ * refresh, levelFor ancestor walk, directLevelFor direct-only match, toast
+ * copy for grant/upgrade/downgrade/revoke/error, and the D-11/D-14 fetch-once
+ * property across multiple mounted consumers.
+ *
+ * `mcpGrantsResource` is built with the REAL `createResource` (not mocked)
+ * so the resource layer's coalescing/invalidation/mutate semantics are
+ * exercised for real — only the network-facing `listGrants`/`postGrant`/
+ * `deleteGrant` fetchers are mocked via `./mcpGrantsApi`.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -11,12 +18,17 @@ const listGrantsMock = vi.fn();
 const postGrantMock = vi.fn();
 const deleteGrantMock = vi.fn();
 
-vi.mock("./mcpGrantsApi", () => ({
-  listGrants: (...args: unknown[]) => listGrantsMock(...args),
-  postGrant: (...args: unknown[]) => postGrantMock(...args),
-  deleteGrant: (...args: unknown[]) => deleteGrantMock(...args),
-}));
-
+vi.mock("./mcpGrantsApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    mcpGrantsResource: createResource("mcpGrants", () => listGrantsMock(), {
+      mode: "cached",
+      invalidatedBy: ["mcp:grant_changed"],
+    }),
+    postGrant: (...args: unknown[]) => postGrantMock(...args),
+    deleteGrant: (...args: unknown[]) => deleteGrantMock(...args),
+  };
+});
 
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
@@ -24,7 +36,7 @@ vi.mock("../components/toast.utils", () => ({
   ToastProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-import { useTreeStore } from "./useTreeStore";
+import { mcpGrantsResource } from "./mcpGrantsApi";
 import { useMcpGrants, __testing__ } from "./useMcpGrants";
 
 const grantProjects = {
@@ -44,10 +56,18 @@ describe("useMcpGrants", () => {
     postGrantMock.mockReset();
     deleteGrantMock.mockReset();
     toastSpy.mockReset();
-    useTreeStore.setState({ mcpGrants: [] });
+    // Per-entry reset (not the global registry reset): the eventBus
+    // subscription createResource() wires up at module-load time inside
+    // the mock factory above must survive across tests, or the
+    // mcp:grant_changed WS-invalidation cases below (M2) would only work
+    // once. clear() resets cached data/hydrated/error without touching
+    // that subscription. Auto-cleanup (@testing-library/react) unmounts
+    // every renderHook after each test, so entry.listeners returns to 0
+    // between tests regardless.
+    mcpGrantsResource.clear();
   });
 
-  it("M1: mount calls listGrants once and populates the store", async () => {
+  it("M1: mount calls listGrants once and populates the cache", async () => {
     listGrantsMock.mockResolvedValue([grantProjects]);
 
     const { result } = renderHook(() => useMcpGrants(), { wrapper });
@@ -219,5 +239,21 @@ describe("useMcpGrants", () => {
         variant: "error",
       }),
     );
+  });
+
+  it("M9: three mounted consumers call the fetcher exactly once (D-11/D-14 fetch-once)", async () => {
+    listGrantsMock.mockResolvedValue([grantProjects]);
+
+    const { result: r1 } = renderHook(() => useMcpGrants(), { wrapper });
+    const { result: r2 } = renderHook(() => useMcpGrants(), { wrapper });
+    const { result: r3 } = renderHook(() => useMcpGrants(), { wrapper });
+
+    await waitFor(() => {
+      expect(r1.current.grants).toEqual([grantProjects]);
+      expect(r2.current.grants).toEqual([grantProjects]);
+      expect(r3.current.grants).toEqual([grantProjects]);
+    });
+
+    expect(listGrantsMock).toHaveBeenCalledTimes(1);
   });
 });
