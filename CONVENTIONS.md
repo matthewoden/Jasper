@@ -160,6 +160,14 @@ cd frontend && npx playwright test        # E2E against the built binary
 
 **Performance gate:** `make perf-vault` generates a deterministic 5,000-note vault; `make perf-check` asserts cold start (migrations + incremental re-index) stays under 5s.
 
+## No GET endpoint mutates the filesystem
+
+**Safe methods stay safe.** `GET`, `HEAD` and `OPTIONS` must not create, modify, move, or delete anything on disk. Creation belongs on `POST`.
+
+*`GET /daily-notes/{date}` was a get-or-create. That made a plain `<img src="http://127.0.0.1:6683/api/v1/daily-notes/2099-12-31">` on any page the user visited write a file into the vault: the CSRF Origin guard deliberately skips safe methods, and the Host allowlist cannot help because such a request carries a genuinely loopback Host. The attacker never reads the response — the side effect is the payload.*
+
+The convenience shape is worth keeping; it belongs in the client, as GET-then-POST-on-404, not in the verb.
+
 ## Comment policy
 
 Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process and planning documents may cite freely — this rule is about source.

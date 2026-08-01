@@ -24,24 +24,27 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// TestDailyNotesHandler exercises GET /api/v1/daily-notes/{date}. Covers:
-//   - first call: creates from template, returns 201, file exists on disk
-//   - second call: returns 200 with same id
+// TestDailyNotesHandler exercises the daily-note endpoints. Covers:
+//   - POST: creates from template, returns 201, file exists on disk
+//   - GET after POST: returns 200 with same id
 //   - invalid date formats → 400 + code='invalid_date'
 //   - {{date}} template substitution in config
 //   - frontmatter scaffold prepended
+//
+// Creation moved from GET to POST so that a safe method cannot write — see
+// TestDailyNotesHandler_GetIsReadOnly for the security-facing half.
 func TestDailyNotesHandler(t *testing.T) {
 	t.Run("create branch returns 201", func(t *testing.T) {
 		t.Parallel()
 		srv, dataDir, _ := newDailyTestServer(t, "")
 
-		resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-13"})
+		resp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-13"})
 		if err != nil {
-			t.Fatalf("GetDailyNote error: %v", err)
+			t.Fatalf("CreateDailyNote error: %v", err)
 		}
-		got201, ok := resp.(GetDailyNote201JSONResponse)
+		got201, ok := resp.(CreateDailyNote201JSONResponse)
 		if !ok {
-			t.Fatalf("expected GetDailyNote201JSONResponse, got %T", resp)
+			t.Fatalf("expected CreateDailyNote201JSONResponse, got %T", resp)
 		}
 		if got201.Path != "daily/2026-05-13.md" {
 			t.Errorf("path: got %q, want %q", got201.Path, "daily/2026-05-13.md")
@@ -73,11 +76,11 @@ func TestDailyNotesHandler(t *testing.T) {
 		srv, dataDir, _ := newDailyTestServer(t, "")
 		_ = dataDir
 
-		resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-14"})
+		resp1, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-14"})
 		if err != nil {
 			t.Fatalf("first call error: %v", err)
 		}
-		got201, ok := resp1.(GetDailyNote201JSONResponse)
+		got201, ok := resp1.(CreateDailyNote201JSONResponse)
 		if !ok {
 			t.Fatalf("first call: expected 201, got %T", resp1)
 		}
@@ -132,11 +135,11 @@ func TestDailyNotesHandler(t *testing.T) {
 		customTemplate := "# Daily {{date}}\n\n## Tasks\n"
 		srv, dataDir, _ := newDailyTestServer(t, customTemplate)
 
-		resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-15"})
+		resp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-15"})
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
-		if _, ok := resp.(GetDailyNote201JSONResponse); !ok {
+		if _, ok := resp.(CreateDailyNote201JSONResponse); !ok {
 			t.Fatalf("expected 201, got %T", resp)
 		}
 
@@ -167,7 +170,7 @@ func TestDailyNotesHandler(t *testing.T) {
 			_ = os.RemoveAll(dailyDir)
 		}
 
-		_, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-16"})
+		_, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-16"})
 		if err != nil {
 			t.Fatalf("error on first call: %v", err)
 		}
@@ -175,7 +178,7 @@ func TestDailyNotesHandler(t *testing.T) {
 			t.Errorf("daily/ directory not created: %v", err)
 		}
 
-		_, err = srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-17"})
+		_, err = srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-17"})
 		if err != nil {
 			t.Fatalf("error on second call (idempotent mkdir): %v", err)
 		}
@@ -208,8 +211,8 @@ func TestDailyNotesHandler_HTTP(t *testing.T) {
 		}
 	})
 
-	t.Run("valid date → 201 on first call", func(t *testing.T) {
-		resp, err := http.Get(ts.URL + "/api/v1/daily-notes/2026-05-20")
+	t.Run("valid date → 201 on first POST", func(t *testing.T) {
+		resp, err := http.Post(ts.URL+"/api/v1/daily-notes/2026-05-20", "application/json", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -226,6 +229,68 @@ func TestDailyNotesHandler_HTTP(t *testing.T) {
 			t.Errorf("path: got %q, want %q", got.Path, "daily/2026-05-20.md")
 		}
 	})
+}
+
+// TestDailyNotesHandler_GetIsReadOnly is the state-changing-GET regression guard.
+//
+// The attack it closes needs no JavaScript and no CORS: any page the victim
+// visits can embed
+//
+//	<img src="http://127.0.0.1:6683/api/v1/daily-notes/2099-12-31">
+//
+// and the file lands in the vault. The Host is legitimately loopback, GET is
+// a safe method so csrfOriginMiddleware never inspects it, and the attacker
+// never needs to read the response — the side effect is the payload. The
+// Host allowlist does not help here; these are independent fixes.
+//
+// The general rule this pins: no GET endpoint mutates the filesystem.
+func TestDailyNotesHandler_GetIsReadOnly(t *testing.T) {
+	t.Parallel()
+	srv, dataDir, _ := newDailyTestServer(t, "")
+
+	const date = "2099-12-31"
+	resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: date})
+	if err != nil {
+		t.Fatalf("GetDailyNote error: %v", err)
+	}
+	got404, ok := resp.(GetDailyNote404JSONResponse)
+	if !ok {
+		t.Fatalf("GET for a nonexistent daily note: expected 404, got %T", resp)
+	}
+	if got404.Code != "not_found" {
+		t.Errorf("code: got %q, want %q", got404.Code, "not_found")
+	}
+
+	// The disk assertion is the one that matters — a 404 response body with a
+	// file written behind it would still be the vulnerability.
+	notePath := filepath.Join(dataDir, "notes", "daily", date+".md")
+	if _, statErr := os.Stat(notePath); !os.IsNotExist(statErr) {
+		t.Errorf("GET created %s on disk (stat err: %v) — GET must not write", notePath, statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(dataDir, "notes", "daily")); !os.IsNotExist(statErr) {
+		t.Error("GET created the daily/ directory — GET must not write")
+	}
+
+	// POST is the creation verb, and it is behind the Origin guard.
+	createResp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: date})
+	if err != nil {
+		t.Fatalf("CreateDailyNote error: %v", err)
+	}
+	if _, ok := createResp.(CreateDailyNote201JSONResponse); !ok {
+		t.Fatalf("POST: expected 201, got %T", createResp)
+	}
+	if _, statErr := os.Stat(notePath); statErr != nil {
+		t.Errorf("POST did not create %s: %v", notePath, statErr)
+	}
+
+	// And GET now finds it.
+	afterResp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: date})
+	if err != nil {
+		t.Fatalf("GetDailyNote after create: %v", err)
+	}
+	if _, ok := afterResp.(GetDailyNote200JSONResponse); !ok {
+		t.Fatalf("GET after create: expected 200, got %T", afterResp)
+	}
 }
 
 type fakeIndexForDaily struct {
@@ -373,13 +438,13 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 		t.Parallel()
 		srv, _, _ := newDailyTestServer(t, "")
 
-		resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-13"})
+		resp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-13"})
 		if err != nil {
 			t.Fatalf("GetDailyNote error: %v", err)
 		}
-		got201, ok := resp.(GetDailyNote201JSONResponse)
+		got201, ok := resp.(CreateDailyNote201JSONResponse)
 		if !ok {
-			t.Fatalf("expected GetDailyNote201JSONResponse, got %T", resp)
+			t.Fatalf("expected CreateDailyNote201JSONResponse, got %T", resp)
 		}
 
 		id := uuid.UUID(got201.Id)
@@ -399,11 +464,11 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 		t.Parallel()
 		srv, _, _ := newDailyTestServer(t, "")
 
-		resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
+		resp1, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-05-22"})
 		if err != nil {
-			t.Fatalf("first GetDailyNote error: %v", err)
+			t.Fatalf("CreateDailyNote error: %v", err)
 		}
-		got201, ok := resp1.(GetDailyNote201JSONResponse)
+		got201, ok := resp1.(CreateDailyNote201JSONResponse)
 		if !ok {
 			t.Fatalf("first call: expected 201, got %T", resp1)
 		}
@@ -417,7 +482,7 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 
 		resp2, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-05-22"})
 		if err != nil {
-			t.Fatalf("second GetDailyNote error: %v", err)
+			t.Fatalf("GetDailyNote error: %v", err)
 		}
 		if _, ok := resp2.(GetDailyNote200JSONResponse); !ok {
 			t.Fatalf("second call: expected 200, got %T", resp2)
@@ -550,11 +615,11 @@ func TestGetDailyNote_BroadcastContract(t *testing.T) {
 	t.Parallel()
 	srv, _, bc := newDailyRealTestServer(t, "")
 
-	resp1, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-06-01"})
+	resp1, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-06-01"})
 	if err != nil {
 		t.Fatalf("create call error: %v", err)
 	}
-	if _, ok := resp1.(GetDailyNote201JSONResponse); !ok {
+	if _, ok := resp1.(CreateDailyNote201JSONResponse); !ok {
 		t.Fatalf("create call: expected 201, got %T", resp1)
 	}
 	if got := bc.countByType(notes.EventNoteCreated); got != 1 {
@@ -582,11 +647,11 @@ func TestGetDailyNote_FTSSearchableWithoutReconcile(t *testing.T) {
 	template := "# {{date}}\n\nzqxdailytoken distinct body\n"
 	srv, idx, _ := newDailyRealTestServer(t, template)
 
-	resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-06-02"})
+	resp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-06-02"})
 	if err != nil {
 		t.Fatalf("GetDailyNote error: %v", err)
 	}
-	got201, ok := resp.(GetDailyNote201JSONResponse)
+	got201, ok := resp.(CreateDailyNote201JSONResponse)
 	if !ok {
 		t.Fatalf("expected 201, got %T", resp)
 	}
@@ -613,11 +678,11 @@ func TestGetDailyNote_ResolvableByWikilinkTitle(t *testing.T) {
 	t.Parallel()
 	srv, _, _ := newDailyRealTestServer(t, "")
 
-	resp, err := srv.GetDailyNote(context.Background(), GetDailyNoteRequestObject{Date: "2026-06-03"})
+	resp, err := srv.CreateDailyNote(context.Background(), CreateDailyNoteRequestObject{Date: "2026-06-03"})
 	if err != nil {
 		t.Fatalf("GetDailyNote error: %v", err)
 	}
-	got201, ok := resp.(GetDailyNote201JSONResponse)
+	got201, ok := resp.(CreateDailyNote201JSONResponse)
 	if !ok {
 		t.Fatalf("expected 201, got %T", resp)
 	}

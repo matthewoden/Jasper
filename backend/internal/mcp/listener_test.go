@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -26,5 +27,63 @@ func TestMCPAlwaysLoopback(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "loopback") {
 		t.Errorf("expected loopback error, got: %v", err)
+	}
+}
+
+// TestMCPListener_RejectsReboundHost covers DNS rebinding. The MCP listener binds
+// loopback-only with no opt-out (ADR-0013, CONTEXT invariant 5), but bind
+// posture alone does not survive DNS rebinding: a rebound page reaches
+// 127.0.0.1:6684 over a legitimate loopback connection and only the Host
+// header still names evil.com.
+//
+// Browser-driven exploitation is already largely blocked because MCP's
+// JSON-RPC POST triggers a CORS preflight the endpoint does not answer. But
+// that mitigation is incidental — it rests on the SDK's transport choice and
+// on browser CORS behavior, neither of which Jasper controls. The residual
+// risk is a same-machine malicious process, which sits lower in this threat
+// model. The check makes the loopback guarantee explicit rather than emergent.
+func TestMCPListener_RejectsReboundHost(t *testing.T) {
+	t.Parallel()
+
+	srv, err := mcp.StartMCPListener(
+		context.Background(),
+		newTestMCPServer(t),
+		"127.0.0.1:0",
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatalf("StartMCPListener: %v", err)
+	}
+	defer func() { _ = srv.Close() }()
+
+	addr := srv.Addr
+
+	// The body matters, not just the status: the MCP SDK answers a bare GET
+	// /mcp with its own 403, so a status-only assertion would pass whether or
+	// not the Host gate exists.
+	probe := func(path, host string) (int, string) {
+		req, reqErr := http.NewRequest(http.MethodGet, "http://"+addr+path, nil)
+		if reqErr != nil {
+			t.Fatalf("NewRequest: %v", reqErr)
+		}
+		req.Host = host
+		resp, doErr := http.DefaultClient.Do(req)
+		if doErr != nil {
+			t.Fatalf("GET %s (host=%q): %v", path, host, doErr)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(body)
+	}
+
+	for _, path := range []string{"/mcp", "/healthz"} {
+		status, body := probe(path, "evil.com:6684")
+		if status != http.StatusForbidden || !strings.Contains(body, "forbidden Host") {
+			t.Errorf("GET %s with rebound Host: got %d %q, want 403 \"forbidden Host\"",
+				path, status, strings.TrimSpace(body))
+		}
+		if _, body := probe(path, addr); strings.Contains(body, "forbidden Host") {
+			t.Errorf("GET %s with loopback Host: rejected by the Host gate, want it to pass", path)
+		}
 	}
 }

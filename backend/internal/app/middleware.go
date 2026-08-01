@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/matthewoden/jasper/backend/internal/api"
+	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -72,15 +74,47 @@ const cspHeaderValue = "default-src 'self'; " +
 	"font-src 'self' data:; " +
 	"style-src 'self' 'unsafe-inline'"
 
+// securityHeadersMiddleware sets the app-wide headers. Routes that stream
+// user-controlled bytes out of the vault get the strict per-response CSP
+// instead, so a planted SVG cannot execute as a document in the app origin.
+// api.ServeFile sets those headers itself too; this covers the generated
+// attachment handler, which cannot add headers of its own.
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", cspHeaderValue)
+		if api.IsRawFilePath(r.URL.Path) {
+			h.Set("Content-Security-Policy", api.RawFileCSP)
+		} else {
+			h.Set("Content-Security-Policy", cspHeaderValue)
+		}
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// hostAllowlistMiddleware rejects any request whose Host header names a host
+// Jasper is not serving, closing DNS rebinding at the router root.
+//
+// csrfOriginMiddleware cannot cover this: GET is a safe method and bypasses
+// it entirely, and read-only exfiltration is the whole prize for a notes app.
+//
+// The allowlist rules — including the --bind and 0.0.0.0 cases — live in
+// netbind.HostAllowlist, shared with the WebSocket upgrade and the MCP
+// listener so all three answer "is this us?" the same way.
+func hostAllowlistMiddleware(listenAddr string) func(http.Handler) http.Handler {
+	allowlist := netbind.NewHostAllowlist(listenAddr)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !allowlist.Allows(r.Host) {
+				http.Error(w, "forbidden Host", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 var csrfSafeMethods = map[string]bool{

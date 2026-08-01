@@ -19,6 +19,14 @@ import (
 
 const maxAttachmentBytes int64 = 100 << 20
 
+// attachmentsRelDir returns the vault-relative attachments directory for a
+// note — <note's parent>/attachments. Kept as a relative path so it can be
+// containment-checked against notes/ as a whole; resolving it to an
+// absolute path first would discard the ancestor components that need checking.
+func attachmentsRelDir(notePath string) string {
+	return filepath.Join(filepath.Dir(notePath), "attachments")
+}
+
 // CreateAttachment implements POST /api/v1/attachments/{noteId}.
 //
 // Accepts multipart/form-data with a single field 'file'. Stores the file under
@@ -71,9 +79,16 @@ func (s *Server) CreateAttachment(
 		return CreateAttachment404JSONResponse(newError("invalid_request", "invalid upload filename")), nil
 	}
 
-	notesRoot := filepath.Join(s.dataDir, "notes")
-	noteParentDir := filepath.Dir(filepath.Join(notesRoot, note.Path))
-	attachDir := filepath.Join(noteParentDir, "attachments")
+	// Contain the whole vault-relative attachments path, not just the
+	// filename: the directory is derived from the note's own path, so a
+	// symlinked ancestor anywhere in that chain would put the write outside
+	// the vault.
+	attachDir, containErr := s.containedUnderNotes(attachmentsRelDir(note.Path))
+	if containErr != nil {
+		s.log.Error("CreateAttachment: containment", "notePath", note.Path, "err", containErr)
+		return CreateAttachment404JSONResponse(newError("invalid_path",
+			"attachments directory escapes the notes directory")), nil
+	}
 	if mkErr := os.MkdirAll(attachDir, 0o755); mkErr != nil {
 		s.log.Error("CreateAttachment: MkdirAll", "dir", attachDir, "err", mkErr)
 		return nil, fmt.Errorf("create attachments dir: %w", mkErr)
@@ -168,29 +183,23 @@ func (s *Server) GetAttachment(
 		return GetAttachment400JSONResponse(newError("invalid_filename", "invalid filename after clean")), nil
 	}
 
-	notesRoot := filepath.Join(s.dataDir, "notes")
-	noteParentDir := filepath.Dir(filepath.Join(notesRoot, note.Path))
-	attachDir := filepath.Join(noteParentDir, "attachments")
+	attachRel := filepath.Join(attachmentsRelDir(note.Path), filename)
 
-	finalPath := filepath.Join(attachDir, filename)
-	cleanFinal := filepath.Clean(finalPath)
-	cleanAttach := filepath.Clean(attachDir) + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanFinal, cleanAttach) {
-		return GetAttachment400JSONResponse(newError("invalid_path",
-			"filename escapes attachments directory")), nil
-	}
-
-	fi, lstatErr := os.Lstat(cleanFinal)
-	if lstatErr != nil {
-		if os.IsNotExist(lstatErr) {
-			return GetAttachment404JSONResponse(newError("not_found", "attachment not found")), nil
-		}
-		s.log.Error("GetAttachment: Lstat", "path", cleanFinal, "err", lstatErr)
-		return nil, errors.New("could not read attachment")
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
+	cleanFinal, _, resolveErr := fsstore.ResolveContained(s.notesRoot(), attachRel)
+	switch {
+	case resolveErr == nil:
+	case errors.Is(resolveErr, fsstore.ErrSymlinkLeaf):
 		return GetAttachment403JSONResponse(newError("symlink_rejected",
 			"symlinked attachments are not served")), nil
+	case os.IsNotExist(resolveErr):
+		return GetAttachment404JSONResponse(newError("not_found", "attachment not found")), nil
+	case errors.Is(resolveErr, fsstore.ErrNotInRoot), errors.Is(resolveErr, fsstore.ErrPathEscape),
+		errors.Is(resolveErr, fsstore.ErrAbsolutePath), errors.Is(resolveErr, fsstore.ErrEmptyPath):
+		return GetAttachment400JSONResponse(newError("invalid_path",
+			"attachment path escapes the notes directory")), nil
+	default:
+		s.log.Error("GetAttachment: resolve", "path", attachRel, "err", resolveErr)
+		return nil, errors.New("could not read attachment")
 	}
 
 	fileData, readErr := os.ReadFile(cleanFinal)

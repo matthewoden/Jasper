@@ -20,57 +20,32 @@ func (s *Server) GetFile(
 	_ context.Context,
 	req GetFileRequestObject,
 ) (GetFileResponseObject, error) {
-	rawPath := req.Params.Path
-
-	if strings.Contains(rawPath, "..") ||
-		strings.HasPrefix(rawPath, "/") ||
-		strings.HasPrefix(rawPath, `\`) {
-		return GetFile400JSONResponse(newError("invalid_path",
-			"path must not contain '..' or be absolute")), nil
-	}
-
-	cleanRel := filepath.Clean(rawPath)
-	if cleanRel == "." || cleanRel == "/" || cleanRel == "" {
-		return GetFile400JSONResponse(newError("invalid_path",
-			"invalid path after clean")), nil
-	}
-
-	if strings.HasSuffix(strings.ToLower(cleanRel), ".md") {
-		return GetFile404JSONResponse(newError("not_found",
-			"markdown files are served via /notes/{id}")), nil
-	}
-
-	notesRoot := filepath.Join(s.dataDir, "notes")
-
-	finalPath := filepath.Join(notesRoot, cleanRel)
-	cleanFinal := filepath.Clean(finalPath)
-	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanFinal, cleanRoot) {
-		return GetFile400JSONResponse(newError("invalid_path",
-			"path escapes notes directory")), nil
-	}
-
-	fi, lstatErr := os.Lstat(cleanFinal)
-	if lstatErr != nil {
-		if os.IsNotExist(lstatErr) {
+	res := s.resolveFileUnderNotes(req.Params.Path)
+	if !res.ok {
+		if res.isMd {
 			return GetFile404JSONResponse(newError("not_found",
-				"file not found")), nil
+				"markdown files are served via /notes/{id}")), nil
 		}
-		s.log.Error("GetFile: Lstat", "path", cleanFinal, "err", lstatErr)
-		return nil, errors.New("could not read file")
+		switch res.status {
+		case 400:
+			return GetFile400JSONResponse(newError(res.errCode, res.errMsg)), nil
+		case 403:
+			return GetFile403JSONResponse(newError(res.errCode, res.errMsg)), nil
+		case 404:
+			return GetFile404JSONResponse(newError(res.errCode, res.errMsg)), nil
+		default:
+			s.log.Error("GetFile: resolve", "path", req.Params.Path, "code", res.errCode)
+			return nil, errors.New("could not read file")
+		}
 	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return GetFile403JSONResponse(newError("symlink_rejected",
-			"symlinked files are not served")), nil
-	}
-	if fi.IsDir() {
+	if res.fi.IsDir() {
 		return GetFile404JSONResponse(newError("not_found",
 			"path is a directory")), nil
 	}
 
-	fileData, readErr := os.ReadFile(cleanFinal)
+	fileData, readErr := os.ReadFile(res.abs)
 	if readErr != nil {
-		s.log.Error("GetFile: ReadFile", "path", cleanFinal, "err", readErr)
+		s.log.Error("GetFile: ReadFile", "path", res.abs, "err", readErr)
 		return nil, errors.New("could not read file")
 	}
 
@@ -118,14 +93,14 @@ func (s *Server) CreateFile(
 	}
 
 	notesRoot := filepath.Join(s.dataDir, "notes")
-	targetDir := filepath.Join(notesRoot, cleanRel)
-	cleanTarget := filepath.Clean(targetDir)
-	cleanNotesRoot := filepath.Clean(notesRoot)
-
-	if cleanTarget != cleanNotesRoot &&
-		!strings.HasPrefix(cleanTarget, cleanNotesRoot+string(os.PathSeparator)) {
-		return CreateFile400JSONResponse(newError("invalid_path",
-			"target dir escapes notes directory")), nil
+	cleanTarget := filepath.Clean(notesRoot)
+	if cleanRel != "" {
+		resolved, containErr := s.containedUnderNotes(cleanRel)
+		if containErr != nil {
+			return CreateFile400JSONResponse(newError("invalid_path",
+				"target dir escapes notes directory")), nil
+		}
+		cleanTarget = resolved
 	}
 
 	fi, lstatErr := os.Lstat(cleanTarget)
@@ -234,6 +209,16 @@ type fileResolveResult struct {
 	notFound bool
 }
 
+func (s *Server) notesRoot() string { return filepath.Join(s.dataDir, "notes") }
+
+// containedUnderNotes guarantees a vault-relative directory path resolves
+// inside notes/ even when an ancestor component is a symlink. Use
+// fsstore.ResolveContained for paths whose leaf is a file — it also reports
+// the leaf's FileInfo and rejects a symlinked leaf.
+func (s *Server) containedUnderNotes(rel string) (string, error) {
+	return fsstore.ContainedPath(s.notesRoot(), rel)
+}
+
 func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
 	if strings.Contains(rawPath, "..") ||
 		strings.HasPrefix(rawPath, "/") ||
@@ -248,25 +233,20 @@ func (s *Server) resolveFileUnderNotes(rawPath string) fileResolveResult {
 		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "markdown files are managed via /notes/{id}", isMd: true}
 	}
 
-	notesRoot := filepath.Join(s.dataDir, "notes")
-	finalPath := filepath.Join(notesRoot, cleanRel)
-	cleanFinal := filepath.Clean(finalPath)
-	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanFinal, cleanRoot) {
+	abs, fi, err := fsstore.ResolveContained(s.notesRoot(), cleanRel)
+	switch {
+	case err == nil:
+		return fileResolveResult{abs: abs, fi: fi, ok: true}
+	case errors.Is(err, fsstore.ErrSymlinkLeaf):
+		return fileResolveResult{status: 403, errCode: "symlink_rejected", errMsg: "symlinked files are not served"}
+	case os.IsNotExist(err):
+		return fileResolveResult{status: 404, errCode: "not_found", errMsg: "file not found", notFound: true}
+	case errors.Is(err, fsstore.ErrNotInRoot), errors.Is(err, fsstore.ErrPathEscape),
+		errors.Is(err, fsstore.ErrAbsolutePath), errors.Is(err, fsstore.ErrEmptyPath):
 		return fileResolveResult{status: 400, errCode: "invalid_path", errMsg: "path escapes notes directory"}
-	}
-
-	fi, lstatErr := os.Lstat(cleanFinal)
-	if lstatErr != nil {
-		if os.IsNotExist(lstatErr) {
-			return fileResolveResult{status: 404, errCode: "not_found", errMsg: "file not found", notFound: true}
-		}
+	default:
 		return fileResolveResult{status: 500, errCode: "io_error", errMsg: "could not read file"}
 	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return fileResolveResult{status: 403, errCode: "symlink_rejected", errMsg: "symlinked files are not served"}
-	}
-	return fileResolveResult{abs: cleanFinal, fi: fi, ok: true}
 }
 
 // DeleteFile implements DELETE /api/v1/files?path=...
@@ -362,9 +342,8 @@ func (s *Server) PostFileMove(
 			"markdown files are managed via /notes/{id}")), nil
 	}
 	notesRoot := filepath.Join(s.dataDir, "notes")
-	dstAbs := filepath.Clean(filepath.Join(notesRoot, dstClean))
-	cleanRoot := filepath.Clean(notesRoot) + string(os.PathSeparator)
-	if !strings.HasPrefix(dstAbs, cleanRoot) {
+	dstAbs, dstErr := s.containedUnderNotes(dstClean)
+	if dstErr != nil {
 		return PostFileMove400JSONResponse(newError("invalid_path",
 			"dst escapes notes directory")), nil
 	}
@@ -482,6 +461,8 @@ func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
 		ct = "image/svg+xml"
 	}
 
+	setRawFileSecurityHeaders(w.Header())
+	w.Header().Set("Content-Disposition", contentDisposition(ct, filepath.Base(res.abs)))
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
 	w.WriteHeader(http.StatusOK)

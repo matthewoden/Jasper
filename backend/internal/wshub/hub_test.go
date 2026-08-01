@@ -250,6 +250,10 @@ func TestHub_LANBoundOriginPatterns(t *testing.T) {
 	// not require a real listener — httptest.NewRecorder is sufficient.
 	hub := wshub.NewWithOrigins(slog.New(slog.NewTextHandler(io.Discard, nil)), patterns)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	// httptest.NewRequest defaults Host to example.com, which the Host
+	// allowlist rejects first — set a loopback Host so this still asserts
+	// the empty-Origin rejection it names.
+	req.Host = "127.0.0.1:6683"
 	rec := httptest.NewRecorder()
 	hub.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {

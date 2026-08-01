@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -90,26 +91,21 @@ func (a *attachmentAdapterImpl) Read(_ context.Context, noteID, filename string)
 		return nil, "", errors.New("invalid filename after clean")
 	}
 
+	// Contained against notes/ as a whole rather than the derived attachments
+	// dir: that directory is built from the note's own path, so a symlinked
+	// ancestor anywhere in the chain would read outside the vault.
 	notesRoot := filepath.Join(a.dataDir, "notes")
-	noteParentDir := filepath.Dir(filepath.Join(notesRoot, summary.Path))
-	attachDir := filepath.Join(noteParentDir, "attachments")
+	attachRel := filepath.Join(filepath.Dir(summary.Path), "attachments", filename)
 
-	finalPath := filepath.Join(attachDir, filename)
-	cleanFinal := filepath.Clean(finalPath)
-	cleanAttach := filepath.Clean(attachDir) + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanFinal, cleanAttach) {
-		return nil, "", errors.New("filename escapes attachments directory")
-	}
-
-	fi, lerr := os.Lstat(cleanFinal)
-	if lerr != nil {
-		if errors.Is(lerr, fs.ErrNotExist) {
-			return nil, "", fmt.Errorf("attachment not found: %s", filename)
-		}
-		return nil, "", fmt.Errorf("stat attachment: %w", lerr)
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
+	cleanFinal, _, rerr := fsstore.ResolveContained(notesRoot, attachRel)
+	switch {
+	case rerr == nil:
+	case errors.Is(rerr, fsstore.ErrSymlinkLeaf):
 		return nil, "", errors.New("symlinked attachments are not served")
+	case errors.Is(rerr, fs.ErrNotExist):
+		return nil, "", fmt.Errorf("attachment not found: %s", filename)
+	default:
+		return nil, "", fmt.Errorf("resolve attachment: %w", rerr)
 	}
 
 	data, rerr := os.ReadFile(cleanFinal)

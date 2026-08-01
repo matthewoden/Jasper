@@ -23,9 +23,41 @@ func dailyScaffoldH1(date string) string {
 	return "# " + date + "\n\n"
 }
 
+// dailyRelPath is the on-disk location of a daily note. date is validated
+// (YYYY-MM-DD) by the caller before either daily entry point is invoked.
+func dailyRelPath(date string) string { return "daily/" + date + ".md" }
+
+// GetDailyNote reads the daily note for date, returning ErrNotFound when it
+// does not exist. Strictly read-only — it backs GET /api/v1/daily-notes/{date},
+// which must not touch the filesystem.
+//
+// Like the get branch of GetOrCreateDailyNote, this (re)populates the
+// registry with the date as title so [[date]] resolves across a restart or a
+// registry eviction. That is an in-memory index write, not a vault write.
+func (s *Service) GetDailyNote(ctx context.Context, date string) (Note, error) {
+	rec, lookupErr := s.index.LookupByPath(ctx, dailyRelPath(date))
+	if lookupErr != nil {
+		if errors.Is(lookupErr, ErrNotFound) {
+			return Note{}, ErrNotFound
+		}
+		return Note{}, fmt.Errorf("notes.GetDailyNote(%s): lookup: %w", date, lookupErr)
+	}
+
+	s.registry.AddRecord(rec.ID, rec.Path, strings.ToLower(date))
+	note, getErr := s.Get(ctx, rec.ID)
+	if getErr != nil {
+		return Note{}, fmt.Errorf("notes.GetDailyNote(%s): %w", date, getErr)
+	}
+	return note, nil
+}
+
 // GetOrCreateDailyNote implements the get-or-create semantics for
-// GET /api/v1/daily-notes/{date} entirely inside the domain service —
+// POST /api/v1/daily-notes/{date} entirely inside the domain service —
 // no direct filesystem, index, or registry access from the API handler.
+//
+// This is reached only by POST. It used to back the GET as well, which made
+// note creation a side effect of a safe method — see the note on
+// GetDailyNote above.
 //
 // relPath is always "daily/<date>.md"; date is validated (YYYY-MM-DD) by
 // the caller before this is invoked.
@@ -38,19 +70,12 @@ func dailyScaffoldH1(date string) string {
 // owns the file-FIRST write, index upsert, title/FTS/backlink indexing,
 // and the note:created broadcast (exactly once).
 func (s *Service) GetOrCreateDailyNote(ctx context.Context, date, template string) (Note, bool, error) {
-	relPath := "daily/" + date + ".md"
-
-	rec, lookupErr := s.index.LookupByPath(ctx, relPath)
+	note, getErr := s.GetDailyNote(ctx, date)
 	switch {
-	case lookupErr == nil:
-		s.registry.AddRecord(rec.ID, rec.Path, strings.ToLower(date))
-		note, getErr := s.Get(ctx, rec.ID)
-		if getErr != nil {
-			return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): %w", date, getErr)
-		}
+	case getErr == nil:
 		return note, false, nil
-	case !errors.Is(lookupErr, ErrNotFound):
-		return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): lookup: %w", date, lookupErr)
+	case !errors.Is(getErr, ErrNotFound):
+		return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): %w", date, getErr)
 	}
 
 	if err := s.files.CreateDir("daily"); err != nil && !errors.Is(err, fsstore.ErrCaseCollision) {
@@ -65,9 +90,9 @@ func (s *Service) GetOrCreateDailyNote(ctx context.Context, date, template strin
 		return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): %w", date, err)
 	}
 
-	note, getErr := s.Get(ctx, summary.ID)
-	if getErr != nil {
-		return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): post-create get: %w", date, getErr)
+	created, err := s.Get(ctx, summary.ID)
+	if err != nil {
+		return Note{}, false, fmt.Errorf("notes.GetOrCreateDailyNote(%s): post-create get: %w", date, err)
 	}
-	return note, true, nil
+	return created, true, nil
 }

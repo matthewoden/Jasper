@@ -17,6 +17,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/matthewoden/jasper/backend/internal/app"
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/platform"
 	"github.com/matthewoden/jasper/backend/internal/vault"
@@ -621,5 +622,27 @@ func TestDoctorBindCheck(t *testing.T) {
 				t.Errorf("ok check should have empty hint, got %q", r.Hint)
 			}
 		})
+	}
+}
+
+// TestCheckDataDirPerms_PassesOnFreshlyCreatedVault is the writer-vs-checker
+// cross-check for ADR-0030, and the reason both sides had to change together.
+//
+// Doctor has always required 0700 on .jasper/, while app.EnsureDataDir created
+// it 0755 — so every vault Jasper created failed Jasper's own health check. A
+// test on either side alone would have stayed green; only running the real
+// writer against the real checker catches the disagreement.
+func TestCheckDataDirPerms_PassesOnFreshlyCreatedVault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows skips perm check")
+	}
+	dir := t.TempDir()
+
+	if err := app.EnsureDataDir(dir); err != nil {
+		t.Fatalf("EnsureDataDir: %v", err)
+	}
+
+	if r := checkDataDirPerms(dir); r.Status != "ok" {
+		t.Errorf("doctor fails on a vault Jasper just created: %+v", r)
 	}
 }

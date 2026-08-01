@@ -335,7 +335,10 @@ func checkMigrationState(dir string) DoctorCheck {
 
 func checkLogWritable(dir string) DoctorCheck {
 	logsDir := filepath.Join(dir, "logs")
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+	// 0700: logs live inside .jasper/ and are Jasper's own data (ADR-0030).
+	// Creating them 0755 here would make doctor the thing that loosens the
+	// vault it is checking.
+	if err := os.MkdirAll(logsDir, 0o700); err != nil {
 		return DoctorCheck{Name: "log writable", Status: "fail", Hint: "cannot mkdir " + logsDir + ": " + err.Error()}
 	}
 	probePath := filepath.Join(logsDir, fmt.Sprintf(".write-probe-%d", os.Getpid()))

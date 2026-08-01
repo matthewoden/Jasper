@@ -678,7 +678,9 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
     await waitForConnected(page);
 
     const todayStr = localDateString();
-    const dailyNoteResp = await page.request.get(
+    // POST, not GET: creation moved to POST so that a safe method
+    // can no longer write to the vault.
+    const dailyNoteResp = await page.request.post(
       `${jasper.baseURL}/api/v1/daily-notes/${todayStr}`
     );
     expect([200, 201]).toContain(dailyNoteResp.status());

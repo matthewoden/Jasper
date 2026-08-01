@@ -37,18 +37,75 @@ var ErrAlreadyOpen = errors.New("a vault is already open; hot-swap not yet suppo
 
 func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes") }
 
-// EnsureDataDir creates <dataDir>/{notes,.jasper} with 0o755 perms if
-// missing. 0o755 (not 0o700) because Jasper runs as the user and that
-// permission matches the prevailing convention for app-data dirs on
-// macOS/Linux. A more restrictive 0o700 would surprise sync tools
-// (Syncthing, iCloud, git) that need to walk the tree.
+// Vault directory modes (ADR-0030, decided 2026-08-01).
+//
+// notes/ is 0755 because it is the part users legitimately point other tools
+// at — Syncthing, iCloud, git — and the original lifecycle rationale for 0755
+// is sound for exactly that directory.
+//
+// Jasper's own directories are 0700. .jasper/ holds the index database, which
+// carries full note bodies in the FTS table along with titles, tags,
+// backlinks, and the MCP write grants; .trash/ holds deleted note content.
+// Neither is something a sync tool needs, and on a shared host — the WSL
+// "coworkers self-host" case — 0755 lets any other local user read every note
+// straight off disk.
+const (
+	NotesDirMode  os.FileMode = 0o755
+	JasperDirMode os.FileMode = 0o700
+	// DBFileMode applies to app.db and its -wal / -shm siblings. Missing the
+	// siblings would leave the data readable anyway.
+	DBFileMode os.FileMode = 0o600
+)
+
+// EnsureDataDir creates <dataDir>/{notes,.jasper,.trash} if missing and
+// enforces the modes above on every run.
+//
+// The re-chmod is deliberate: MkdirAll leaves an existing directory's mode
+// untouched, so a vault created by an earlier version — which made all three
+// 0755 — would stay world-readable indefinitely and keep failing Jasper's own
+// `jasper doctor` check, which has always required 0700 on .jasper/. Tightening
+// on startup is what makes writer and doctor finally agree.
 func EnsureDataDir(dataDir string) error {
-	for _, sub := range []string{"notes", vault.SubdirName, ".trash"} {
-		if err := os.MkdirAll(filepath.Join(dataDir, sub), 0o755); err != nil {
-			return fmt.Errorf("ensure %s: %w", sub, err)
+	for _, sub := range []struct {
+		name string
+		mode os.FileMode
+	}{
+		{"notes", NotesDirMode},
+		{vault.SubdirName, JasperDirMode},
+		{".trash", JasperDirMode},
+	} {
+		path := filepath.Join(dataDir, sub.name)
+		if err := os.MkdirAll(path, sub.mode); err != nil {
+			return fmt.Errorf("ensure %s: %w", sub.name, err)
+		}
+		if sub.mode == JasperDirMode {
+			if err := os.Chmod(path, sub.mode); err != nil {
+				return fmt.Errorf("tighten %s: %w", sub.name, err)
+			}
 		}
 	}
 	return nil
+}
+
+// restrictDBFileModes tightens app.db and its -wal / -shm siblings to 0600
+// after open (ADR-0030). The SQLite driver creates them with its own default
+// (0644), and that database holds full note bodies in the FTS table — so
+// leaving it world-readable would undo the 0700 on .jasper/ for anyone who
+// can reach the file directly.
+//
+// The -wal and -shm siblings matter as much as the database itself: recent
+// writes live in the WAL, so chmod'ing only app.db would leave the newest
+// content readable.
+//
+// Failures are logged, not fatal. A vault that cannot be chmod'ed (an exotic
+// filesystem, a mount without POSIX modes) should still open — the notes are
+// the product; the mode is defence in depth.
+func restrictDBFileModes(dbPath string, log *slog.Logger) {
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Chmod(p, DBFileMode); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Warn("could not restrict index DB file mode", "path", p, "err", err)
+		}
+	}
 }
 
 // SeedScratchpadIfMissing writes notes.ScratchpadWelcome to
@@ -165,11 +222,11 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	}
 
 	dbPath := vault.AppDBPath(a.cfg.DataDir)
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), JasperDirMode); err != nil {
 		return a.serveStartupError(ctx, "Storage dir", fmt.Errorf("ensure .jasper dir: %w", err))
 	}
 	logsDir := vault.LogsDir(a.cfg.DataDir)
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+	if err := os.MkdirAll(logsDir, JasperDirMode); err != nil {
 		return a.serveStartupError(ctx, "Logs dir", fmt.Errorf("ensure logs dir: %w", err))
 	}
 
@@ -197,6 +254,8 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 
 	defer func() { _ = pair.Close() }()
 	a.pair = pair
+
+	restrictDBFileModes(dbPath, a.cfg.Logger)
 
 	notesDir := notesDirFor(a.cfg.DataDir)
 	a.indexer = index.New(pair, notesDir, a.cfg.Logger)
@@ -318,6 +377,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
+	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
@@ -396,11 +456,11 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	}
 
 	dbPath := vault.AppDBPath(a.cfg.DataDir)
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), JasperDirMode); err != nil {
 		return fmt.Errorf("initVaultSubsystemsOnly: .jasper dir: %w", err)
 	}
 	logsDir := vault.LogsDir(a.cfg.DataDir)
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+	if err := os.MkdirAll(logsDir, JasperDirMode); err != nil {
 		return fmt.Errorf("initVaultSubsystemsOnly: logs dir: %w", err)
 	}
 
@@ -417,6 +477,8 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	}
 
 	a.pair = pair
+
+	restrictDBFileModes(dbPath, a.cfg.Logger)
 
 	notesDir := notesDirFor(a.cfg.DataDir)
 	a.indexer = index.New(pair, notesDir, a.cfg.Logger)
@@ -504,6 +566,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
+	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))

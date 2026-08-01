@@ -1266,3 +1266,71 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 		}
 	}
 }
+
+// TestApp_LiveRouter_RejectsReboundHost is the DNS-rebinding integration gate: it
+// drives the fully-wired lifecycle router, not just app.New's, because the
+// middleware has to be present on every router the app swaps in.
+//
+// The request is shaped exactly like a post-rebind exfiltration attempt —
+// a real loopback connection carrying Host: evil.com. Only the Host header
+// distinguishes it from a legitimate read, and GET bypasses the CSRF Origin
+// guard entirely, so this is the sole gate standing between an open tab on
+// a malicious page and every note in the vault (ADR-0003: the bind address
+// is the whole security boundary).
+func TestApp_LiveRouter_RejectsReboundHost(t *testing.T) {
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
+	dir := t.TempDir()
+	ln, addr := pickFreeListener(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a, err := New(Config{
+		DataDir:             dir,
+		ListenAddr:          addr,
+		ListenerOverride:    ln,
+		Logger:              logger,
+		DisableFirstRunGate: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+	if err := waitFor(t, 5*time.Second, httpReadyProbe(addr)); err != nil {
+		cancel()
+		<-runErr
+		t.Fatalf("listener did not come up: %v", err)
+	}
+
+	// get dials the real loopback listener but overrides the Host header,
+	// which is what a rebound browser sends. Playwright cannot express this
+	// — a browser owns Host and refuses to let page JS set it.
+	get := func(path, host string) int {
+		req, _ := http.NewRequest(http.MethodGet, "http://"+addr+path, nil)
+		if host != "" {
+			req.Host = host
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			cancel()
+			<-runErr
+			t.Fatalf("GET %s (host=%q): %v", path, host, err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	for _, path := range []string{"/api/v1/tree", "/api/v1/notes", "/"} {
+		if got := get(path, "evil.com:6683"); got != http.StatusForbidden {
+			t.Errorf("GET %s with rebound Host: got %d, want 403", path, got)
+		}
+		if got := get(path, ""); got == http.StatusForbidden {
+			t.Errorf("GET %s with loopback Host: got 403, want it to pass", path)
+		}
+	}
+
+	cancel()
+	if err := <-runErr; err != nil {
+		t.Errorf("Run returned error after cancel: %v", err)
+	}
+}

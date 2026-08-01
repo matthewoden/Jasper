@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -29,6 +30,7 @@ var _ notes.Broadcaster = (*Hub)(nil)
 type Hub struct {
 	log             *slog.Logger
 	originPatterns  []string
+	hosts           netbind.HostAllowlist
 	mu              sync.RWMutex
 	clients         map[*client]struct{}
 	marshalFailures uint64
@@ -70,13 +72,16 @@ func New(log *slog.Logger, listenAddr string) *Hub {
 	return &Hub{
 		log:            log,
 		originPatterns: WsOriginPatterns(listenAddr),
+		hosts:          netbind.NewHostAllowlist(listenAddr),
 		clients:        make(map[*client]struct{}),
 	}
 }
 
 // NewWithOrigins constructs a Hub with an explicit set of origin patterns.
 // Prefer New() for production use; NewWithOrigins is provided for tests that
-// need precise pattern control.
+// need precise pattern control. The Host allowlist is loopback-only here —
+// origin patterns say nothing about which Hosts are ours, and a test
+// constructor should not be the one path that widens a security gate.
 func NewWithOrigins(log *slog.Logger, originPatterns []string) *Hub {
 	if log == nil {
 		log = slog.Default()
@@ -84,6 +89,7 @@ func NewWithOrigins(log *slog.Logger, originPatterns []string) *Hub {
 	return &Hub{
 		log:            log,
 		originPatterns: originPatterns,
+		hosts:          netbind.LoopbackHostAllowlist(),
 		clients:        make(map[*client]struct{}),
 	}
 }

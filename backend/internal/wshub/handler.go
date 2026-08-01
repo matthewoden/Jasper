@@ -26,7 +26,21 @@ const maxSessionIDLen = 128
 // Origin is empty (e.g. curl, scripts), bypassing OriginPatterns. The
 // localhost-bind posture already mitigates this, but we reject empty Origin
 // here so a future bind-to-LAN regression cannot silently open the door.
+//
+// Host enforcement: OriginPatterns is not merely weak against DNS
+// rebinding, it is inert. coder/websocket authorizes the upgrade before
+// consulting the patterns whenever Origin's host equals Host (accept.go:
+// `if strings.EqualFold(r.Host, u.Host)`) — and rebinding makes those two
+// equal by construction. The router-root hostAllowlistMiddleware also covers
+// this, but the shortcut is inherent to the library, so relying on the
+// middleware alone would leave the upgrade one refactor away from re-exposure.
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !h.hosts.Allows(r.Host) {
+		h.log.Warn("hub: rejecting upgrade with non-allowlisted Host",
+			"host", r.Host, "remote_addr", r.RemoteAddr)
+		http.Error(w, "forbidden Host", http.StatusForbidden)
+		return
+	}
 	if r.Header.Get("Origin") == "" {
 		h.log.Warn("hub: rejecting upgrade with empty Origin header (WR-01)",
 			"remote_addr", r.RemoteAddr)

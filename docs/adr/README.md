@@ -52,6 +52,7 @@ This matters because these records were reconstructed from four shipped mileston
 | [0027](./0027-rendering-and-network-security-boundary.md) | The rendering and network security boundary | Security |
 | [0028](./0028-migration-resilience-mechanics.md) | Migration resilience: three paths, backup-first, listener-last | Data layer |
 | [0029](./0029-search-surfaces.md) | Search lives in the palette and a panel, never as a tree filter | Design |
+| [0030](./0030-vault-directory-permissions.md) | Vault permissions: 0700 for Jasper's data, 0755 for notes | Security |
 
 ## Renumbering note
 

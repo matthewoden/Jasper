@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
+	"github.com/matthewoden/jasper/backend/internal/netbind"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
 	"github.com/matthewoden/jasper/backend/internal/wshub"
@@ -171,11 +173,14 @@ func allowedOrigins(listenAddr string) []string {
 	if err != nil {
 		port = "6683"
 	}
-	return []string{
-		"http://127.0.0.1:" + port,
-		"http://localhost:" + port,
-		"http://[::1]:" + port,
+	origins := make([]string, 0, 3)
+	for _, h := range netbind.LoopbackHosts() {
+		if strings.Contains(h, ":") {
+			h = "[" + h + "]"
+		}
+		origins = append(origins, "http://"+h+":"+port)
 	}
+	return origins
 }
 
 // New builds the initial composition for `jasper serve`. The real
@@ -214,6 +219,7 @@ func New(cfg Config) (*App, error) {
 	r.Use(securityHeadersMiddleware)
 
 	r.Use(requestLogger(cfg.Logger))
+	r.Use(hostAllowlistMiddleware(cfg.ListenAddr))
 
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {

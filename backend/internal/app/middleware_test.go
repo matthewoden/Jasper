@@ -414,3 +414,151 @@ func TestCSRFOriginMiddleware_AllIfacesPortMatch(t *testing.T) {
 		}
 	})
 }
+
+// hostSentinel is the next handler for Host-allowlist tests — records
+// whether it was reached.
+func hostSentinel(t *testing.T, called *bool) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		*called = true
+		w.WriteHeader(http.StatusOK)
+	})
+}
+
+// serveWithHost drives the middleware with an explicit Host header and
+// reports whether the request reached the sentinel, plus the status code.
+func serveWithHost(t *testing.T, mw func(http.Handler) http.Handler, host string) (bool, int) {
+	t.Helper()
+	called := false
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tree", nil)
+	req.Host = host
+	rec := httptest.NewRecorder()
+	mw(hostSentinel(t, &called)).ServeHTTP(rec, req)
+	return called, rec.Code
+}
+
+// TestHostAllowlistMiddleware_LoopbackBind is the core case: under the
+// default loopback bind, the three loopback spellings pass and a rebound
+// attacker Host is rejected with 403. A DNS-rebinding request carries a
+// legitimate loopback *connection* and an attacker-controlled *Host*, so
+// the Host is the only signal that distinguishes it.
+func TestHostAllowlistMiddleware_LoopbackBind(t *testing.T) {
+	mw := hostAllowlistMiddleware("127.0.0.1:6683")
+
+	allowed := []string{
+		"127.0.0.1:6683",
+		"localhost:6683",
+		"[::1]:6683",
+		"LOCALHOST:6683",
+		"127.0.0.1",
+	}
+	for _, host := range allowed {
+		t.Run("allow/"+host, func(t *testing.T) {
+			called, code := serveWithHost(t, mw, host)
+			if !called || code != http.StatusOK {
+				t.Errorf("Host %q: want pass/200, got called=%v code=%d", host, called, code)
+			}
+		})
+	}
+
+	rejected := []string{
+		"evil.com:6683",
+		"evil.com",
+		"notes.localhost.evil.com:6683",
+		"192.168.1.5:6683",
+		"",
+	}
+	for _, host := range rejected {
+		t.Run("reject/"+host, func(t *testing.T) {
+			called, code := serveWithHost(t, mw, host)
+			if called || code != http.StatusForbidden {
+				t.Errorf("Host %q: want reject/403, got called=%v code=%d", host, called, code)
+			}
+		})
+	}
+}
+
+// TestHostAllowlistMiddleware_IgnoresPort pins the deliberate choice to
+// validate the hostname only. The Vite dev proxy runs changeOrigin:false,
+// so a dev request arrives with Host: localhost:5173 while the backend is
+// bound on 6683. Port carries no signal here — the connection already
+// reached this listener — so requiring it would break `make dev` and buy
+// nothing against rebinding.
+func TestHostAllowlistMiddleware_IgnoresPort(t *testing.T) {
+	mw := hostAllowlistMiddleware("127.0.0.1:6683")
+
+	called, code := serveWithHost(t, mw, "localhost:5173")
+	if !called || code != http.StatusOK {
+		t.Errorf("dev-proxy Host localhost:5173: want pass/200, got called=%v code=%d", called, code)
+	}
+}
+
+// TestHostAllowlistMiddleware_ExplicitLANBind: --bind 192.168.1.5:6683 must
+// keep working (ADR-0014 keeps the flag), so the configured host joins the
+// allowlist — but a rebound name still does not.
+func TestHostAllowlistMiddleware_ExplicitLANBind(t *testing.T) {
+	mw := hostAllowlistMiddleware("192.168.1.5:6683")
+
+	for _, host := range []string{"192.168.1.5:6683", "127.0.0.1:6683", "localhost:6683"} {
+		called, code := serveWithHost(t, mw, host)
+		if !called || code != http.StatusOK {
+			t.Errorf("Host %q: want pass/200, got called=%v code=%d", host, called, code)
+		}
+	}
+	if called, code := serveWithHost(t, mw, "evil.com:6683"); called || code != http.StatusForbidden {
+		t.Errorf("Host evil.com:6683: want reject/403, got called=%v code=%d", called, code)
+	}
+}
+
+// TestHostAllowlistMiddleware_AllInterfacesBind: --bind 0.0.0.0 cannot name
+// the reachable address in advance, so any IP-literal Host passes. A
+// rebinding attack always arrives under a DNS *name* — that is the line.
+func TestHostAllowlistMiddleware_AllInterfacesBind(t *testing.T) {
+	mw := hostAllowlistMiddleware("0.0.0.0:6683")
+
+	for _, host := range []string{"192.168.1.5:6683", "10.0.0.9", "[fe80::1]:6683"} {
+		called, code := serveWithHost(t, mw, host)
+		if !called || code != http.StatusOK {
+			t.Errorf("Host %q: want pass/200, got called=%v code=%d", host, called, code)
+		}
+	}
+	for _, host := range []string{"evil.com:6683", "jasper.local:6683", ""} {
+		called, code := serveWithHost(t, mw, host)
+		if called || code != http.StatusForbidden {
+			t.Errorf("Host %q: want reject/403, got called=%v code=%d", host, called, code)
+		}
+	}
+}
+
+// TestSecurityHeaders_RawFilePathsGetSandboxCSP is the router-side half of
+// the raw-file CSP. The oapi-codegen-generated attachment response writes only
+// Content-Type and Content-Length, so it cannot set a CSP of its own — this
+// middleware is the only place that header can come from for that route.
+func TestSecurityHeaders_RawFilePathsGetSandboxCSP(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	h := securityHeadersMiddleware(inner)
+
+	sandboxed := []string{
+		"/api/v1/files",
+		"/api/v1/attachments/00000000-0000-4000-a000-000000000001/evil.svg",
+	}
+	for _, path := range sandboxed {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		csp := rec.Header().Get("Content-Security-Policy")
+		if !strings.Contains(csp, "sandbox") {
+			t.Errorf("%s: CSP %q must contain 'sandbox'", path, csp)
+		}
+	}
+
+	// The app itself must keep the app CSP — sandboxing the SPA would break it.
+	for _, path := range []string{"/", "/api/v1/notes", "/api/v1/tree"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if csp := rec.Header().Get("Content-Security-Policy"); csp != cspHeaderValue {
+			t.Errorf("%s: CSP: got %q, want the app CSP", path, csp)
+		}
+	}
+}

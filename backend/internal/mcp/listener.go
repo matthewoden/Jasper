@@ -55,15 +55,46 @@ func StartMCPListener(_ context.Context, server *Server, bindAddr string, log Lo
 	})
 
 	srv := &http.Server{
-		Addr:              bindAddr,
-		Handler:           mux,
+		// Addr reports the address actually bound, not the one requested,
+		// so an ephemeral ":0" bind is resolvable by the caller.
+		Addr:              ln.Addr().String(),
+		Handler:           hostAllowlistHandler(mux, log),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Info("MCP listener starting", "addr", bindAddr)
+		log.Info("MCP listener starting", "addr", srv.Addr)
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("MCP listener exited", "err", err)
 		}
 	}()
 	return srv, nil
+}
+
+// hostAllowlistHandler rejects requests whose Host header names a host this
+// listener is not serving, closing DNS rebinding against MCP.
+//
+// The allowlist is unconditional — unlike the HTTP listener there is no
+// LAN-bind case to accommodate, because MCP is loopback-enforced with no
+// opt-out (ADR-0013, CONTEXT invariant 5).
+//
+// Browsers are already largely blocked from driving these tools: MCP's
+// StreamableHTTP transport POSTs JSON-RPC as application/json, which
+// triggers a CORS preflight this endpoint does not answer. That mitigation
+// is incidental, though — it depends on the SDK's transport choice and on
+// browser CORS behavior, neither of which Jasper controls. Checking Host
+// makes the loopback guarantee explicit rather than emergent, which matters
+// here because MCP is the one boundary where ADR-0002's no-plugin-surface
+// stance was deliberately relaxed.
+func hostAllowlistHandler(next http.Handler, log Logger) http.Handler {
+	allowlist := netbind.LoopbackHostAllowlist()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowlist.Allows(r.Host) {
+			log.Error("MCP: rejecting request with non-allowlisted Host",
+				"host", r.Host, "remote_addr", r.RemoteAddr)
+			http.Error(w, "forbidden Host", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

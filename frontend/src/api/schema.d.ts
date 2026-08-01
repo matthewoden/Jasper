@@ -210,10 +210,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get-or-create today's daily note (DAILY-01..03). */
+        /**
+         * Read the daily note for a date (DAILY-01..03).
+         * @description Read-only. Returns 404 when no daily note exists for the date; creation is POST to this same path.
+         *     This endpoint used to get-or-create, which made a cross-origin `<img src="http://127.0.0.1:6683/api/v1/daily-notes/2099-12-31">` on any page the user visited write a file into the vault. GET is a safe method, so csrfOriginMiddleware never inspects it, and the Host allowlist does not help either — such a request carries a genuinely loopback Host. Splitting the verb is the fix; no GET endpoint mutates the filesystem.
+         */
         get: operations["getDailyNote"];
         put?: never;
-        post?: never;
+        /**
+         * Create the daily note for a date from the configured template.
+         * @description Idempotent get-or-create. Returns 201 when the note is created and 200 when it already existed. Being a POST, it is covered by the Origin guard, which is the point of the split.
+         */
+        post: operations["createDailyNote"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2740,6 +2748,46 @@ export interface operations {
         };
     };
     getDailyNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daily note exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetail"];
+                };
+            };
+            /** @description Invalid date format. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No daily note exists for this date. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createDailyNote: {
         parameters: {
             query?: never;
             header?: never;
