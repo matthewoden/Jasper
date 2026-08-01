@@ -4,26 +4,15 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import type { components } from "../api/schema";
 import { useSessionSync, type SessionSyncHandlers } from "./useSessionSync";
 import { __testing__ as backlinksTesting } from "./useBacklinks";
+import { subscribe } from "./resources";
 
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
 
 
-const refreshMock = vi.fn(async () => {});
 const setStatusMock = vi.fn();
-
-
 const setForceWsReconnectMock = vi.fn();
 
-vi.mock("./useFileTree", () => ({
-  useFileTree: () => ({
-    tree: null,
-    refresh: refreshMock,
-    loading: false,
-    error: null,
-    mutate: vi.fn(),
-  }),
-}));
 vi.mock("./useTreeStore", () => ({
   useTreeStore: vi.fn(
     (
@@ -44,6 +33,29 @@ vi.mock("./sessionId", () => ({
   generateOrLoadSessionId: () => "client-session-id",
 }));
 
+// treeResource is rebuilt fresh here with the REAL createResource (mirrors
+// plan 07's useBacklinks.test.ts pattern) so ws.onopen's explicit
+// treeResource.invalidate() call and every mutation-event publish() below
+// exercise the real D-12/D-13 wiring end to end — only the network-facing
+// fetch (mockGetTree) is faked.
+const mockGetTree = vi.fn().mockResolvedValue({ data: { root: [] } });
+vi.mock("./treeApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    treeResource: createResource("tree", () => mockGetTree(), {
+      mode: "cached",
+      invalidatedBy: [
+        "note:created", "note:deleted", "note:moved",
+        "folder:created", "folder:deleted", "folder:moved",
+        "file:created", "file:deleted", "file:moved",
+        "links:rewritten", "reindex:complete",
+      ],
+    }),
+  };
+});
+
+import { treeResource } from "./treeApi";
+
 
 const fakeUrl = "ws://localhost:1234/api/v1/ws";
 
@@ -60,38 +72,42 @@ describe("useSessionSync", () => {
   let server: Server;
 
   beforeEach(() => {
-    refreshMock.mockClear();
     setStatusMock.mockClear();
+    mockGetTree.mockClear();
+    // treeResource is a module-level "cached" singleton — clear between
+    // tests so its hydrated/subscriber state from a prior test doesn't leak.
+    treeResource.clear();
   });
 
   afterEach(() => {
     server?.stop();
   });
 
-  it("handshake → status flips connecting then connected after refreshTree", async () => {
+  it("handshake → status flips connecting then connected after treeResource.invalidate()", async () => {
     server = new Server(fakeUrl);
+    const invalidateSpy = vi.spyOn(treeResource, "invalidate");
     const handlers = makeHandlers();
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
     await waitFor(() => expect(setStatusMock).toHaveBeenCalledWith("connected"));
     expect(setStatusMock.mock.calls[0][0]).toBe("connecting");
-    expect(refreshMock).toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalled();
   });
 
-  it("D-05 reconnect order: refreshTree fires BEFORE setStatus('connected')", async () => {
+  it("D-05 reconnect order: treeResource.invalidate() fires BEFORE setStatus('connected')", async () => {
     server = new Server(fakeUrl);
-    const order: string[] = [];
-    refreshMock.mockImplementation(async () => {
-      order.push("refreshTree");
-    });
-    setStatusMock.mockImplementation((s: string) => order.push(`setStatus:${s}`));
+    const invalidateSpy = vi.spyOn(treeResource, "invalidate");
     const handlers = makeHandlers();
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
-    await waitFor(() => expect(order).toContain("setStatus:connected"));
-    const refreshIdx = order.indexOf("refreshTree");
-    const connectedIdx = order.indexOf("setStatus:connected");
-    expect(refreshIdx).toBeGreaterThanOrEqual(0);
-    expect(refreshIdx).toBeLessThan(connectedIdx);
+    await waitFor(() => expect(setStatusMock).toHaveBeenCalledWith("connected"));
+
+    expect(invalidateSpy.mock.invocationCallOrder.length).toBeGreaterThan(0);
+    const connectedCallIndex = setStatusMock.mock.calls.findIndex(
+      (c) => c[0] === "connected",
+    );
+    expect(connectedCallIndex).toBeGreaterThanOrEqual(0);
+    const connectedOrder = setStatusMock.mock.invocationCallOrder[connectedCallIndex];
+    expect(invalidateSpy.mock.invocationCallOrder[0]).toBeLessThan(connectedOrder);
   });
 
   it("origin filter: events with own session_id are ignored", async () => {
@@ -111,9 +127,12 @@ describe("useSessionSync", () => {
     expect(handlers.onNoteUpdated).not.toHaveBeenCalled();
   });
 
-  it("dispatch: note:updated → onNoteUpdated; note:deleted → onNoteDeleted; reindex events; tree events → refreshTree", async () => {
+  it("dispatch: note:updated → onNoteUpdated; note:deleted → onNoteDeleted; reindex events; note:created → publish", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
+    const noteCreatedSpy = vi.fn();
+    const unsubscribe = subscribe("note:created", noteCreatedSpy);
+
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
 
@@ -133,14 +152,13 @@ describe("useSessionSync", () => {
     server.emit("message", JSON.stringify(deletedEvt));
     await waitFor(() => expect(handlers.onNoteDeleted).toHaveBeenCalled());
 
-    refreshMock.mockClear();
     const createdEvt: WSEnvelope = {
       event: "note:created",
       origin_session_id: "other",
       payload: { id: "y", path: "y.md", title: "y", updated_at: "2026-05-06T12:00:00Z" },
     };
     server.emit("message", JSON.stringify(createdEvt));
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await waitFor(() => expect(noteCreatedSpy).toHaveBeenCalled());
 
     const reindexStartedEvt: WSEnvelope = {
       event: "reindex:started",
@@ -157,6 +175,8 @@ describe("useSessionSync", () => {
     };
     server.emit("message", JSON.stringify(reindexCompleteEvt));
     await waitFor(() => expect(handlers.onReindexComplete).toHaveBeenCalled());
+
+    unsubscribe();
   });
 
   it("server-originated events (origin_session_id='') reach the tab even when own sid is not empty (Pitfall 5)", async () => {
@@ -222,11 +242,13 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
   });
 
 
-  it("SS3: links:rewritten calls onLinksRewritten handler + dispatches links event", async () => {
+  it("SS3: links:rewritten calls onLinksRewritten handler + publishes links:rewritten", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
     const onLinksRewritten = vi.fn();
     handlers.onLinksRewritten = onLinksRewritten;
+    const linksSpy = vi.fn();
+    const unsubscribe = subscribe("links:rewritten", linksSpy);
 
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
@@ -238,7 +260,9 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(onLinksRewritten).toHaveBeenCalled());
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await waitFor(() => expect(linksSpy).toHaveBeenCalled());
+
+    unsubscribe();
   });
 
 
@@ -289,13 +313,14 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
   });
 
 
-  it("SS6: links:rewritten calls refreshTree for sidebar label updates", async () => {
+  it("SS6: links:rewritten publishes links:rewritten for sidebar label updates", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
+    const linksSpy = vi.fn();
+    const unsubscribe = subscribe("links:rewritten", linksSpy);
+
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
-
-    refreshMock.mockClear();
 
     const evt: WSEnvelope = {
       event: "links:rewritten",
@@ -303,17 +328,20 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
       payload: { old_title: "A", new_title: "B", touched_note_ids: [] },
     };
     server.emit("message", JSON.stringify(evt));
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await waitFor(() => expect(linksSpy).toHaveBeenCalled());
+
+    unsubscribe();
   });
 
 
-  it("SS7: note:created fans out to useBacklinks AND refreshTree", async () => {
+  it("SS7: note:created fans out to useBacklinks AND publishes note:created", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
+    const noteCreatedSpy = vi.fn();
+    const unsubscribe = subscribe("note:created", noteCreatedSpy);
+
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
-
-    refreshMock.mockClear();
 
     const evt: WSEnvelope = {
       event: "note:created",
@@ -321,8 +349,10 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
       payload: { id: "y", path: "y.md", title: "New Note", updated_at: "2026-05-06T12:00:00Z" },
     };
     server.emit("message", JSON.stringify(evt));
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-    // publish("note:created") does not throw even with 0 subscribers.
+    await waitFor(() => expect(noteCreatedSpy).toHaveBeenCalled());
+    // publish("note:created") does not throw even with 0 useBacklinks subscribers.
+
+    unsubscribe();
   });
 });
 
@@ -380,5 +410,37 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(onVaultSwitched).toHaveBeenCalled());
+  });
+});
+
+
+describe("Plan 08: treeResource invalidation costs nothing while nobody's looking", () => {
+  let server: Server;
+
+  afterEach(() => {
+    server?.stop();
+  });
+
+  it("useSessionSync alone (no useFileTree() consumer mounted) issues zero GET /tree requests, across a reconnect and a mutation event", async () => {
+    server = new Server(fakeUrl);
+    const handlers = makeHandlers();
+    renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
+    await waitFor(() => expect(setStatusMock).toHaveBeenCalledWith("connected"));
+
+    const evt: WSEnvelope = {
+      event: "note:created",
+      origin_session_id: "other",
+      payload: { id: "y", path: "y.md", title: "y", updated_at: "2026-05-06T12:00:00Z" },
+    };
+    server.emit("message", JSON.stringify(evt));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+
+    // treeResource.invalidate() ran at ws.onopen and note:created's publish()
+    // reached treeResource's own invalidatedBy subscription — neither ever
+    // fetches because zero components in this test mounted useFileTree()
+    // (zero listeners on the resource's cache entry).
+    expect(mockGetTree).not.toHaveBeenCalled();
   });
 });
