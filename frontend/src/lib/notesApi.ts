@@ -90,6 +90,31 @@ export interface NoteSearchResult {
   proximity_score?: number | null;
 }
 
+async function fetchSearchTitles(
+  q: string,
+  limit: number,
+): Promise<NoteSearchResult[]> {
+  const { data, error } = await client.GET("/notes/search-titles", {
+    params: { query: { q, limit } },
+  });
+  if (error) {
+    throw new Error("searchTitles: " + JSON.stringify(error));
+  }
+  return data.results as NoteSearchResult[];
+}
+
+// D-05: pass-through, coalesced on q+limit — a wiki-link autocomplete
+// keystroke and any other concurrent caller asking for the same q/limit
+// collapse to one request.
+const searchTitlesResource = createKeyedResource(
+  "searchTitles",
+  (key: string) => {
+    const [q, limit] = JSON.parse(key) as [string, number];
+    return fetchSearchTitles(q, limit);
+  },
+  { mode: "pass-through" },
+);
+
 /**
  * Search note titles for wiki-link autocomplete.
  * Empty q returns most-recently-edited notes up to limit.
@@ -100,13 +125,8 @@ export async function searchTitles(
   q: string,
   limit = 10,
 ): Promise<NoteSearchResult[]> {
-  const { data, error } = await client.GET("/notes/search-titles", {
-    params: { query: { q, limit } },
-  });
-  if (error) {
-    throw new Error("searchTitles: " + JSON.stringify(error));
-  }
-  return data.results as NoteSearchResult[];
+  const key = JSON.stringify([q, limit]);
+  return searchTitlesResource.forKey(key).read();
 }
 
 /**

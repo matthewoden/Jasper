@@ -1,10 +1,15 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { searchNotes } from "./searchApi";
 import { client } from "../api/client";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 vi.mock("../api/client", () => ({
   client: { GET: vi.fn() },
 }));
+
+beforeEach(() => {
+  resourcesTesting.reset();
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -146,5 +151,27 @@ describe("searchApi.searchNotes", () => {
       { params: { query: Record<string, unknown> } },
     ];
     expect(call[1].params.query.sort).toBeUndefined();
+  });
+
+  it("D-05: two concurrent identical searchNotes calls issue exactly one client.GET; two differing calls issue two", async () => {
+    let resolveFetch!: (v: unknown) => void;
+    const pending = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    (client.GET as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending);
+
+    const p1 = searchNotes("same-query", ["tag"], 25);
+    const p2 = searchNotes("same-query", ["tag"], 25);
+    expect(client.GET).toHaveBeenCalledTimes(1);
+
+    resolveFetch({ data: { results: [] }, error: null });
+    await Promise.all([p1, p2]);
+
+    (client.GET as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { results: [] },
+      error: null,
+    });
+    await searchNotes("different-query", ["tag"], 25);
+    expect(client.GET).toHaveBeenCalledTimes(2);
   });
 });
