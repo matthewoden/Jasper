@@ -1,11 +1,11 @@
 // Package log provides the file-backed slog handler used by the running
-// jasper service. Logs to <dataDir>/logs/jasper.log; rotates daily by
-// renaming jasper.log → jasper-YYYY-MM-DD.log on the first write of a
-// new day.
+// jasper service, plus the Fanout handler that tees it alongside the
+// console. Logs to <logsDir>/jasper.log; rotates daily by renaming
+// jasper.log → jasper-YYYY-MM-DD.log on the first write of a new day.
 //
-// The file logger is wired in app.lifecycle when cfg.Logger is nil — the
-// production path. Tests pass a stdout-backed slog.Logger via cfg.Logger
-// and the file logger is bypassed.
+// app.lifecycle opens one of these per vault, at vault.LogsDir(vault) —
+// the path the migration runner, the startup error pages, and
+// `jasper doctor` all advertise.
 package log
 
 import (
@@ -27,26 +27,26 @@ type fileSink struct {
 	closed   bool
 }
 
-// NewFileLogger returns a slog.Logger that writes JSON-encoded records to
-// <dataDir>/logs/jasper.log. mkdir -p the logs dir if missing.
+// NewFileHandler returns a slog.Handler that writes JSON-encoded records
+// to <logsDir>/jasper.log, mkdir -p'ing logsDir if missing. 0700: the
+// logs dir lives inside .jasper/ and is Jasper's own data (ADR-0030).
 //
 // Daily rotation: on each Write, if today's date differs from openedOn,
 // close the current file, rename jasper.log → jasper-<openedOn>.log,
 // open a fresh jasper.log.
 //
-// Returned io.Closer must be Close()'d on graceful shutdown by the
-// caller; once closed, subsequent Writes return os.ErrClosed.
-func NewFileLogger(dataDir string) (*slog.Logger, io.Closer, error) {
-	logsDir := filepath.Join(dataDir, "logs")
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+// Returned io.Closer must be Close()'d on graceful shutdown and on vault
+// teardown by the caller; once closed, subsequent Writes return
+// os.ErrClosed, which Fanout tolerates without starving the console.
+func NewFileHandler(logsDir string) (slog.Handler, io.Closer, error) {
+	if err := os.MkdirAll(logsDir, 0o700); err != nil {
 		return nil, nil, err
 	}
 	sink := &fileSink{dir: logsDir}
 	if err := sink.open(); err != nil {
 		return nil, nil, err
 	}
-	h := slog.NewJSONHandler(sink, &slog.HandlerOptions{Level: slog.LevelInfo})
-	return slog.New(h), sink, nil
+	return slog.NewJSONHandler(sink, &slog.HandlerOptions{Level: slog.LevelInfo}), sink, nil
 }
 
 func (s *fileSink) open() error {

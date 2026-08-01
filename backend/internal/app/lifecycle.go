@@ -22,7 +22,6 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/firstrun"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/index"
-	jlog "github.com/matthewoden/jasper/backend/internal/log"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/static"
@@ -153,9 +152,10 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 // Per-vault steps (only when modeOpen):
 //
 //  1. EnsureDataDir — mkdir <DataDir>/{notes,.jasper}.
-//  2. SeedScratchpadIfMissing — write the welcome template if absent.
-//  3. mkdir <DataDir>/.jasper and <DataDir>/.jasper/logs (migration
-//     runner expects them).
+//  2. attachVaultFileLog — open <DataDir>/.jasper/logs/jasper.log and tee
+//     it with the console handler; SeedScratchpadIfMissing — write the
+//     welcome template if absent.
+//  3. mkdir <DataDir>/.jasper (migration runner expects it).
 //  4. sqlite.Open — open the writer/reader Pair on app.db.
 //     pair.Close is always safe even if the runner returned an error.
 //  5. Build *index.Indexer + *migrate.Runner; wire Path2Rebuild.
@@ -187,9 +187,6 @@ func (a *App) Run(ctx context.Context) error {
 			return a.bootPerVaultSubsystems(ctx)
 		}
 
-		if a.cfg.Logger == nil {
-			a.cfg.Logger = slog.Default()
-		}
 		a.cfg.Logger.Info("jasper boot: no vault selected, serving picker shell")
 		return a.serveListener(ctx)
 	}
@@ -199,22 +196,20 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
+	// First, so that every step below — including the ones that fail — is on
+	// disk for the error page to tail. NewFileHandler creates its own
+	// directory, so this does not need EnsureDataDir to have run.
+	if err := a.attachVaultFileLog(a.cfg.DataDir); err != nil {
+		return a.serveStartupError(ctx, "File logger", fmt.Errorf("file logger init: %w", err))
+	}
+	defer func() {
+		if cerr := a.detachVaultFileLog(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "file logger close: %v\n", cerr)
+		}
+	}()
+
 	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
 		return a.serveStartupError(ctx, "Data dir", err)
-	}
-
-	if a.cfg.Logger == nil {
-		logger, closer, err := jlog.NewFileLogger(a.cfg.Server.DataDir)
-		if err != nil {
-			return a.serveStartupError(ctx, "File logger", fmt.Errorf("file logger init: %w", err))
-		}
-		a.cfg.Logger = logger
-		a.fileLogCloser = closer
-		defer func() {
-			if cerr := closer.Close(); cerr != nil {
-				fmt.Fprintf(os.Stderr, "file logger close: %v\n", cerr)
-			}
-		}()
 	}
 
 	if err := SeedScratchpadIfMissing(a.cfg.DataDir, a.cfg.Logger); err != nil {
@@ -224,10 +219,6 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	dbPath := vault.AppDBPath(a.cfg.DataDir)
 	if err := os.MkdirAll(filepath.Dir(dbPath), JasperDirMode); err != nil {
 		return a.serveStartupError(ctx, "Storage dir", fmt.Errorf("ensure .jasper dir: %w", err))
-	}
-	logsDir := vault.LogsDir(a.cfg.DataDir)
-	if err := os.MkdirAll(logsDir, JasperDirMode); err != nil {
-		return a.serveStartupError(ctx, "Logs dir", fmt.Errorf("ensure logs dir: %w", err))
 	}
 
 	backupPath := vault.BackupPath(a.cfg.DataDir)
@@ -443,12 +434,13 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 }
 
 func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
-	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
-		return fmt.Errorf("initVaultSubsystemsOnly: data dir: %w", err)
+	// First, for the same reason as the boot path.
+	if err := a.attachVaultFileLog(a.cfg.DataDir); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: file logger: %w", err)
 	}
 
-	if a.cfg.Logger == nil {
-		a.cfg.Logger = slog.Default()
+	if err := EnsureDataDir(a.cfg.DataDir); err != nil {
+		return fmt.Errorf("initVaultSubsystemsOnly: data dir: %w", err)
 	}
 
 	if err := SeedScratchpadIfMissing(a.cfg.DataDir, a.cfg.Logger); err != nil {
@@ -458,10 +450,6 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	dbPath := vault.AppDBPath(a.cfg.DataDir)
 	if err := os.MkdirAll(filepath.Dir(dbPath), JasperDirMode); err != nil {
 		return fmt.Errorf("initVaultSubsystemsOnly: .jasper dir: %w", err)
-	}
-	logsDir := vault.LogsDir(a.cfg.DataDir)
-	if err := os.MkdirAll(logsDir, JasperDirMode); err != nil {
-		return fmt.Errorf("initVaultSubsystemsOnly: logs dir: %w", err)
 	}
 
 	backupPath := vault.BackupPath(a.cfg.DataDir)

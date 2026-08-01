@@ -295,8 +295,10 @@ func checkMigrationState(dir string) DoctorCheck {
 	return DoctorCheck{Name: "migration state", Status: "ok"}
 }
 
+// checkLogWritable probes the directory the logger actually writes. dir is
+// the vault root; the logs live under .jasper/.
 func checkLogWritable(dir string) DoctorCheck {
-	logsDir := filepath.Join(dir, "logs")
+	logsDir := vault.LogsDir(dir)
 	// 0700: logs live inside .jasper/ and are Jasper's own data (ADR-0030).
 	// Creating them 0755 here would make doctor the thing that loosens the
 	// vault it is checking.

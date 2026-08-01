@@ -2,6 +2,7 @@ package log
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,45 +10,68 @@ import (
 	"time"
 )
 
-// TestNewFileLogger_CreatesLogsDirAndFile asserts NewFileLogger mkdir-p's
-// the logs dir under the chosen dataDir and opens jasper.log inside it.
-func TestNewFileLogger_CreatesLogsDirAndFile(t *testing.T) {
+// TestNewFileHandler_CreatesLogsDirAndFile asserts NewFileHandler mkdir-p's
+// the logs dir it is handed and opens jasper.log inside it.
+func TestNewFileHandler_CreatesLogsDirAndFile(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
-	dir := t.TempDir()
-	logger, closer, err := NewFileLogger(dir)
+	logsDir := filepath.Join(t.TempDir(), ".jasper", "logs")
+	h, closer, err := NewFileHandler(logsDir)
 	if err != nil {
-		t.Fatalf("NewFileLogger: %v", err)
+		t.Fatalf("NewFileHandler: %v", err)
 	}
 	defer func() { _ = closer.Close() }()
 
-	logger.Info("hello", "k", "v")
+	slog.New(h).Info("hello", "k", "v")
 
-	logsPath := filepath.Join(dir, "logs", "jasper.log")
+	logsPath := filepath.Join(logsDir, "jasper.log")
 	if _, err := os.Stat(logsPath); err != nil {
 		t.Fatalf("expected jasper.log at %s: %v", logsPath, err)
 	}
 }
 
-// TestNewFileLogger_WritesJSONRecords asserts each record is a single
-// JSON line (the slog JSON handler contract). Two writes → two lines,
-// both valid JSON.
-func TestNewFileLogger_WritesJSONRecords(t *testing.T) {
+// TestNewFileHandler_LogsDirIsPrivate — the logs dir lives inside .jasper/
+// and is Jasper's own data (ADR-0030), so it must be created 0700 rather
+// than left world-readable on a shared host.
+func TestNewFileHandler_LogsDirIsPrivate(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
-	dir := t.TempDir()
-	logger, closer, err := NewFileLogger(dir)
+	logsDir := filepath.Join(t.TempDir(), ".jasper", "logs")
+	_, closer, err := NewFileHandler(logsDir)
 	if err != nil {
-		t.Fatalf("NewFileLogger: %v", err)
+		t.Fatalf("NewFileHandler: %v", err)
+	}
+	defer func() { _ = closer.Close() }()
+
+	info, err := os.Stat(logsDir)
+	if err != nil {
+		t.Fatalf("stat logs dir: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Errorf("logs dir mode: got %o, want 700", got)
+	}
+}
+
+// TestNewFileHandler_WritesJSONRecords asserts each record is a single
+// JSON line (the slog JSON handler contract). Two writes → two lines,
+// both valid JSON.
+func TestNewFileHandler_WritesJSONRecords(t *testing.T) {
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	logsDir := filepath.Join(t.TempDir(), "logs")
+	h, closer, err := NewFileHandler(logsDir)
+	if err != nil {
+		t.Fatalf("NewFileHandler: %v", err)
 	}
 
+	logger := slog.New(h)
 	logger.Info("first", "a", 1)
 	logger.Info("second", "b", 2)
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 
-	body, err := os.ReadFile(filepath.Join(dir, "logs", "jasper.log"))
+	body, err := os.ReadFile(filepath.Join(logsDir, "jasper.log"))
 	if err != nil {
 		t.Fatalf("read jasper.log: %v", err)
 	}
@@ -66,24 +90,62 @@ func TestNewFileLogger_WritesJSONRecords(t *testing.T) {
 	}
 }
 
-// TestNewFileLogger_DailyRotation drives the rotation seam via nowFunc:
+// TestNewFileHandler_AppendsToExistingLog — a restart (or a vault
+// reopened later the same day) must extend jasper.log, not truncate the
+// earlier session's records out of the diagnostic surface.
+func TestNewFileHandler_AppendsToExistingLog(t *testing.T) {
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	logsDir := filepath.Join(t.TempDir(), "logs")
+
+	h1, c1, err := NewFileHandler(logsDir)
+	if err != nil {
+		t.Fatalf("NewFileHandler (first): %v", err)
+	}
+	slog.New(h1).Info("session-one")
+	if err := c1.Close(); err != nil {
+		t.Fatalf("close first: %v", err)
+	}
+
+	h2, c2, err := NewFileHandler(logsDir)
+	if err != nil {
+		t.Fatalf("NewFileHandler (second): %v", err)
+	}
+	slog.New(h2).Info("session-two")
+	if err := c2.Close(); err != nil {
+		t.Fatalf("close second: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(logsDir, "jasper.log"))
+	if err != nil {
+		t.Fatalf("read jasper.log: %v", err)
+	}
+	for _, want := range []string{"session-one", "session-two"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("jasper.log missing %q: %q", want, body)
+		}
+	}
+}
+
+// TestNewFileHandler_DailyRotation drives the rotation seam via nowFunc:
 // day-1 write → simulate day-2 → next write rotates the file. We assert
 // the rotated archive (jasper-<day1>.log) exists and the fresh
 // jasper.log contains only the day-2 record.
-func TestNewFileLogger_DailyRotation(t *testing.T) {
+func TestNewFileHandler_DailyRotation(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
-	dir := t.TempDir()
+	logsDir := filepath.Join(t.TempDir(), "logs")
 
 	day1 := time.Date(2026, 5, 17, 9, 0, 0, 0, time.UTC)
 	day2 := time.Date(2026, 5, 18, 1, 0, 0, 0, time.UTC)
 
 	nowFunc = func() time.Time { return day1 }
-	logger, closer, err := NewFileLogger(dir)
+	h, closer, err := NewFileHandler(logsDir)
 	if err != nil {
-		t.Fatalf("NewFileLogger: %v", err)
+		t.Fatalf("NewFileHandler: %v", err)
 	}
 
+	logger := slog.New(h)
 	logger.Info("day-one")
 
 	nowFunc = func() time.Time { return day2 }
@@ -92,8 +154,8 @@ func TestNewFileLogger_DailyRotation(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	rotated := filepath.Join(dir, "logs", "jasper-2026-05-17.log")
-	current := filepath.Join(dir, "logs", "jasper.log")
+	rotated := filepath.Join(logsDir, "jasper-2026-05-17.log")
+	current := filepath.Join(logsDir, "jasper.log")
 
 	rotBody, err := os.ReadFile(rotated)
 	if err != nil {
@@ -124,10 +186,10 @@ func TestNewFileLogger_DailyRotation(t *testing.T) {
 func TestFileSink_CloseIsIdempotent_AndPostCloseWriteErrors(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
-	dir := t.TempDir()
-	_, closer, err := NewFileLogger(dir)
+	logsDir := filepath.Join(t.TempDir(), "logs")
+	_, closer, err := NewFileHandler(logsDir)
 	if err != nil {
-		t.Fatalf("NewFileLogger: %v", err)
+		t.Fatalf("NewFileHandler: %v", err)
 	}
 	if err := closer.Close(); err != nil {
 		t.Fatalf("first close: %v", err)
@@ -146,10 +208,10 @@ func TestFileSink_CloseIsIdempotent_AndPostCloseWriteErrors(t *testing.T) {
 	}
 }
 
-// TestNewFileLogger_MkdirFails surfaces an mkdir failure when dataDir
-// resolves to an unwritable parent. Using a file-as-parent guarantees
+// TestNewFileHandler_MkdirFails surfaces an mkdir failure when the logs
+// dir resolves under a regular file. Using a file-as-parent guarantees
 // MkdirAll fails on every supported OS.
-func TestNewFileLogger_MkdirFails(t *testing.T) {
+func TestNewFileHandler_MkdirFails(t *testing.T) {
 	t.Cleanup(func() { nowFunc = time.Now })
 
 	dir := t.TempDir()
@@ -158,7 +220,7 @@ func TestNewFileLogger_MkdirFails(t *testing.T) {
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if _, _, err := NewFileLogger(blocker); err == nil {
-		t.Errorf("NewFileLogger over a file parent: want error, got nil")
+	if _, _, err := NewFileHandler(filepath.Join(blocker, "logs")); err == nil {
+		t.Errorf("NewFileHandler under a file parent: want error, got nil")
 	}
 }

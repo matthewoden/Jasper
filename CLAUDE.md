@@ -106,7 +106,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 
 - **MCP Server** (optional, disabled by default): Exposes notes to Claude Desktop via Model Context Protocol; runs on port 6684 (loopback)
 - **OS file-manager reveal** (macOS + WSL2): `open` command (Finder), `explorer.exe /select` (Windows Explorer via WSL2 wslpath)
-- **Logging**: Daily-rotated logs to `<vault>/logs/jasper.log` (no external log aggregation)
+- **Logging**: Daily-rotated logs to `<vault>/.jasper/logs/jasper.log` (no external log aggregation)
 
 ## Build & Embed Pipeline
 

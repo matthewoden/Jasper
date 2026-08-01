@@ -28,6 +28,8 @@ import (
 	"runtime"
 
 	"github.com/kardianos/service"
+
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 const serviceName = "com.jasper.server"
@@ -40,7 +42,10 @@ const serviceName = "com.jasper.server"
 //   - UserService: true — per-user install (no sudo on macOS; user unit on Linux)
 //   - LaunchdConfig: launchdPlist (CRITICAL: overrides kardianos default template)
 //   - SystemdScript: systemdUnit (CRITICAL: overrides kardianos default template)
-//   - LogDirectory: <dataDir>/logs
+//   - LogDirectory: vault.LogsDir(dataDir) — the service manager's
+//     stdout/stderr capture sits beside jasper.log so there is one place to
+//     look. The files stay distinct: this one catches what the structured
+//     logger cannot (panics, pre-boot stderr).
 //   - EnvVars: JASPER_DATA_DIR=<dataDir>
 //
 // The Program (first arg to service.New) is nil because the install/
@@ -58,7 +63,7 @@ func New(dataDir string) (service.Service, error) {
 			"RunAtLoad":     true,
 			"LaunchdConfig": launchdPlist,
 			"SystemdScript": systemdUnit,
-			"LogDirectory":  filepath.Join(dataDir, "logs"),
+			"LogDirectory":  vault.LogsDir(dataDir),
 		},
 		EnvVars: map[string]string{
 			"JASPER_DATA_DIR": dataDir,

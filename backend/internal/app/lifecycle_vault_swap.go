@@ -150,11 +150,10 @@ func (a *App) tearDownPerVaultSubsystems() error {
 		a.mu.Unlock()
 	}
 
-	if a.fileLogCloser != nil {
-		if err := a.fileLogCloser.Close(); err != nil {
-			a.cfg.Logger.Warn("teardown: fileLogCloser.Close error (continuing)", "err", err)
-		}
-		a.fileLogCloser = nil
+	// Last, so everything above still logs to the vault it is tearing down.
+	// After this the logger is console-only until the next vault attaches.
+	if err := a.detachVaultFileLog(); err != nil {
+		a.cfg.Logger.Warn("teardown: vault log close error (continuing)", "err", err)
 	}
 
 	return nil

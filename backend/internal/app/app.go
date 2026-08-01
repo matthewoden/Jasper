@@ -50,24 +50,25 @@ type Config struct {
 	// (app.db) and logs. Caller passes an absolute path; lifecycle.go
 	// creates the subdirs on Run.
 	//
-	// This top-level field is retained for backward compat with existing
-	// lifecycle.go references (a.cfg.DataDir). New code paths should
-	// prefer cfg.Server.DataDir. Both carry the same value.
+	// This is the field to read. Server.DataDir looks like a synonym and is
+	// not: it is whatever the CLI resolved before the vault was known, so it
+	// is empty for a bare `jasper serve`, while Run sets this one to the
+	// vault actually opened.
 	DataDir string
 
 	// Server mirrors the loaded config.Config.Server block. Set at app
-	// init from the config.Load result. Makes cfg.Server.DataDir reachable
-	// in downstream middleware and the FileLogger without re-loading
-	// config.json or threading an additional argument. While zero-valued,
-	// downstream readers may fall back to cfg.DataDir.
+	// init from the config.Load result. While zero-valued, downstream
+	// readers may fall back to cfg.DataDir.
 	Server config.ServerConfig
 
 	// ListenAddr is the host:port to bind. Loopback is enforced at the
 	// CLI layer via netbind.RequireLoopbackBind.
 	ListenAddr string
 
-	// Logger is the structured logger used by middleware and lifecycle.
-	// Must be non-nil; cmd/jasper/serve.go passes slog.New(...).
+	// Logger is the *console* logger used by middleware and lifecycle;
+	// cmd/jasper/serve.go passes a stderr slog.New(...). New falls back to
+	// slog.Default() when nil, and rewraps it so that opening a vault adds
+	// that vault's log file alongside the console handler.
 	Logger *slog.Logger
 
 	// MigrationsOverride is a TEST-ONLY override for the embedded
@@ -130,7 +131,11 @@ type App struct {
 
 	diskFullHandler http.Handler
 
-	fileLogCloser io.Closer
+	// consoleHandler is cfg.Logger's handler as supplied by the caller;
+	// vaultLog routes cfg.Logger to it plus the open vault's log file.
+	consoleHandler slog.Handler
+	vaultLog       *vaultLogHandler
+	fileLogCloser  io.Closer
 
 	swapMu sync.Mutex
 
@@ -201,6 +206,13 @@ func allowedOrigins(listenAddr string) []string {
 //  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
 //  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
 func New(cfg Config) (*App, error) {
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+	consoleHandler := cfg.Logger.Handler()
+	vaultLog := newVaultLogHandler(consoleHandler)
+	cfg.Logger = slog.New(vaultLog)
+
 	notesDir := notesDirFor(cfg.DataDir)
 	files := fsstore.NewStore(notesDir)
 
@@ -233,7 +245,12 @@ func New(cfg Config) (*App, error) {
 
 	r.Mount("/", static.Handler())
 
-	a := &App{cfg: cfg, handler: newSwappableHandler(r)}
+	a := &App{
+		cfg:            cfg,
+		handler:        newSwappableHandler(r),
+		consoleHandler: consoleHandler,
+		vaultLog:       vaultLog,
+	}
 
 	apiServer.SetVaultOpener(a)
 	return a, nil

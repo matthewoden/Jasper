@@ -209,11 +209,11 @@ func TestCheckLogWritable_OKAndProbeCleanup(t *testing.T) {
 		t.Fatalf("want ok, got %+v", r)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, "logs", "jasper.log")); err == nil {
+	if _, err := os.Stat(vault.LogsPath(dir)); err == nil {
 		t.Errorf("jasper.log was created by probe — Blocker 3 regression!")
 	}
 
-	entries, err := os.ReadDir(filepath.Join(dir, "logs"))
+	entries, err := os.ReadDir(vault.LogsDir(dir))
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
 	}
@@ -221,6 +221,23 @@ func TestCheckLogWritable_OKAndProbeCleanup(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".write-probe-") {
 			t.Errorf("leftover probe file %q (should have been removed)", e.Name())
 		}
+	}
+}
+
+// TestCheckLogWritable_ProbesTheDirTheLoggerWrites — doctor used to
+// probe <vault>/logs while the logger writes <vault>/.jasper/logs, so a
+// green "log writable" said nothing about the file the error pages tail.
+func TestCheckLogWritable_ProbesTheDirTheLoggerWrites(t *testing.T) {
+	dir := t.TempDir()
+	if r := checkLogWritable(dir); r.Status != "ok" {
+		t.Fatalf("want ok, got %+v", r)
+	}
+
+	if _, err := os.Stat(vault.LogsDir(dir)); err != nil {
+		t.Errorf("doctor did not probe %s: %v", vault.LogsDir(dir), err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "logs")); err == nil {
+		t.Errorf("doctor created the stale %s — nothing writes there", filepath.Join(dir, "logs"))
 	}
 }
 

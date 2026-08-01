@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -166,11 +168,35 @@ func TestBuildDiskFullData_MissingPaths(t *testing.T) {
 	}
 }
 
-// TestBuildUnrecoverableData_PassThrough — UnrecoverableData is a
-// thin wrapper; buildUnrecoverableData copies the LogsPath verbatim.
+// TestBuildUnrecoverableData_PassThrough — buildUnrecoverableData copies
+// the LogsPath verbatim.
 func TestBuildUnrecoverableData_PassThrough(t *testing.T) {
 	got := buildUnrecoverableData("/var/log/jasper.log")
 	if got.LogsPath != "/var/log/jasper.log" {
 		t.Errorf("LogsPath: got %q, want passthrough", got.LogsPath)
+	}
+}
+
+// TestUnrecoverablePage_ShowsRealLogLines — an unrecoverable migration is
+// the case where the log matters most, and the page used to offer only a
+// path. It now tails the file, so the failure is legible in place.
+func TestUnrecoverablePage_ShowsRealLogLines(t *testing.T) {
+	logsPath := filepath.Join(t.TempDir(), "jasper.log")
+	if err := os.WriteFile(logsPath, []byte(
+		`{"level":"ERROR","msg":"migration failed","name":"004_mcp_grants.sql"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	data := buildUnrecoverableData(logsPath)
+	if !strings.Contains(data.LogExcerpt, "004_mcp_grants.sql") {
+		t.Fatalf("LogExcerpt did not tail the log: %q", data.LogExcerpt)
+	}
+
+	rr := httptest.NewRecorder()
+	newBootErrorHandler("unrecoverable.html", data).
+		ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	if body := rr.Body.String(); !strings.Contains(body, "004_mcp_grants.sql") {
+		t.Errorf("unrecoverable page rendered no log lines; got:\n%s", body)
 	}
 }

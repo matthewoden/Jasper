@@ -33,9 +33,9 @@ Vite proxy at :5173 forwards /api → the running backend).
 Non-loopback binds log a startup warning; MCP always stays loopback.
 
 The vault directory holds:
-  notes/    — your .md files (the source of truth)
-  .jasper/  — per-vault SQLite index, config, app.db (regenerable from notes/)
-  logs/     — jasper.log with daily rotation
+  notes/         — your .md files (the source of truth)
+  .jasper/       — per-vault SQLite index, config, app.db (regenerable from notes/)
+  .jasper/logs/  — jasper.log with daily rotation
 
 Vault resolution order:
   1. --vault flag (absolute path; bypasses picker)

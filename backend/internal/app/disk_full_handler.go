@@ -24,10 +24,12 @@ type DiskFullData struct {
 
 // UnrecoverableData carries the values rendered into unrecoverable.html
 // when the runner returns ErrUnrecoverable (Path 1 restore itself
-// failed, or Path 2 also failed). The LogsPath is the absolute log
-// file path the user can tail to see the full migration error chain.
+// failed, or Path 2 also failed). LogsPath is the absolute log file path
+// the user can tail for the full migration error chain; LogExcerpt is its
+// tail, so the failure is legible without leaving the page.
 type UnrecoverableData struct {
-	LogsPath string
+	LogsPath   string
+	LogExcerpt string
 }
 
 func buildDiskFullData(dbPath, dataDir string) DiskFullData {
@@ -47,7 +49,7 @@ func buildDiskFullData(dbPath, dataDir string) DiskFullData {
 }
 
 func buildUnrecoverableData(logsPath string) UnrecoverableData {
-	return UnrecoverableData{LogsPath: logsPath}
+	return UnrecoverableData{LogsPath: logsPath, LogExcerpt: tailLog(logsPath, 20)}
 }
 
 func newBootErrorHandler(templateName string, data any) http.Handler {
