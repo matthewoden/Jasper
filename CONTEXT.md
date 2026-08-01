@@ -92,7 +92,9 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Broadcast** — a WebSocket cache-invalidation event (`note.updated`, `note:created`, `file:moved`, `bookmarks:changed`, `vault.switching`/`vault.switched`, …). Server truth pushed to other sessions. Fire-and-forget: a broadcast failure never fails a write.
 
-**Hot-swap** — switching the open vault without restarting the process. Ordered teardown (handler → DB pair → indexer → MCP → logger), then reopen. During the swap the HTTP handler is nil and every request returns 503, so no request can be served against a half-torn-down vault.
+**Hot-swap** — switching the open vault without restarting the process. The HTTP handler is swapped to nil first, so every request during the window returns 503 and nothing can be served against a half-torn-down vault. Then the per-vault subsystems are torn down and reopened against the new vault.
+
+⚠️ **The current teardown order is a known defect** — it closes the database before stopping the MCP listener, so an in-flight MCP tool call can hit a closed DB. Don't treat the shipped order as the intended contract; see [ADR-0008](./docs/adr/0008-vault-model.md) and `.scratch/audit-findings/`.
 
 ### Content model
 

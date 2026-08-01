@@ -32,6 +32,14 @@ NFC over NFD because it's the interchange norm (and what most tooling emits); th
 - Vault paths themselves carry an ASCII + NFC constraint from the same reasoning.
 - Bookmark folder names are **not** subject to this — they're virtual labels, not filesystem paths, so they get case-insensitive uniqueness without the filesystem-legal-character restriction.
 
+## Known defect: the canonical form is being used as an I/O path
+
+The canonical form is correct as a **lookup key** and wrong as a **path to read from**. Today `WalkVault` stores the *reconstructed* canonical path and reconcile reads via it — so on a case-sensitive filesystem, an externally-created file whose on-disk name has uppercase letters or NFD accents resolves to a different byte sequence than what exists, the read fails, and **the note is silently omitted from the index entirely**.
+
+macOS masks this completely; it surfaces on WSL2. Jasper's own files are unaffected because it writes lowercase-NFC, so this bites external and sync-created files only.
+
+The rule this ADR should be read as stating: **canonicalize for the key, keep the real path for I/O.** Tracked in `.scratch/audit-findings/issues/04-durability.md`.
+
 ## Related validation
 
 Path handling also rejects `..` traversal, absolute paths, symlink escapes, and anything resolving outside the vault's `notes/` prefix. Those are separate checks in `fsstore` with their own sentinel errors, all mapped to 400.
