@@ -264,20 +264,20 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
   });
 
 
-  it("SS5: note:updated fans out to useBacklinks dispatch", async () => {
+  it("SS5: note:updated publishes to the shared event bus without leaking subscribers", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
 
-    const linksSubscriber = vi.fn();
-
-    const { unmount } = renderHook(() => {
-      void linksSubscriber;
-    });
+    // No useBacklinks() instance is mounted here — this asserts the
+    // WS→publish() wiring itself doesn't create or leak a subscription on
+    // an arbitrary keyed entry, mirroring the pre-migration "dispatch does
+    // not throw / does not grow subscriber count with 0 mounted consumers"
+    // assertion. useBacklinks.test.ts covers the real fetch-triggering path.
+    const beforeCount = backlinksTesting.getSubscriberCount("unmounted-note-id");
 
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
     await waitFor(() => expect(server.clients()).toHaveLength(1));
 
-    const beforeCount = backlinksTesting.getSubscriberCount();
     const evt: WSEnvelope = {
       event: "note:updated",
       origin_session_id: "other",
@@ -285,9 +285,7 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(handlers.onNoteUpdated).toHaveBeenCalled());
-    expect(backlinksTesting.getSubscriberCount()).toBe(beforeCount);
-
-    unmount();
+    expect(backlinksTesting.getSubscriberCount("unmounted-note-id")).toBe(beforeCount);
   });
 
 
@@ -324,7 +322,7 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
     };
     server.emit("message", JSON.stringify(evt));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
-    // dispatchLinksEvent does not throw even with 0 subscribers.
+    // publish("note:created") does not throw even with 0 subscribers.
   });
 });
 
