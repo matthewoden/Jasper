@@ -26,14 +26,34 @@ vi.mock("../lib/notesApi", () => ({
   updateNote: vi.fn(),
 }));
 
-vi.mock("../lib/treeApi", () => ({
-  postNoteMove: vi.fn(),
-  getTree: vi.fn(),
-}));
+// treeResource is rebuilt fresh here with the REAL createResource (mirrors
+// plan 07's useBacklinks.test.ts pattern) so useFileTree's real
+// useResource(treeResource) wiring is exercised — only the network-facing
+// fetch (mockGetTree) is faked. "mock"-prefixed identifiers are the
+// exception Vitest's vi.mock hoisting allows to be referenced inside the
+// factory below.
+const mockGetTree = vi.fn();
+vi.mock("../lib/treeApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/treeApi")>();
+  const { createResource } = await import("../lib/resources/createResource");
+  return {
+    walkTreeCollect: actual.walkTreeCollect,
+    postNoteMove: vi.fn(),
+    treeResource: createResource("tree", () => mockGetTree(), {
+      mode: "cached",
+      invalidatedBy: [
+        "note:created", "note:deleted", "note:moved",
+        "folder:created", "folder:deleted", "folder:moved",
+        "file:created", "file:deleted", "file:moved",
+        "links:rewritten", "reindex:complete",
+      ],
+    }),
+  };
+});
 
 import { ScratchpadUUID, getNote } from "../lib/notesApi";
-import { getTree } from "../lib/treeApi";
-import { __testing__ as fileTreeTesting } from "../lib/useFileTree";
+import { treeResource } from "../lib/treeApi";
+import type { ApiError, Tree } from "../lib/treeApi";
 import { __resetAllControllersForTest } from "../lib/noteBufferController";
 import { useTreeStore } from "../lib/useTreeStore";
 import { ToastProvider } from "./Toast";
@@ -43,9 +63,9 @@ import type { LeafNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
 const getNoteMock = vi.mocked(getNote);
-const getTreeMock = vi.mocked(getTree);
+const getTreeMock = mockGetTree;
 
-type GetTreeReturn = Awaited<ReturnType<typeof getTree>>;
+type GetTreeReturn = { data?: Tree; error?: ApiError };
 type GetReturn = Awaited<ReturnType<typeof getNote>>;
 
 function okTree(notePath: string): GetTreeReturn {
@@ -109,7 +129,7 @@ beforeEach(() => {
   __resetAllControllersForTest();
   getNoteMock.mockReset();
   getTreeMock.mockReset();
-  fileTreeTesting.__resetCoalescer();
+  treeResource.clear();
   getTreeMock.mockResolvedValue(okTree("scratchpad.md"));
   getNoteMock.mockResolvedValue(okGet("apple banana apple cherry apple"));
   useTreeStore.setState({ connectionStatus: "connected" });

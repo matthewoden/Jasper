@@ -81,7 +81,6 @@ beforeEach(() => {
     loading: false,
     error: null,
     refresh: vi.fn(),
-    mutate: vi.fn(),
   });
 });
 

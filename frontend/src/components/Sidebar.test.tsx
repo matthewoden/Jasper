@@ -107,7 +107,6 @@ const mockedUseFileTree = vi.mocked(useFileTree);
 const mockedPostAdminReindex = vi.mocked(postAdminReindex);
 const mockedUseTreeMutations = vi.mocked(useTreeMutations);
 
-const noopMutate = () => {};
 
 function defaultMutsResult() {
   return {
@@ -164,7 +163,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(screen.getByLabelText("Notes navigation")).toBeInTheDocument();
@@ -176,7 +174,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(screen.getByTestId("sidebar-tab-row")).toBeInTheDocument();
@@ -190,7 +187,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(
@@ -210,7 +206,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
@@ -223,7 +218,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     useTreeStore.setState({ sidebarWidth: 380 });
     renderWithProvider(<Sidebar />);
@@ -238,7 +232,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
@@ -252,7 +245,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(screen.queryByText("scratchpad")).toBeNull();
@@ -264,7 +256,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
@@ -287,7 +278,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     await waitFor(() => {
@@ -314,7 +304,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "New note" }));
@@ -334,7 +323,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
       expect(
@@ -348,7 +336,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
       fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
@@ -375,7 +362,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       useTreeStore.setState({ allCollapsed: true, expanded: new Set() });
       renderWithProvider(<Sidebar />);
@@ -398,7 +384,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
       expect(screen.queryByText(/^TAGS \(/)).toBeNull();
@@ -410,7 +395,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
       expect(screen.queryByText(/TAGS \(\d+\)/)).toBeNull();
@@ -422,7 +406,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       renderWithProvider(<Sidebar />);
       const nav = screen.getByLabelText("Notes navigation") as HTMLElement;
@@ -446,7 +429,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       expect(useTreeStore.getState().selectedRow).toBeNull();
 
@@ -487,7 +469,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       useTreeStore.setState({
         selectedRow: { kind: "folder", target: "scratch/2026" },
@@ -545,7 +526,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       useTreeStore.setState({
         selectedRow: { kind: "note", target: "n-1" },
@@ -583,7 +563,6 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
         loading: false,
         error: null,
         refresh: () => Promise.resolve(),
-        mutate: noopMutate,
       });
       useTreeStore.setState({
         selectedRow: { kind: "folder", target: "scratch" },
@@ -606,7 +585,6 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     useTreeStore.setState({ notesSidebarVisible: true });
   });
@@ -670,7 +648,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     useTreeStore.setState({
       notesSidebarVisible: true,
@@ -727,7 +704,6 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     renderWithProvider(<Sidebar />);
     expect(document.querySelector('[role="tree"]')).not.toBeNull();
@@ -764,7 +740,6 @@ describe("<Sidebar /> — Phase 27 Plan 06: BookmarksPanel wiring", () => {
       loading: false,
       error: null,
       refresh: () => Promise.resolve(),
-      mutate: noopMutate,
     });
     useTreeStore.setState({
       notesSidebarVisible: true,

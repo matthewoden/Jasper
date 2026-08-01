@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { generateOrLoadSessionId } from "./sessionId";
 import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
-import { useFileTree } from "./useFileTree";
+import { treeResource } from "./treeApi";
 import { publish } from "./resources";
 import type { components } from "../api/schema";
 
@@ -51,8 +51,11 @@ export interface UseSessionSyncOptions {
  * WebSocket session-sync hook. Mount once at App root. Owns the WS connection,
  * the connection-status state machine, the reconnect loop, and inbound-event routing.
  *
- * Reconnect sequence: setStatus("reconnecting") → await refreshTree on open →
- * resume processing inbound events → setStatus("connected").
+ * Reconnect sequence: setStatus("reconnecting") → await an explicit tree
+ * invalidation on open → resume processing inbound events →
+ * setStatus("connected"). A reconnect is a "we may have missed events"
+ * signal, so it invalidates rather than publishes — the same D-12 reasoning
+ * that governs every other resource, applied at the transport layer.
  *
  * Security: inbound `origin_session_id` is treated as opaque — never rendered
  * to the DOM. Used only for equality compare against own session_id to suppress
@@ -70,7 +73,6 @@ export function useSessionSync(
 ): void {
   const setStatus = useTreeStore((s) => s.setConnectionStatus);
   const setForceWsReconnect = useTreeStore((s) => s.setForceWsReconnect);
-  const { refresh: refreshTree } = useFileTree();
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
@@ -92,10 +94,10 @@ export function useSessionSync(
         if (cancelled) return;
         attempt = 0;
         try {
-          await refreshTree();
+          await treeResource.invalidate();
         } catch {
-          // refreshTree errors are surfaced inside useFileTree's own
-          // store; we still flip to connected so events resume.
+          // invalidate() errors are surfaced via treeResource's own error
+          // snapshot; we still flip to connected so events resume.
         }
         if (cancelled) return;
         setStatus("connected");
@@ -127,16 +129,31 @@ export function useSessionSync(
             break;
           case "note:created":
             publish("note:created");
-            void refreshTree();
             break;
+          // treeResource declares each of these seven events in its own
+          // invalidatedBy list (treeApi.ts), so publishing is exactly one
+          // invalidate for whoever is subscribed, and zero requests when
+          // nothing is mounted (D-13).
           case "note:moved":
+            publish("note:moved");
+            break;
           case "folder:created":
+            publish("folder:created");
+            break;
           case "folder:deleted":
+            publish("folder:deleted");
+            break;
           case "folder:moved":
+            publish("folder:moved");
+            break;
           case "file:created":
+            publish("file:created");
+            break;
           case "file:deleted":
+            publish("file:deleted");
+            break;
           case "file:moved":
-            void refreshTree();
+            publish("file:moved");
             break;
           case "reindex:started":
             handlersRef.current.onReindexStarted();
@@ -146,9 +163,10 @@ export function useSessionSync(
               env.payload as WSReindexCompletePayload,
             );
             // A reindex can discover files added/removed on disk outside the
-            // app (external edits, manual Refresh). Refetch the tree so those
-            // notes appear, mirroring the note/folder mutation cases above.
-            void refreshTree();
+            // app (external edits, manual Refresh). treeResource is
+            // invalidatedBy reindex:complete, so this publish covers the
+            // note/folder mutation cases above too.
+            publish("reindex:complete");
             break;
           case "tags:updated":
           case "tags:rewritten":
@@ -156,7 +174,6 @@ export function useSessionSync(
             break;
           case "links:rewritten":
             publish("links:rewritten");
-            void refreshTree();
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
             break;
           case "mcp:grant_changed":
@@ -225,6 +242,6 @@ export function useSessionSync(
       ws?.close();
       setForceWsReconnect(() => {});
     };
-  }, [refreshTree, setStatus, setForceWsReconnect, wsUrlFn]);
+  }, [setStatus, setForceWsReconnect, wsUrlFn]);
   // handlers consumed via handlersRef.current — stable ref avoids re-mounting the WS on every render.
 }

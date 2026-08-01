@@ -20,15 +20,33 @@ const getTreeMock = vi.fn();
 
 const filesApiMoveFileMock = vi.fn();
 
-vi.mock("./treeApi", () => ({
-  getTree: (...args: unknown[]) => getTreeMock(...args),
-  postNotes: (...args: unknown[]) => postNotesMock(...args),
-  deleteNoteById: (...args: unknown[]) => deleteNoteByIdMock(...args),
-  postNoteMove: (...args: unknown[]) => postNoteMoveMock(...args),
-  postFolders: (...args: unknown[]) => postFoldersMock(...args),
-  deleteFolder: (...args: unknown[]) => deleteFolderMock(...args),
-  postFolderMove: (...args: unknown[]) => postFolderMoveMock(...args),
-}));
+// treeResource is rebuilt fresh here with the REAL createResource (mirrors
+// plan 07's useBacklinks.test.ts pattern) so useFileTree()'s auto-refresh
+// contract (broadcastRefresh -> treeResource.invalidate()) is exercised for
+// real — getTreeMock stays a separate mock since useTreeMutations.ts's own
+// moveFile() 404-reconciliation path calls treeApi.getTree() directly,
+// imperatively, outside the resource cache.
+vi.mock("./treeApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    getTree: (...args: unknown[]) => getTreeMock(...args),
+    postNotes: (...args: unknown[]) => postNotesMock(...args),
+    deleteNoteById: (...args: unknown[]) => deleteNoteByIdMock(...args),
+    postNoteMove: (...args: unknown[]) => postNoteMoveMock(...args),
+    postFolders: (...args: unknown[]) => postFoldersMock(...args),
+    deleteFolder: (...args: unknown[]) => deleteFolderMock(...args),
+    postFolderMove: (...args: unknown[]) => postFolderMoveMock(...args),
+    treeResource: createResource("tree", (...args: unknown[]) => getTreeMock(...args), {
+      mode: "cached",
+      invalidatedBy: [
+        "note:created", "note:deleted", "note:moved",
+        "folder:created", "folder:deleted", "folder:moved",
+        "file:created", "file:deleted", "file:moved",
+        "links:rewritten", "reindex:complete",
+      ],
+    }),
+  };
+});
 
 vi.mock("./filesApi", () => ({
   moveFile: (...args: unknown[]) => filesApiMoveFileMock(...args),
@@ -36,6 +54,7 @@ vi.mock("./filesApi", () => ({
 
 import { TreeMutationError, useTreeMutations } from "./useTreeMutations";
 import { useFileTree } from "./useFileTree";
+import { treeResource } from "./treeApi";
 
 describe("useTreeMutations", () => {
   beforeEach(() => {
@@ -202,6 +221,10 @@ describe("auto-refresh contract (Gap 1)", () => {
     postFolderMoveMock.mockReset();
     getTreeMock.mockReset();
     filesApiMoveFileMock.mockReset();
+    // treeResource is a module-level "cached" singleton — clear between
+    // tests so each harness() mount issues its own fresh fetch instead of
+    // reading a previous test's hydrated cache.
+    treeResource.clear();
     getTreeMock.mockResolvedValue({ data: { root: [] } });
   });
 

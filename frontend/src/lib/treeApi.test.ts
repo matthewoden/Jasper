@@ -21,21 +21,35 @@ vi.mock("../api/client", () => ({
 import {
   deleteFolder,
   deleteNoteById,
-  getTree,
   postFolderMove,
   postFolders,
   postNoteMove,
   postNotes,
+  treeResource,
+  walkTreeCollect,
+  type Tree,
 } from "./treeApi";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
+import { useTreeStore } from "./useTreeStore";
 
 describe("treeApi", () => {
   beforeEach(() => {
     getMock.mockReset();
     postMock.mockReset();
     deleteMock.mockReset();
+    // treeResource is a module-level "cached" singleton — reset between
+    // tests so each treeResource.read() below issues a fresh fetch instead
+    // of returning a previous test's cached value.
+    resourcesTesting.reset();
+    useTreeStore.setState({
+      expanded: new Set(),
+      activeNoteId: null,
+      pendingRename: null,
+      draftCreate: null,
+    });
   });
 
-  it("TestGetTree_HappyPath: returns data when client.GET resolves with a tree", async () => {
+  it("TestGetTree_HappyPath: treeResource.read() returns data when client.GET resolves with a tree", async () => {
     const tree = {
       root: [
         { kind: "folder", path: "projects", name: "projects", children: [] },
@@ -47,7 +61,7 @@ describe("treeApi", () => {
       response: { status: 200 },
     });
 
-    const result = await getTree();
+    const result = await treeResource.read();
 
     expect(getMock).toHaveBeenCalledTimes(1);
     expect(getMock).toHaveBeenCalledWith("/tree");
@@ -62,7 +76,7 @@ describe("treeApi", () => {
       response: { status: 500 },
     });
 
-    const result = await getTree();
+    const result = await treeResource.read();
 
     expect(result.data).toBeUndefined();
     expect(result.error).toEqual({
@@ -70,6 +84,63 @@ describe("treeApi", () => {
       message: "fs walk failed",
       status: 500,
     });
+  });
+
+  it("TestFetchTree_PrunesStaleTreeState: a successful fetch prunes expanded paths / activeNoteId absent from the fresh tree", async () => {
+    useTreeStore.setState({
+      expanded: new Set(["old-folder", "projects"]),
+      activeNoteId: "stale-uuid",
+    });
+    const tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "projects",
+          name: "projects",
+          children: [
+            {
+              kind: "note",
+              id: "uuid-a",
+              path: "projects/a.md",
+              title: "a",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+        },
+      ],
+    };
+    getMock.mockResolvedValue({ data: tree, error: undefined, response: { status: 200 } });
+
+    await treeResource.read();
+
+    const s = useTreeStore.getState();
+    expect(s.expanded.has("projects")).toBe(true);
+    expect(s.expanded.has("old-folder")).toBe(false);
+    expect(s.activeNoteId).toBeNull();
+  });
+
+  it("TestWalkTreeCollect_CollectsFoldersAndNotes: exported for MoveToFolderModal + this file's own pruning logic", () => {
+    const tree: Tree = {
+      root: [
+        {
+          kind: "folder",
+          path: "projects",
+          name: "projects",
+          children: [
+            {
+              kind: "note",
+              id: "uuid-a",
+              path: "projects/a.md",
+              title: "a",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+        },
+      ],
+    };
+    const { folders, notes } = walkTreeCollect(tree);
+    expect(folders.has("projects")).toBe(true);
+    expect(notes.has("uuid-a")).toBe(true);
   });
 
   it("TestPostNotes_HappyPath: routes to /notes with the correct body", async () => {
