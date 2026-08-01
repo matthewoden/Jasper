@@ -4,7 +4,13 @@
  * via a deep merge against the last persisted config, and replaceConfig PUTs
  * a whole document rebased on the freshest persisted config.
  *
- * Mocks the openapi-fetch client at the module level via vi.mock.
+ * Mocks the openapi-fetch client at the module level via vi.mock, same
+ * boundary as before the D-04 extraction — configApi.ts and the resource
+ * layer run for real underneath so CR-01/CR-02's overlapping-save
+ * interleaving exercises the actual mutate()/rollback machinery, not a
+ * hand-rolled stand-in for it. Resource-layer state is module-global, so
+ * every test resets both createResource's registry and configApi's
+ * lastPersisted between cases.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
@@ -18,7 +24,9 @@ vi.mock("../api/client", () => ({
 }));
 
 import { client } from "../api/client";
-import { useConfig, getConfig, putConfig, patchConfig } from "./useConfig";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
+import { __testing__ as configApiTesting, putConfig, patchConfig } from "./configApi";
+import { useConfig } from "./useConfig";
 
 const mockClient = client as unknown as {
   GET: ReturnType<typeof vi.fn>;
@@ -48,6 +56,8 @@ beforeEach(() => {
   mockClient.GET.mockReset();
   mockClient.PUT.mockReset();
   mockClient.PATCH.mockReset();
+  resourcesTesting.reset();
+  configApiTesting.reset();
 });
 
 describe("useConfig", () => {
@@ -237,13 +247,11 @@ describe("useConfig", () => {
   });
 });
 
-describe("getConfig + putConfig + patchConfig wrappers", () => {
-  it("getConfig wraps client.GET response in { data, error } shape", async () => {
-    mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
-    const { data } = await getConfig();
-    expect(data?.theme).toBe("dark");
-  });
-
+// getConfig moved into configApi.ts and is module-private there now (it's
+// the resource's fetcher, not a standalone wrapper) — its success/failure
+// shape is covered by configApi.test.ts's boot-scoped-dedup and
+// GET-failure-throws cases instead of here.
+describe("putConfig + patchConfig wrappers", () => {
   it("putConfig wraps error responses with status code", async () => {
     mockClient.PUT.mockResolvedValue({
       error: { code: "invalid_request", message: "bad" },
