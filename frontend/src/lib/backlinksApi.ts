@@ -1,10 +1,12 @@
 /**
- * backlinksApi — typed wrapper over GET /api/v1/notes/{id}/backlinks.
+ * backlinksApi — typed wrapper over GET /api/v1/notes/{id}/backlinks, and
+ * the keyed shared-cache resource that backs useBacklinks.
  * Maps the snake_case OpenAPI response to camelCase for TypeScript consumers.
  */
 
 import { client } from "../api/client";
 import type { components } from "../api/schema";
+import { createKeyedResource } from "./resources";
 
 /** Camel-case mirror of the OpenAPI BacklinkRow schema. */
 export interface BacklinkRow {
@@ -30,7 +32,7 @@ type RawBacklinkRow = components["schemas"]["BacklinkRow"];
  * appropriate empty state rather than surfacing the error to the user as a
  * crash.
  */
-export async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
+async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
   const { data, error } = await client.GET("/notes/{id}/backlinks", {
     params: { path: { id: noteId } },
   });
@@ -48,3 +50,21 @@ export async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
     excerpts: r.excerpts,
   }));
 }
+
+/**
+ * Backlinks are keyed by note id, single-slot (D-10) — only the active
+ * note's entry is retained. Events that invalidate:
+ *   - note:updated    — a save anywhere could change [[...]] content
+ *   - note:created    — a new note might link to the current one
+ *   - links:rewritten — a rename propagated link text changes
+ * tags:rewritten is intentionally EXCLUDED: tag rewrites do not affect
+ * [[wiki-link]] content and would over-trigger fetches.
+ */
+export const backlinksResource = createKeyedResource(
+  "backlinks",
+  getNoteBacklinks,
+  {
+    mode: "cached",
+    invalidatedBy: ["note:updated", "note:created", "links:rewritten"],
+  },
+);

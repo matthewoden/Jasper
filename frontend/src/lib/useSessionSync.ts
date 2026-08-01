@@ -3,7 +3,6 @@ import { generateOrLoadSessionId } from "./sessionId";
 import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
-import { dispatchLinksEvent } from "./useBacklinks";
 import { publish } from "./resources";
 import type { components } from "../api/schema";
 
@@ -50,7 +49,7 @@ export interface UseSessionSyncOptions {
 
 /**
  * WebSocket session-sync hook. Mount once at App root. Owns the WS connection,
- * the connection-status state machine, the reconnect loop, and inbound-event dispatch.
+ * the connection-status state machine, the reconnect loop, and inbound-event routing.
  *
  * Reconnect sequence: setStatus("reconnecting") → await refreshTree on open →
  * resume processing inbound events → setStatus("connected").
@@ -119,7 +118,7 @@ export function useSessionSync(
             handlersRef.current.onNoteUpdated(
               env.payload as WSNoteUpdatedPayload,
             );
-            dispatchLinksEvent("note:updated");
+            publish("note:updated");
             break;
           case "note:deleted":
             handlersRef.current.onNoteDeleted(
@@ -127,7 +126,7 @@ export function useSessionSync(
             );
             break;
           case "note:created":
-            dispatchLinksEvent("note:created");
+            publish("note:created");
             void refreshTree();
             break;
           case "note:moved":
@@ -156,7 +155,7 @@ export function useSessionSync(
             publish(env.event);
             break;
           case "links:rewritten":
-            dispatchLinksEvent("links:rewritten");
+            publish("links:rewritten");
             void refreshTree();
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);
             break;

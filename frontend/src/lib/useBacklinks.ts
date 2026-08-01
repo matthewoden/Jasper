@@ -1,39 +1,18 @@
 /**
- * useBacklinks — reactive hook that fetches and refreshes backlinks for the
- * currently open note.
- *
- * WS integration: module-level subscriber Set mirrors the useTagBrowser /
- * useFileTree pattern. useSessionSync calls dispatchLinksEvent(), which
- * fans out to all mounted instances without modifying useSessionSync's signature.
- *
- * Events that trigger a refetch:
- *   - note:updated   — a save anywhere could change [[...]] content
- *   - note:created   — a new note might link to the current one
- *   - links:rewritten — a rename propagated link text changes
- *
- * tags:rewritten is intentionally excluded: tag rewrites do not affect
- * [[wiki-link]] content and would over-trigger fetches.
+ * useBacklinks — reactive hook reading the shared `backlinksResource` cache
+ * (D-10 keyed, single-slot: only the active note's entry is retained).
+ * Subscribing (mounting) never issues a network request by itself — only
+ * the resource's own 0->1 subscriber transition and its declared WS events
+ * (note:updated, note:created, links:rewritten) do. See backlinksApi.ts's
+ * registration comment for the deliberate tags:rewritten exclusion.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getNoteBacklinks, type BacklinkRow } from "./backlinksApi";
-
-
-export const linksEventSubscribers = new Set<() => void>();
+import { useMemo } from "react";
+import { backlinksResource, type BacklinkRow } from "./backlinksApi";
+import { publish, useResource } from "./resources";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 export type LinksEventType = "note:updated" | "note:created" | "links:rewritten";
-
-/**
- * Called by useSessionSync when a note:updated, note:created, or
- * links:rewritten WS event arrives. Triggers all mounted instances to refetch.
- */
-export function dispatchLinksEvent(event: LinksEventType): void {
-  void event;
-  const snapshot = Array.from(linksEventSubscribers);
-  for (const fn of snapshot) {
-    fn();
-  }
-}
 
 export interface UseBacklinksResult {
   /** null when noteId is null; empty array when note has no backlinks. */
@@ -44,78 +23,35 @@ export interface UseBacklinksResult {
 }
 
 /**
- * useBacklinks(noteId) — fetches GET /api/v1/notes/{id}/backlinks on mount and
- * whenever a relevant WS event fires. Returns null backlinks when noteId is null.
- * On error, preserves the previous backlinks rather than clearing them.
+ * useBacklinks(noteId) — reads GET /api/v1/notes/{id}/backlinks via the
+ * shared resource layer. Returns null backlinks when noteId is null. On
+ * error, the layer's preserve-last-good-value policy retains the previous
+ * backlinks rather than clearing them.
  */
 export function useBacklinks(noteId: string | null): UseBacklinksResult {
-  const [backlinks, setBacklinks] = useState<BacklinkRow[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const cancelled = useRef(false);
-  const backlinksRef = useRef<BacklinkRow[] | null>(null);
-  const noteIdRef = useRef(noteId);
-  noteIdRef.current = noteId;
+  const resource = useMemo(
+    () => (noteId ? backlinksResource.forKey(noteId) : null),
+    [noteId],
+  );
+  const snapshot = useResource(resource);
 
-  const fetchBacklinks = useCallback(async () => {
-    const id = noteIdRef.current;
-    if (!id) {
-      setBacklinks(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await getNoteBacklinks(id);
-      if (cancelled.current) return;
-      backlinksRef.current = result;
-      setBacklinks(result);
-      setError(null);
-      setLoading(false);
-    } catch (e) {
-      if (cancelled.current) return;
-      setError(e instanceof Error ? e : new Error(String(e)));
-      setBacklinks(backlinksRef.current);
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    cancelled.current = false;
-
-    if (noteId === null) {
-      setBacklinks(null);
-      setLoading(false);
-      setError(null);
-      backlinksRef.current = null;
-    } else {
-      void fetchBacklinks();
-    }
-
-    const subscriber = () => {
-      if (noteIdRef.current) void fetchBacklinks();
-    };
-    linksEventSubscribers.add(subscriber);
-
-    return () => {
-      cancelled.current = true;
-      linksEventSubscribers.delete(subscriber);
-    };
-  }, [noteId, fetchBacklinks]);
-
-  const refresh = useCallback(async () => {
-    cancelled.current = false;
-    await fetchBacklinks();
-  }, [fetchBacklinks]);
-
-  return { backlinks, loading, error, refresh };
+  return {
+    backlinks: noteId === null ? null : (snapshot.data ?? null),
+    loading: snapshot.loading,
+    error: snapshot.error,
+    refresh: async () => {
+      // Matches the pre-migration contract: refresh() never rejects — a
+      // failed fetch surfaces via snapshot.error, not a thrown promise, so
+      // callers don't need a try/catch around every refresh() call.
+      if (resource) await resource.invalidate().catch(() => undefined);
+    },
+  };
 }
-
 
 export const __testing__ = {
   simulateEvent: (event: LinksEventType) => {
-    dispatchLinksEvent(event);
+    publish(event);
   },
-  getSubscriberCount: () => linksEventSubscribers.size,
+  getSubscriberCount: (noteId: string) =>
+    resourcesTesting.getSubscriberCount(`backlinks::${noteId}`),
 };

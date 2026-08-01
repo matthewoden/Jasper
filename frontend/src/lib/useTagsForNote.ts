@@ -6,9 +6,9 @@
  *   1. YAML frontmatter: `tags: [foo, bar]` or multi-line `tags:\n  - foo`
  *   2. Inline body tags: `#tagname` patterns (charset: [a-z0-9_-]+)
  *
- * Refetches on `note:updated` WS events via the shared linksEventSubscribers
- * fan-out (same mechanism as useBacklinks). Cancels in-flight requests on
- * noteId change.
+ * Refetches on note:updated / note:created / links:rewritten WS events via
+ * the shared resource-layer event bus (same events useBacklinks listens
+ * for). Cancels in-flight requests on noteId change.
  *
  * Tag names are parsed from content — never eval'd or rendered as HTML.
  * The charset regex [a-z0-9_-]+ is intentionally restrictive for safety.
@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getNote } from "./notesApi";
-import { linksEventSubscribers } from "./useBacklinks";
+import { subscribe } from "./resources";
 
 
 /**
@@ -126,10 +126,14 @@ export function useTagsForNote(noteId: string | null): UseTagsForNoteResult {
     const subscriber = () => {
       if (noteIdRef.current) void fetchTags();
     };
-    linksEventSubscribers.add(subscriber);
+    const unsubscribes = [
+      subscribe("note:updated", subscriber),
+      subscribe("note:created", subscriber),
+      subscribe("links:rewritten", subscriber),
+    ];
 
     return () => {
-      linksEventSubscribers.delete(subscriber);
+      for (const unsub of unsubscribes) unsub();
     };
   }, [noteId, fetchTags]);
 
