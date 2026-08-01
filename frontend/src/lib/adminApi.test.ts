@@ -21,11 +21,16 @@ vi.mock("../api/client", () => ({
 }));
 
 import { getAdminStatus, postAdminReindex } from "./adminApi";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 describe("adminApi", () => {
   beforeEach(() => {
     getMock.mockReset();
     postMock.mockReset();
+    // getAdminStatus now reads adminStatusResource (mode: "cached") — reset
+    // between tests so each getAdminStatus() call below issues a fresh
+    // fetch instead of returning a previous test's cached value.
+    resourcesTesting.reset();
   });
 
   it("AS1: getAdminStatus routes through client.GET with the locked path key", async () => {

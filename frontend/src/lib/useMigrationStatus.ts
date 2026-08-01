@@ -1,6 +1,6 @@
 /**
- * useMigrationStatus — single-flight GET /admin/status on mount, plus a
- * manual refresh() called after a successful reindex.
+ * useMigrationStatus — reads the shared cached /admin/status resource
+ * (D-15: cached, invalidated by reindex:complete).
  *
  * Shape { state, failedMigration, logsPath, notesIndexed, loading, error, refresh }
  * is the contract MigrationBanner depends on; do not change without sweeping
@@ -10,9 +10,10 @@
  * renders for state === "rolled_back", so the optimistic default avoids a flash.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 
-import { getAdminStatus } from "./adminApi";
+import { adminStatusResource } from "./adminApi";
+import { useResource } from "./resources";
 
 export type MigrationState =
   | "ok"
@@ -46,65 +47,34 @@ function extractErrorMessage(respErr: unknown): string {
 }
 
 export function useMigrationStatus(): UseMigrationStatusResult {
-  const [state, setState] = useState<MigrationState>("ok");
-  const [failedMigration, setFailed] = useState<string | undefined>();
-  const [logsPath, setLogsPath] = useState<string | undefined>();
-  const [notesIndexed, setNotesIndexed] = useState<number | undefined>();
-  const [mcp, setMcp] = useState<McpStatus | undefined>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const snapshot = useResource(adminStatusResource);
+  const resp = snapshot.data;
+
+  let state: MigrationState = "ok";
+  let failedMigration: string | undefined;
+  let logsPath: string | undefined;
+  let notesIndexed: number | undefined;
+  let mcp: McpStatus | undefined;
+  let respError: Error | null = null;
+
+  if (resp) {
+    const { data: statusData, error: statusError } = resp;
+    if (statusData) {
+      state = statusData.state as MigrationState;
+      failedMigration = statusData.failed_migration;
+      logsPath = statusData.logs_path;
+      notesIndexed = statusData.notes_indexed;
+      mcp = statusData.mcp;
+    }
+    if (statusError) {
+      respError = new Error(extractErrorMessage(statusError));
+    }
+  }
+
+  const error = respError ?? snapshot.error;
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error: respErr } = await getAdminStatus();
-      if (respErr) {
-        setError(new Error(extractErrorMessage(respErr)));
-        return;
-      }
-      if (data) {
-        setState(data.state as MigrationState);
-        setFailed(data.failed_migration);
-        setLogsPath(data.logs_path);
-        setNotesIndexed(data.notes_indexed);
-        setMcp(data.mcp);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data, error: respErr } = await getAdminStatus();
-        if (cancelled) return;
-        if (respErr) {
-          setError(new Error(extractErrorMessage(respErr)));
-          setLoading(false);
-          return;
-        }
-        if (data) {
-          setState(data.state as MigrationState);
-          setFailed(data.failed_migration);
-          setLogsPath(data.logs_path);
-          setNotesIndexed(data.notes_indexed);
-          setMcp(data.mcp);
-        }
-        setLoading(false);
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e : new Error(String(e)));
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    await adminStatusResource.invalidate();
   }, []);
 
   return {
@@ -113,7 +83,7 @@ export function useMigrationStatus(): UseMigrationStatusResult {
     logsPath,
     notesIndexed,
     mcp,
-    loading,
+    loading: snapshot.loading,
     error,
     refresh,
   };

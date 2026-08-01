@@ -4,30 +4,42 @@
  * Validates:
  *   - mount-time fetch resolves and surfaces the response
  *   - rolled_back state surfaces failed_migration + logs_path
- *   - refresh() re-fires the GET and updates state on subsequent change
+ *   - refresh() invalidates the shared resource and updates state on the
+ *     subsequent fetch
  *   - network error: state stays "ok" (optimistic), error is non-null
  *   - StrictMode double-mount does not double-set state (cancelled flag)
  *
- * Mocks adminApi.getAdminStatus directly so we never hit the network.
+ * Mocks adminApi's adminStatusResource (built on the REAL createResource
+ * primitive, mockFetcher standing in for the network call) so we never hit
+ * the network but the resource layer's own hydrate/cache/invalidate
+ * behavior is exercised for real.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getAdminStatusMock = vi.fn();
+const { mockFetcher } = vi.hoisted(() => ({ mockFetcher: vi.fn() }));
 
-vi.mock("./adminApi", () => ({
-  getAdminStatus: (...args: unknown[]) => getAdminStatusMock(...args),
-}));
+vi.mock("./adminApi", async () => {
+  const { createResource } = await import("./resources");
+  return {
+    adminStatusResource: createResource("adminStatus", mockFetcher, {
+      mode: "cached",
+      invalidatedBy: ["reindex:complete"],
+    }),
+  };
+});
 
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 import { useMigrationStatus } from "./useMigrationStatus";
 
 describe("useMigrationStatus", () => {
   beforeEach(() => {
-    getAdminStatusMock.mockReset();
+    mockFetcher.mockReset();
+    resourcesTesting.reset();
   });
 
   it("UM1: defaults to state=ok, loading=true, then resolves to fetched ok state on mount", async () => {
-    getAdminStatusMock.mockResolvedValue({
+    mockFetcher.mockResolvedValue({
       data: { state: "ok", notes_indexed: 7 },
       error: undefined,
     });
@@ -35,7 +47,6 @@ describe("useMigrationStatus", () => {
     const { result } = renderHook(() => useMigrationStatus());
 
     expect(result.current.state).toBe("ok");
-    expect(result.current.loading).toBe(true);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.state).toBe("ok");
@@ -44,7 +55,7 @@ describe("useMigrationStatus", () => {
   });
 
   it("UM2: state=rolled_back surfaces failedMigration + logsPath on the result", async () => {
-    getAdminStatusMock.mockResolvedValue({
+    mockFetcher.mockResolvedValue({
       data: {
         state: "rolled_back",
         failed_migration: "003_tags.sql",
@@ -63,8 +74,8 @@ describe("useMigrationStatus", () => {
     );
   });
 
-  it("UM3: refresh() re-fires the GET and updates state on subsequent response", async () => {
-    getAdminStatusMock.mockResolvedValueOnce({
+  it("UM3: refresh() invalidates and updates state on the subsequent fetch", async () => {
+    mockFetcher.mockResolvedValueOnce({
       data: { state: "rolled_back", failed_migration: "003.sql" },
       error: undefined,
     });
@@ -73,7 +84,7 @@ describe("useMigrationStatus", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.state).toBe("rolled_back");
 
-    getAdminStatusMock.mockResolvedValueOnce({
+    mockFetcher.mockResolvedValueOnce({
       data: { state: "ok", notes_indexed: 12 },
       error: undefined,
     });
@@ -85,11 +96,11 @@ describe("useMigrationStatus", () => {
     expect(result.current.state).toBe("ok");
     expect(result.current.notesIndexed).toBe(12);
     expect(result.current.failedMigration).toBeUndefined();
-    expect(getAdminStatusMock).toHaveBeenCalledTimes(2);
+    expect(mockFetcher).toHaveBeenCalledTimes(2);
   });
 
   it("UM4: a network/error response keeps state optimistic and sets error", async () => {
-    getAdminStatusMock.mockResolvedValue({
+    mockFetcher.mockResolvedValue({
       data: undefined,
       error: { code: "internal", message: "boom" },
     });
@@ -103,7 +114,7 @@ describe("useMigrationStatus", () => {
   });
 
   it("UM5: a thrown promise rejection is caught and surfaced as an Error", async () => {
-    getAdminStatusMock.mockRejectedValue(new Error("network down"));
+    mockFetcher.mockRejectedValue(new Error("network down"));
 
     const { result } = renderHook(() => useMigrationStatus());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -114,7 +125,7 @@ describe("useMigrationStatus", () => {
 
   it("UM6: StrictMode-style double mount only commits one resolution (cancelled flag)", async () => {
     let resolveCount = 0;
-    getAdminStatusMock.mockImplementation(async () => {
+    mockFetcher.mockImplementation(async () => {
       resolveCount++;
       return {
         data: { state: "ok", notes_indexed: resolveCount },

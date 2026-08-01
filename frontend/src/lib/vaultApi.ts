@@ -10,6 +10,7 @@
 
 import { client } from "../api/client";
 import type { components } from "../api/schema";
+import { createResource } from "./resources";
 
 export type RecentVaultEntry = components["schemas"]["RecentVaultEntry"];
 
@@ -86,6 +87,35 @@ export function validateVaultPath(path: string): PathValidationResult {
 }
 
 
+async function fetchCurrentVault(): Promise<RecentVaultEntry | null> {
+  const { data, error } = await client.GET("/vault/current");
+  if (error) throw new Error("Failed to fetch current vault");
+  const wrapper = data as { vault?: RecentVaultEntry | null } | null | undefined;
+  return wrapper?.vault ?? null;
+}
+
+async function fetchRecentVaults(): Promise<GetVaultRecentResponse> {
+  const { data, error } = await client.GET("/vault/recent");
+  if (error) throw new Error("Failed to fetch recent vaults");
+  const resp = data as { vaults?: RecentVaultEntry[]; banner?: string } | undefined;
+  return {
+    vaults: resp?.vaults ?? [],
+    banner: resp?.banner ?? "",
+  };
+}
+
+// pass-through, not cached: both change on vault open/create/remove with no
+// WS event to invalidate on, and useVaultPicker.refresh() already re-reads
+// them imperatively after every such mutation (D-15 as amended). Still
+// coalesced — concurrent callers for the same endpoint collapse into one
+// client.GET.
+const vaultCurrentResource = createResource("vaultCurrent", fetchCurrentVault, {
+  mode: "pass-through",
+});
+const vaultRecentResource = createResource("vaultRecent", fetchRecentVaults, {
+  mode: "pass-through",
+});
+
 /**
  * vaultApi — typed wrappers for /api/v1/vault/* via the shared openapi-fetch
  * client singleton (inherits X-Session-ID middleware).
@@ -98,26 +128,13 @@ export const vaultApi = {
    * The backend response is `{ vault?: RecentVaultEntry | null }` (omitempty), so an empty
    * wrapper `{}` means "no vault open." Unwraps data.vault so callers get null on first-run.
    */
-  getCurrent: async (): Promise<RecentVaultEntry | null> => {
-    const { data, error } = await client.GET("/vault/current");
-    if (error) throw new Error("Failed to fetch current vault");
-    const wrapper = data as { vault?: RecentVaultEntry | null } | null | undefined;
-    return wrapper?.vault ?? null;
-  },
+  getCurrent: (): Promise<RecentVaultEntry | null> => vaultCurrentResource.read(),
 
   /**
    * GET /api/v1/vault/recent — returns { vaults, banner }.
    * Banner is non-empty when a previous-vault-missing condition was detected at boot.
    */
-  getRecent: async (): Promise<GetVaultRecentResponse> => {
-    const { data, error } = await client.GET("/vault/recent");
-    if (error) throw new Error("Failed to fetch recent vaults");
-    const resp = data as { vaults?: RecentVaultEntry[]; banner?: string } | undefined;
-    return {
-      vaults: resp?.vaults ?? [],
-      banner: resp?.banner ?? "",
-    };
-  },
+  getRecent: (): Promise<GetVaultRecentResponse> => vaultRecentResource.read(),
 
   /**
    * POST /api/v1/vault/open — opens an existing vault (must contain .jasper/).

@@ -64,10 +64,22 @@ vi.mock("./lib/notesApi", () => ({
 const getAdminStatusMock = vi.fn();
 const postAdminReindexMock = vi.fn();
 
-vi.mock("./lib/adminApi", () => ({
-  getAdminStatus: (...args: unknown[]) => getAdminStatusMock(...args),
-  postAdminReindex: (...args: unknown[]) => postAdminReindexMock(...args),
-}));
+// useMigrationStatus now reads adminStatusResource directly rather than
+// calling getAdminStatus() — build it on the REAL createResource primitive
+// so the shared-cache/invalidate machinery is exercised for real, with
+// getAdminStatusMock standing in for the network call (every existing
+// getAdminStatusMock.mockResolvedValue(...) call site below is unaffected).
+vi.mock("./lib/adminApi", async () => {
+  const { createResource } = await import("./lib/resources");
+  return {
+    getAdminStatus: (...args: unknown[]) => getAdminStatusMock(...args),
+    postAdminReindex: (...args: unknown[]) => postAdminReindexMock(...args),
+    adminStatusResource: createResource("adminStatus", () => getAdminStatusMock(), {
+      mode: "cached",
+      invalidatedBy: ["reindex:complete"],
+    }),
+  };
+});
 
 
 vi.mock("./lib/useFileTree", async () => {
@@ -245,6 +257,7 @@ import type { Tree } from "./lib/treeApi";
 import { usePaneStore } from "./lib/usePaneStore";
 import { _findLeaf } from "./lib/paneTree";
 import { updateNote } from "./lib/notesApi";
+import { __testing__ as resourcesTesting } from "./lib/resources/createResource";
 import { vaultApi } from "./lib/vaultApi";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
@@ -253,8 +266,13 @@ const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 // useTreeStore.setState), and every test in this file now renders <PaneTree>
 // — reset it before EVERY test so a tab opened in one test never bleeds into
 // the next test's single-empty-leaf assumptions.
+//
+// adminStatusResource (mode: "cached") is likewise a module-level singleton
+// — reset it before EVERY test so a previous test's hydrated admin-status
+// value never survives into the next test's getAdminStatusMock expectations.
 beforeEach(() => {
   usePaneStore.getState().clearAll();
+  resourcesTesting.reset();
 });
 
 describe("<App /> — shell composition", () => {
