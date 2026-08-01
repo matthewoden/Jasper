@@ -212,12 +212,10 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - `docs(scope): description` — documentation
 - `chore(scope): description` — tooling, deps, cleanup
 - `refactor(scope): description` — code reorganization (no behavior change)
-- Phase scopes: `feat(phase-08)`, `fix(phase-07)`
-- Task scopes: `feat(08-17b)`, `test(08-22)`
-- Area scopes: `fix(notes-service)`, `test(tree-dnd)`
-- `feat(08-17b): /vault/* OpenAPI routes + handler implementations + tests`
-- `test(phase-08): close UAT-2 with hard-accept promotion`
-- `docs(08-22): complete tree row + ACL refresh plan`
+- **The scope is the area of the codebase**, not a ticket or phase id — see [`CONVENTIONS.md` § Ticket identity](./CONVENTIONS.md#ticket-identity). Phase scopes (`feat(phase-08)`) and task scopes (`feat(08-17b)`) came from the retired `.planning/` system and should not be used in new commits.
+- `fix(notes-service): reject a move whose destination is inside the source`
+- `feat(vault-api): /vault/* OpenAPI routes + handler implementations + tests`
+- `docs(tree-dnd): record why native HTML5 drag was abandoned`
 
 ## Verification Policy: E2E Before Human UAT
 

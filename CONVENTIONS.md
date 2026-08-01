@@ -194,6 +194,17 @@ Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-
 - **When a later decision supersedes an earlier one, reference the earlier one explicitly rather than deleting it.** The chain is the history — and the same rule governs ADRs (see [`docs/adr/README.md`](./docs/adr/README.md) on precedence).
 - Pre-existing failures discovered mid-work get recorded separately rather than fixed inside unrelated work.
 
+## Ticket identity
+
+**A ticket's identity is its path.** `audit-findings/02` — effort directory plus file number — names exactly one file. Write it that way in prose, in cross-references, and when handing work to someone else.
+
+- **Don't mint categorical prefixes** (`OPS-`, `BE-`, `DUR-`). A category says what a ticket is *about* but not where it lives, so every reference costs a search — and the category is the part a one-line summary would have given you anyway. The path is unambiguous, greppable, and already the file-naming standard in [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md).
+- **Requirement IDs scoped to one spec are different, and fine.** `PROPS-08` is numbering *within* the document that defines `PROPS`, and that document is its own legend. Keep them inside their spec; the moment one appears in a commit message or another effort's ticket, it has escaped.
+- **An effort that already carries loose prefixes states its own legend**, in its `spec.md`, until it retires. Don't rewrite live tickets to fix historical naming: `.scratch/` is a queue, not a record, and the directory is deleted when the work ships.
+- **Commit scopes name the area, not the ticket** — `fix(app-lifecycle)`, not `fix(ops-02)`. The scope survives; the ticket does not. Cite the ticket in the body if it adds anything the body doesn't already say.
+
+*The `review/` audit minted seven category prefixes — `BE`, `DUR`, `OPS`, `PERF`, `SY`, `DI`, `FE` — across roughly fifty findings, then was deleted once those findings were transferred. The legend went with it, leaving ~180 live references to identifiers nothing in the repo expands. `SET3` and `MCP2` are visibly drift from `SET` and `MCP`. Reading `OPS-02` costs one grep to learn it is about logging and a second to learn which file holds it — the same rot the [comment policy](#comment-policy) already bans from source, arriving through prose instead.*
+
 ## Requirements traceability
 
 **Mark a requirement complete in the same change that ships it** — not at milestone close.
