@@ -1,7 +1,7 @@
 /**
  * AboutSection.test — fetch-on-visible gating (D-23), all six facts, the
- * zero-count-is-not-an-error rule, the non-looping error state, and the
- * copy/reveal controls.
+ * zero-count-is-not-an-error rule, the non-looping error state, the
+ * copy/reveal controls, and the D-15 cache-hit-on-reopen behavior.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,9 +9,34 @@ import type { Config } from "../../lib/useConfig";
 import { TooltipProvider } from "../Tooltip";
 import type { SectionProps } from "./types";
 
-vi.mock("../../lib/vaultAboutApi", () => ({
-  getVaultAbout: vi.fn(),
-}));
+// vi.hoisted keeps `mockFetcher` addressable both inside the vi.mock
+// factory below (hoisted above these imports) and in this file's test
+// bodies.
+const { mockFetcher } = vi.hoisted(() => ({ mockFetcher: vi.fn() }));
+
+// The mocked module builds vaultAboutResource on the REAL createResource
+// primitive with mockFetcher standing in for the network call, so
+// read()-joining and cache-hit-on-resubscribe (D-15's "reopening a panel
+// is free") are exercised for real rather than reimplemented as a second,
+// divergent test double.
+vi.mock("../../lib/vaultAboutApi", async () => {
+  const { createResource } = await import("../../lib/resources");
+  return {
+    vaultAboutResource: createResource("vaultAbout", mockFetcher, {
+      mode: "cached",
+      invalidatedBy: [
+        "note:created",
+        "note:deleted",
+        "note:moved",
+        "folder:created",
+        "folder:deleted",
+        "folder:moved",
+        "mcp:grant_changed",
+        "reindex:complete",
+      ],
+    }),
+  };
+});
 
 const revealVaultRootMock = vi.fn();
 vi.mock("../../lib/useReveal", () => ({
@@ -23,10 +48,8 @@ vi.mock("../toast.utils", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-import { getVaultAbout } from "../../lib/vaultAboutApi";
+import { __testing__ as resourcesTesting } from "../../lib/resources/createResource";
 import { AboutSection } from "./AboutSection";
-
-const mockedGetVaultAbout = vi.mocked(getVaultAbout);
 
 function makeConfig(): Config {
   return {
@@ -73,7 +96,8 @@ function renderSection(visible: boolean) {
 }
 
 beforeEach(() => {
-  mockedGetVaultAbout.mockReset();
+  mockFetcher.mockReset();
+  resourcesTesting.reset();
   revealVaultRootMock.mockReset();
   toastSpy.mockReset();
   Object.assign(navigator, {
@@ -83,19 +107,19 @@ beforeEach(() => {
 
 describe("AboutSection", () => {
   it("does not fetch while visible is false", () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     renderSection(false);
-    expect(mockedGetVaultAbout).toHaveBeenCalledTimes(0);
+    expect(mockFetcher).toHaveBeenCalledTimes(0);
   });
 
   it("fetches when visible flips to true", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     const { rerender } = render(
       <TooltipProvider>
         <AboutSection {...sectionProps} visible={false} />
       </TooltipProvider>,
     );
-    expect(mockedGetVaultAbout).toHaveBeenCalledTimes(0);
+    expect(mockFetcher).toHaveBeenCalledTimes(0);
 
     rerender(
       <TooltipProvider>
@@ -103,12 +127,12 @@ describe("AboutSection", () => {
       </TooltipProvider>,
     );
     await waitFor(() => {
-      expect(mockedGetVaultAbout).toHaveBeenCalledTimes(1);
+      expect(mockFetcher).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("refetches on toggling false -> true -> false -> true (exactly 2 calls)", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+  it("does not refetch on toggling false -> true -> false -> true — reopening a panel is a cache hit (D-15)", async () => {
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     const { rerender } = render(
       <TooltipProvider>
         <AboutSection {...sectionProps} visible={false} />
@@ -120,7 +144,7 @@ describe("AboutSection", () => {
         <AboutSection {...sectionProps} visible={true} />
       </TooltipProvider>,
     );
-    await waitFor(() => expect(mockedGetVaultAbout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockFetcher).toHaveBeenCalledTimes(1));
 
     rerender(
       <TooltipProvider>
@@ -132,11 +156,14 @@ describe("AboutSection", () => {
         <AboutSection {...sectionProps} visible={true} />
       </TooltipProvider>,
     );
-    await waitFor(() => expect(mockedGetVaultAbout).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(screen.getByText("my-vault")).toBeInTheDocument();
+    });
+    expect(mockFetcher).toHaveBeenCalledTimes(1);
   });
 
   it("renders all six rows on success", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     renderSection(true);
 
     await waitFor(() => {
@@ -150,7 +177,7 @@ describe("AboutSection", () => {
   });
 
   it("renders a resolved noteCount of 0 as '0', not a placeholder", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: { ...sampleAbout, noteCount: 0 } });
+    mockFetcher.mockResolvedValue({ data: { ...sampleAbout, noteCount: 0 } });
     renderSection(true);
 
     await waitFor(() => {
@@ -160,7 +187,7 @@ describe("AboutSection", () => {
   });
 
   it("renders the exact error copy with a retry control that refetches on click", async () => {
-    mockedGetVaultAbout.mockResolvedValueOnce({
+    mockFetcher.mockResolvedValueOnce({
       error: { code: "internal_error", message: "boom", status: 500 },
     });
     renderSection(true);
@@ -169,17 +196,17 @@ describe("AboutSection", () => {
       expect(screen.getByText("Couldn't load vault details. Try again.")).toBeInTheDocument();
     });
 
-    mockedGetVaultAbout.mockResolvedValueOnce({ data: sampleAbout });
+    mockFetcher.mockResolvedValueOnce({ data: sampleAbout });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => {
       expect(screen.getByText("my-vault")).toBeInTheDocument();
     });
-    expect(mockedGetVaultAbout).toHaveBeenCalledTimes(2);
+    expect(mockFetcher).toHaveBeenCalledTimes(2);
   });
 
   it("copy button has accessible name 'Copy vault path' and writes the path to the clipboard", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     renderSection(true);
 
     const copyButton = await screen.findByRole("button", { name: "Copy vault path" });
@@ -191,7 +218,7 @@ describe("AboutSection", () => {
   });
 
   it("reveal button calls revealVaultRoot", async () => {
-    mockedGetVaultAbout.mockResolvedValue({ data: sampleAbout });
+    mockFetcher.mockResolvedValue({ data: sampleAbout });
     renderSection(true);
 
     const revealButton = await screen.findByRole("button", { name: "Show in file manager" });

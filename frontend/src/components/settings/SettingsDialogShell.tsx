@@ -9,7 +9,8 @@
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useResource } from "../../lib/resources";
 import {
   applyAccent,
   applyReadingFont,
@@ -17,7 +18,7 @@ import {
   persistReadingFontBootstrap,
 } from "../../lib/useAccent";
 import { useConfig, type Config } from "../../lib/useConfig";
-import { getVaultAbout, type VaultAbout } from "../../lib/vaultAboutApi";
+import { vaultAboutResource } from "../../lib/vaultAboutApi";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DailyNotesSection } from "./DailyNotesSection";
@@ -86,29 +87,14 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-  // NavColumn's footer caption (UI-SPEC "{vault} · v{app version}") needs
-  // to be visible from any pane, not just About — reuse the same typed
-  // GET /vault/about call AboutSection makes (no new endpoint, no second
-  // useConfig instance) and fire it once per dialog open.
-  const [vaultAbout, setVaultAbout] = useState<VaultAbout | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    getVaultAbout()
-      .then((res) => {
-        if (cancelled) return;
-        if (res.data) setVaultAbout(res.data);
-        // The footer caption is decorative — a failure leaves it blank rather
-        // than blocking the pane, but it must at least reach the console.
-        else console.warn("GET /vault/about failed", res.error);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) console.warn("GET /vault/about threw", err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+  // NavColumn's footer caption (UI-SPEC "{vault} · v{app version}") reads
+  // the SAME shared vaultAboutResource cache AboutSection reads — the shell
+  // opens first and subscribes, About subscribes later (if selected) and
+  // reads the already-hydrated entry, so opening Settings and then About
+  // issues one GET /vault/about, not two (D-07). The caption is decorative:
+  // a failed fetch leaves it blank rather than blocking the pane.
+  const shellAbout = useResource(open ? vaultAboutResource : null);
+  const vaultAbout = shellAbout.data?.data ?? null;
 
   // Settings always opens on Appearance (D-20) — no persisted or
   // session-remembered active section. Resetting on close (rather than on

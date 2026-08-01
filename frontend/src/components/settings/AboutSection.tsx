@@ -1,13 +1,15 @@
 /**
  * AboutSection — the About pane. Read-only vault facts (SET3-04); no Reset
- * (D-08), no live grant editing (Phase 36 owns that surface). This is the
- * only pane that owns a network fetch of its own — gated on `visible`
- * (D-23), refetching on every reselect, never polling.
+ * (D-08), no live grant editing (Phase 36 owns that surface). Reads the
+ * shared `vaultAboutResource` cache (D-15) gated on `visible` (D-23) —
+ * reselecting About after the first open is a cache hit, not a refetch,
+ * unless a note/folder/grant mutation or a reindex invalidated it meanwhile.
  */
 import { Copy, FolderOpen } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
+import { useResource } from "../../lib/resources";
 import { useReveal } from "../../lib/useReveal";
-import { getVaultAbout, type VaultAbout } from "../../lib/vaultAboutApi";
+import { vaultAboutResource } from "../../lib/vaultAboutApi";
 import { useToast } from "../toast.utils";
 import { Tooltip } from "../Tooltip";
 import { Eyebrow } from "./shared";
@@ -54,35 +56,22 @@ function AboutRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function AboutSection({ visible }: SectionProps & { visible: boolean }) {
-  const [data, setData] = useState<VaultAbout | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const snapshot = useResource(visible ? vaultAboutResource : null);
   const { toast } = useToast();
   const { revealVaultRoot } = useReveal();
 
-  const fetchAbout = useCallback(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getVaultAbout().then((res) => {
-      if (cancelled) return;
-      setLoading(false);
-      if (res.data) {
-        setData(res.data);
-      }
-      if (res.error) {
-        setError("Couldn't load vault details. Try again.");
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const data = snapshot.data?.data ?? null;
+  const loading = snapshot.loading;
+  const error =
+    snapshot.data?.error || snapshot.error
+      ? "Couldn't load vault details. Try again."
+      : null;
 
-  useEffect(() => {
-    if (!visible) return;
-    return fetchAbout();
-  }, [visible, fetchAbout]);
+  // read() would just return the already-cached error result — invalidate()
+  // is the only way to force a fresh attempt.
+  const handleRetry = useCallback(() => {
+    void vaultAboutResource.invalidate();
+  }, []);
 
   const handleCopy = useCallback(async () => {
     if (!data) return;
@@ -122,7 +111,7 @@ export function AboutSection({ visible }: SectionProps & { visible: boolean }) {
           <span>{error}</span>
           <button
             type="button"
-            onClick={fetchAbout}
+            onClick={handleRetry}
             style={{
               background: "transparent",
               border: "1px solid var(--color-warning)",
