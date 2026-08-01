@@ -1,8 +1,14 @@
 /**
  * Tests for useBookmarks hook.
- * Covers mount hydrate, WS-triggered refresh (dispatchBookmarksEvent /
- * __testing__.simulateEvent), and toggleBookmark add/remove for the same
- * noteId — the entry-point-agnostic seam other plans (06, 07) hang off.
+ * Covers mount hydrate, WS-triggered refresh (bookmark:changed event bus /
+ * __testing__.simulateEvent), toggleBookmark add/remove for the same
+ * noteId, and the five rollback sites — the entry-point-agnostic seam other
+ * plans (07, 08) hang off.
+ *
+ * `bookmarksResource` is built with the REAL `createResource` (not mocked)
+ * so the resource layer's coalescing/invalidation/mutate semantics are
+ * exercised for real — only the network-facing `getBookmarks`/`postBookmark`/
+ * etc. fetchers are mocked via `./bookmarksApi`.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -15,14 +21,22 @@ const postBookmarkMoveMock = vi.fn();
 const postBookmarkFolderMock = vi.fn();
 const reorderBookmarksMock = vi.fn();
 
-vi.mock("./bookmarksApi", () => ({
-  getBookmarks: (...args: unknown[]) => getBookmarksMock(...args),
-  postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
-  deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
-  postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
-  postBookmarkFolder: (...args: unknown[]) => postBookmarkFolderMock(...args),
-  reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
-}));
+vi.mock("./bookmarksApi", async () => {
+  const { createResource } = await import("./resources/createResource");
+  return {
+    bookmarksResource: createResource(
+      "bookmarks",
+      () => getBookmarksMock(),
+      { mode: "cached", invalidatedBy: ["bookmark:changed"] },
+    ),
+    postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
+    deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
+    postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
+    postBookmarkFolder: (...args: unknown[]) =>
+      postBookmarkFolderMock(...args),
+    reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
+  };
+});
 
 const toastSpy = vi.fn();
 vi.mock("../components/toast.utils", () => ({
@@ -30,12 +44,8 @@ vi.mock("../components/toast.utils", () => ({
   ToastProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-import { useTreeStore } from "./useTreeStore";
-import {
-  useBookmarks,
-  __testing__,
-  dispatchBookmarksEvent,
-} from "./useBookmarks";
+import { bookmarksResource } from "./bookmarksApi";
+import { useBookmarks, __testing__ } from "./useBookmarks";
 
 const bookmarkA = {
   id: "bm-1",
@@ -56,10 +66,18 @@ describe("useBookmarks", () => {
     postBookmarkFolderMock.mockReset();
     reorderBookmarksMock.mockReset();
     toastSpy.mockReset();
-    useTreeStore.setState({ bookmarks: [], bookmarkFolders: [] });
+    // Per-entry reset (not the global registry reset): the eventBus
+    // subscription createResource() wires up at module-load time inside
+    // the mock factory above must survive across tests, or the
+    // bookmark:changed WS-invalidation cases below (B2/B13) would only
+    // work once. clear() resets cached data/hydrated/error without
+    // touching that subscription. Auto-cleanup (@testing-library/react)
+    // unmounts every renderHook after each test, so entry.listeners
+    // returns to 0 between tests regardless.
+    bookmarksResource.clear();
   });
 
-  it("B1: mount calls getBookmarks once and populates the store", async () => {
+  it("B1: mount calls getBookmarks once and populates the cache", async () => {
     getBookmarksMock.mockResolvedValue({
       folders: [],
       bookmarks: [bookmarkA],
@@ -73,7 +91,7 @@ describe("useBookmarks", () => {
     expect(getBookmarksMock).toHaveBeenCalledTimes(1);
   });
 
-  it("B2: dispatchBookmarksEvent triggers a refetch in every mounted session", async () => {
+  it("B2: bookmark:changed event triggers a refetch in every mounted session", async () => {
     getBookmarksMock.mockResolvedValue({
       folders: [],
       bookmarks: [bookmarkA],
@@ -91,7 +109,7 @@ describe("useBookmarks", () => {
     });
 
     act(() => {
-      dispatchBookmarksEvent();
+      __testing__.simulateEvent();
     });
 
     await waitFor(() => {
@@ -317,7 +335,7 @@ describe("useBookmarks", () => {
 
     getBookmarksMock.mockRejectedValueOnce(new Error("transient hiccup"));
     act(() => {
-      dispatchBookmarksEvent();
+      __testing__.simulateEvent();
     });
 
     await waitFor(() => {
@@ -420,5 +438,28 @@ describe("useBookmarks", () => {
         variant: "error",
       }),
     );
+  });
+
+  it("B18: five mounted consumers produce exactly one fetcher call (D-11/D-14 fetch-once)", async () => {
+    getBookmarksMock.mockResolvedValue({
+      folders: [],
+      bookmarks: [bookmarkA],
+    });
+
+    const { result: r1 } = renderHook(() => useBookmarks(), { wrapper });
+    const { result: r2 } = renderHook(() => useBookmarks(), { wrapper });
+    const { result: r3 } = renderHook(() => useBookmarks(), { wrapper });
+    const { result: r4 } = renderHook(() => useBookmarks(), { wrapper });
+    const { result: r5 } = renderHook(() => useBookmarks(), { wrapper });
+
+    await waitFor(() => {
+      expect(r1.current.bookmarks).toEqual([bookmarkA]);
+      expect(r2.current.bookmarks).toEqual([bookmarkA]);
+      expect(r3.current.bookmarks).toEqual([bookmarkA]);
+      expect(r4.current.bookmarks).toEqual([bookmarkA]);
+      expect(r5.current.bookmarks).toEqual([bookmarkA]);
+    });
+
+    expect(getBookmarksMock).toHaveBeenCalledTimes(1);
   });
 });

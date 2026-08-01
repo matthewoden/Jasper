@@ -11,6 +11,7 @@
  */
 
 import { client } from "../api/client";
+import { createResource } from "./resources";
 import type { components } from "../api/schema";
 
 export type Workspace = components["schemas"]["Workspace"];
@@ -21,13 +22,18 @@ function unwrapErrorMessage(error: unknown, fallback: string): string {
     : fallback;
 }
 
-export async function getWorkspace(): Promise<Workspace> {
+async function getWorkspace(): Promise<Workspace> {
   const { data, error } = await client.GET("/vault/workspace");
   if (error || !data) {
     throw new Error(unwrapErrorMessage(error, "could not load workspace"));
   }
   return data;
 }
+
+export const workspaceResource = createResource("workspace", getWorkspace, {
+  mode: "cached",
+  invalidatedBy: ["workspace:changed"],
+});
 
 export async function putWorkspace(
   patch: Partial<Workspace>,

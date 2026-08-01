@@ -1,6 +1,12 @@
 /**
  * useTreeStore — zustand store for the file-tree sidebar.
  *
+ * Client UI state only (D-08) — no server data lives here. notesSort/
+ * searchSort/rightPanel are backend-persisted but hydrated INTO these
+ * slices by useWorkspace.ts, not read from them directly by other hooks;
+ * bookmarks/bookmarkFolders/mcpGrants (formerly slices here) now live in
+ * the shared resource cache (bookmarksResource/mcpGrantsResource).
+ *
  * Persistent slices (debounced 250ms, tolerates corrupted localStorage):
  *   - localStorage["jasper.tree.expanded"]      JSON Array<string>
  *   - localStorage["jasper.tree.activeNoteId"]  JSON string-or-null
@@ -199,11 +205,6 @@ export interface TreeStore {
   saveState: import("./saveStateMachine").SaveState;
   setSaveState: (s: import("./saveStateMachine").SaveState) => void;
 
-  bookmarks: Bookmark[];
-  setBookmarks: (bookmarks: Bookmark[]) => void;
-  bookmarkFolders: BookmarkFolder[];
-  setBookmarkFolders: (folders: BookmarkFolder[]) => void;
-
   vaultPickerOpen: boolean;
   setVaultPickerOpen: (v: boolean) => void;
 
@@ -390,11 +391,6 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   saveState: { status: "idle" },
   setSaveState: (s) => set({ saveState: s }),
-
-  bookmarks: [],
-  setBookmarks: (bookmarks) => set({ bookmarks }),
-  bookmarkFolders: [],
-  setBookmarkFolders: (folders) => set({ bookmarkFolders: folders }),
 
   vaultPickerOpen: false,
   setVaultPickerOpen: (v) => set({ vaultPickerOpen: v }),

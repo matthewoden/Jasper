@@ -22,6 +22,7 @@ import { BookmarksPanel } from "./BookmarksPanel";
 import { TooltipProvider } from "./Tooltip";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
+import { bookmarksResource } from "../lib/bookmarksApi";
 import type { Tree } from "../lib/treeApi";
 import type { ArboristNode } from "./fileTree.utils";
 
@@ -30,14 +31,24 @@ const postBookmarkMock = vi.fn();
 const deleteBookmarkMock = vi.fn();
 const postBookmarkMoveMock = vi.fn();
 const postBookmarkFolderMock = vi.fn();
+const reorderBookmarksMock = vi.fn();
 
-vi.mock("../lib/bookmarksApi", () => ({
-  getBookmarks: (...args: unknown[]) => getBookmarksMock(...args),
-  postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
-  deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
-  postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
-  postBookmarkFolder: (...args: unknown[]) => postBookmarkFolderMock(...args),
-}));
+vi.mock("../lib/bookmarksApi", async () => {
+  const { createResource } = await import("../lib/resources/createResource");
+  return {
+    bookmarksResource: createResource(
+      "bookmarks",
+      () => getBookmarksMock(),
+      { mode: "cached", invalidatedBy: ["bookmark:changed"] },
+    ),
+    postBookmark: (...args: unknown[]) => postBookmarkMock(...args),
+    deleteBookmark: (...args: unknown[]) => deleteBookmarkMock(...args),
+    postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
+    postBookmarkFolder: (...args: unknown[]) =>
+      postBookmarkFolderMock(...args),
+    reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
+  };
+});
 
 vi.mock("../components/toast.utils", () => ({
   useToast: () => ({ toast: vi.fn() }),
@@ -110,6 +121,8 @@ describe("BookmarksPanel onRootDrop wiring", () => {
     deleteBookmarkMock.mockReset();
     postBookmarkMoveMock.mockReset();
     postBookmarkFolderMock.mockReset();
+    reorderBookmarksMock.mockReset();
+    bookmarksResource.clear();
     mockUseFileTree.mockReset().mockReturnValue({
       tree: mockTree,
       loading: false,
@@ -117,7 +130,7 @@ describe("BookmarksPanel onRootDrop wiring", () => {
       refresh: vi.fn(),
       mutate: vi.fn(),
     });
-    useTreeStore.setState({ bookmarks: [], bookmarkFolders: [], activeNoteId: null });
+    useTreeStore.setState({ activeNoteId: null });
     usePaneStore.setState({ openInActivePane: vi.fn() });
   });
 
