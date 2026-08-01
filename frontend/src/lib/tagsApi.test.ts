@@ -1,10 +1,12 @@
 /**
  * Tests for tagsApi typed wrappers. Validates that:
- *   - listTags routes through client.GET("/tags") correctly
+ *   - tagsResource.read() routes through client.GET("/tags") correctly and
+ *     resolves/rejects per D-16 (there is no exported listTags to call
+ *     directly any more — the resource is the only entry point)
  *   - listTagNotes routes through client.GET("/tags/{name}/notes") correctly
  *   - renameTag routes through client.PUT("/tags/{name}") correctly
  *   - deleteTag routes through client.DELETE("/tags/{name}") correctly
- *   - Non-2xx errors throw an Error with the server's error message
+ *   - Non-2xx errors throw/reject with the server's error message
  *
  * Note: paths do NOT include the /api/v1 prefix because the openapi-fetch client
  * is created with baseUrl="/api/v1" — the typed paths are the post-servers segments.
@@ -23,37 +25,39 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-import { listTags, listTagNotes, renameTag, deleteTag } from "./tagsApi";
+import { listTagNotes, renameTag, deleteTag, tagsResource } from "./tagsApi";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
 
 describe("tagsApi", () => {
   beforeEach(() => {
     getMock.mockReset();
     putMock.mockReset();
     deleteMock.mockReset();
+    resourcesTesting.reset();
   });
 
-  describe("listTags", () => {
-    it("T1: routes through client.GET /tags and returns tags array", async () => {
+  describe("tagsResource (listTags fetcher)", () => {
+    it("T1: routes through client.GET /tags and resolves the tags array", async () => {
       const fakeTags = [
         { name: "project", count: 5 },
         { name: "work", count: 3 },
       ];
       getMock.mockResolvedValue({ data: { tags: fakeTags }, error: undefined });
 
-      const result = await listTags();
+      const result = await tagsResource.read();
 
       expect(getMock).toHaveBeenCalledTimes(1);
       expect(getMock).toHaveBeenCalledWith("/tags");
       expect(result).toEqual(fakeTags);
     });
 
-    it("T2: throws Error on non-2xx response", async () => {
+    it("T2: rejects on non-2xx response", async () => {
       getMock.mockResolvedValue({
         data: undefined,
         error: { code: "internal_error", message: "server error" },
       });
 
-      await expect(listTags()).rejects.toThrow();
+      await expect(tagsResource.read()).rejects.toThrow();
     });
   });
 

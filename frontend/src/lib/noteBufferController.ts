@@ -20,7 +20,7 @@
 import { extractH1FromContent, sanitizeH1ForFilename } from "./h1Extract";
 import { getNote, updateNote } from "./notesApi";
 import { postNoteMove } from "./treeApi";
-import { dispatchTagEvent } from "./useTagBrowser";
+import { publish } from "./resources";
 import {
   initialSaveState,
   saveStateReducer,
@@ -492,7 +492,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
       // reconnect even when nothing had changed since the last save. A
       // later keystroke re-sets this via handleEditorChange, same as today.
       this.userHasEdited = false;
-      dispatchTagEvent("tags:updated");
+      publish("tags:updated");
       if (this.savedTimer !== null) {
         window.clearTimeout(this.savedTimer);
       }

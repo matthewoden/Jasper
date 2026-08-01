@@ -4,13 +4,14 @@
  * Each wrapper throws on non-2xx so callers can use try/catch.
  *
  * Endpoints:
- *   GET    /api/v1/tags              → listTags(): TagWithCount[]
+ *   GET    /api/v1/tags              → tagsResource (module-private listTags fetcher)
  *   GET    /api/v1/tags/{name}/notes → listTagNotes(name): NoteSummary[]
  *   PUT    /api/v1/tags/{name}       → renameTag(old, new): TagRenameResponse
  *   DELETE /api/v1/tags/{name}       → deleteTag(name): TagDeleteResponse
  */
 
 import { client } from "../api/client";
+import { createResource } from "./resources";
 import type { components } from "../api/schema";
 
 export type TagWithCount = components["schemas"]["TagWithCount"];
@@ -19,7 +20,7 @@ export type TagDeleteResponse = components["schemas"]["TagDeleteResponse"];
 export type NoteSummary = components["schemas"]["NoteSummary"];
 
 /** List all tags with note counts, sorted alphabetically. */
-export async function listTags(): Promise<TagWithCount[]> {
+async function listTags(): Promise<TagWithCount[]> {
   const { data, error } = await client.GET("/tags");
   if (error) {
     const msg =
@@ -30,6 +31,11 @@ export async function listTags(): Promise<TagWithCount[]> {
   }
   return data.tags;
 }
+
+export const tagsResource = createResource("tags", listTags, {
+  mode: "cached",
+  invalidatedBy: ["tags:updated", "tags:rewritten"],
+});
 
 /**
  * List notes carrying a specific tag. Returns 404 if the tag does not exist.

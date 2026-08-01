@@ -1,36 +1,21 @@
 /**
- * useTagBrowser — reactive tag list hook.
+ * useTagBrowser — reactive tag list hook, reading the shared `tagsResource`
+ * cache (D-08/D-11/D-14). There is no per-instance copy of the tag list any
+ * more: every mounted `MarkdownEditor` pane and `RightRailTagsPanel` reads
+ * the SAME cache entry, so split view no longer duplicates the list or the
+ * fetch.
  *
- * Fetches GET /api/v1/tags on mount, exposes refresh() for manual refetch,
- * and reacts to `tags:updated` / `tags:rewritten` WS events.
- *
- * WS integration: module-level subscriber set that useSessionSync's dispatch
- * loop populates via dispatchTagEvent(). This avoids modifying useSessionSync's
- * signature while giving reactive updates. The same pattern is used by
- * useBacklinks for `links:rewritten` and `note:updated` events.
+ * WS integration: `tagsResource` declares `invalidatedBy: ["tags:updated",
+ * "tags:rewritten"]` at registration time (mcpGrantsApi.ts's sibling
+ * pattern) — the resource layer subscribes to the event bus itself, so this
+ * hook no longer needs a module-level subscriber Set or a dispatch function.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { listTags, type TagWithCount } from "./tagsApi";
-
-
-const tagEventSubscribers = new Set<() => void>();
+import { publish, useResource } from "./resources";
+import { __testing__ as resourcesTesting } from "./resources/createResource";
+import { tagsResource, type TagWithCount } from "./tagsApi";
 
 type TagEventType = "tags:updated" | "tags:rewritten";
-
-/**
- * Called by useSessionSync when a tags:updated or tags:rewritten WS event arrives.
- * Triggers all mounted useTagBrowser instances to refetch.
- */
-export function dispatchTagEvent(
-  event: TagEventType,
-): void {
-  void event;
-  const snapshot = Array.from(tagEventSubscribers);
-  for (const fn of snapshot) {
-    fn();
-  }
-}
 
 export interface UseTagBrowserResult {
   tags: TagWithCount[];
@@ -40,56 +25,24 @@ export interface UseTagBrowserResult {
 }
 
 export function useTagBrowser(): UseTagBrowserResult {
-  const [tags, setTags] = useState<TagWithCount[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const cancelled = useRef(false);
-  const tagsRef = useRef<TagWithCount[]>([]);
+  const snapshot = useResource(tagsResource);
 
-  const fetchTags = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await listTags();
-      if (cancelled.current) return;
-      tagsRef.current = result;
-      setTags(result);
-      setError(null);
-      setLoading(false);
-    } catch (e) {
-      if (cancelled.current) return;
-      setError(e instanceof Error ? e : new Error(String(e)));
-      setTags(tagsRef.current);
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    cancelled.current = false;
-    void fetchTags();
-
-    const subscriber = () => {
-      void fetchTags();
-    };
-    tagEventSubscribers.add(subscriber);
-
-    return () => {
-      cancelled.current = true;
-      tagEventSubscribers.delete(subscriber);
-    };
-  }, [fetchTags]);
-
-  const refresh = useCallback(async () => {
-    cancelled.current = false;
-    await fetchTags();
-  }, [fetchTags]);
-
-  return { tags, loading, error, refresh };
+  return {
+    tags: snapshot.data ?? [],
+    loading: snapshot.loading,
+    // Unlike grants, useTagBrowser surfaces its error to the caller rather
+    // than swallowing it — preserve-last-good-value for `tags` is the
+    // resource layer's job, but the error itself stays visible.
+    error: snapshot.error,
+    refresh: async () => {
+      await tagsResource.invalidate();
+    },
+  };
 }
-
 
 export const __testing__ = {
   simulateEvent: (event: TagEventType) => {
-    dispatchTagEvent(event);
+    publish(event);
   },
-  getSubscriberCount: () => tagEventSubscribers.size,
+  getSubscriberCount: () => resourcesTesting.getSubscriberCount("tags"),
 };

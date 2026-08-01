@@ -3,7 +3,6 @@ import { generateOrLoadSessionId } from "./sessionId";
 import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { useFileTree } from "./useFileTree";
-import { dispatchTagEvent } from "./useTagBrowser";
 import { dispatchLinksEvent } from "./useBacklinks";
 import { dispatchBookmarksEvent } from "./useBookmarks";
 import { dispatchWorkspaceEvent } from "./useWorkspace";
@@ -156,7 +155,7 @@ export function useSessionSync(
             break;
           case "tags:updated":
           case "tags:rewritten":
-            dispatchTagEvent(env.event);
+            publish(env.event);
             break;
           case "links:rewritten":
             dispatchLinksEvent("links:rewritten");
