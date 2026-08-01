@@ -88,7 +88,7 @@ async function spawnNoVaultJasper(
   return { proc, baseURL, kill: () => proc.kill("SIGTERM") };
 }
 
-test.describe("Phase 8 — offline operation (PERF-04 / D-43)", () => {
+test.describe("offline operation — no runtime CDN dependency", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {

@@ -1012,7 +1012,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 	// deterministically takes the per-vault boot path against dir. Without
 	// this the test reads the developer's real ~/.jasper/app.json, whose
 	// CurrentVault state varies between runs (other tests/E2E mutate it) and
-	// silently reroutes boot away from the migration — the SY-05 flake.
+	// silently reroutes boot away from the migration. That was a real flake.
 	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()
 	if err := EnsureDataDir(dir); err != nil {

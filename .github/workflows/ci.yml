@@ -1,5 +1,4 @@
 # .github/workflows/ci.yml
-# Quick task 260701-u9s / OPS-01.
 #
 # CI gate that runs on every push and PR to main. Today the only workflow is
 # install-validation.yml (systemd install smoke test); nothing runs `go test`,
@@ -17,7 +16,7 @@
 # entry is the deliberate v1 tradeoff here, not an oversight.
 #
 # No step in this file suppresses a non-zero exit or marks a failure as
-# non-blocking — the point of OPS-01 is a real net, not a green checkmark.
+# non-blocking — the point is a real net, not a green checkmark.
 
 name: ci
 
@@ -32,7 +31,7 @@ permissions:
 
 jobs:
   gen-check:
-    # OpenAPI codegen drift guard — the core of OPS-01. `make gen-check` runs
+    # OpenAPI codegen drift guard. `make gen-check` runs
     # `go generate` (Go, via oapi-codegen) AND `npx openapi-typescript` (Node),
     # then `git diff --exit-code` on the two generated artifacts. It is the
     # one job that needs both toolchains, so it owns them. Reusing the make

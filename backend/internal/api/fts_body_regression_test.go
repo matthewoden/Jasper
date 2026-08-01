@@ -16,11 +16,11 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// newDI01TestHarness mirrors newSearchTestServer (search_handler_test.go) but
+// newFTSBodyHarness mirrors newSearchTestServer (search_handler_test.go) but
 // returns the raw Service + Indexer instead of a Server, so tests can drive
 // Update/CreateWithBody/Move directly and assert against SearchFTS without a
-// Reconcile call in between (DI-01: interactive saves must not wipe body FTS).
-func newDI01TestHarness(t *testing.T) (*notes.Service, *index.Indexer) {
+// Reconcile call in between — interactive saves must not wipe body FTS.
+func newFTSBodyHarness(t *testing.T) (*notes.Service, *index.Indexer) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -58,17 +58,17 @@ func newDI01TestHarness(t *testing.T) (*notes.Service, *index.Indexer) {
 	return svc, idx
 }
 
-// TestDI01_InteractiveSavesKeepBodyFTS is the failing-first regression for
-// DI-01: Update, Create, and Move must leave the note's body text
+// TestInteractiveSavesKeepBodyFTS is the failing-first regression:
+// Update, Create, and Move must leave the note's body text
 // immediately searchable via FTS — WITHOUT any Reconcile call in between.
 // Every token below is a nonsense body-only word absent from the note's
 // title/filename/path, so the title/path-LIKE fallback in SearchFTS cannot
 // mask the bug.
-func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
+func TestInteractiveSavesKeepBodyFTS(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("update", func(t *testing.T) {
-		svc, idx := newDI01TestHarness(t)
+		svc, idx := newFTSBodyHarness(t)
 
 		created, err := svc.CreateWithBody(ctx, "", "di01-update", "\n\ninitial body")
 		if err != nil {
@@ -98,7 +98,7 @@ func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
 	})
 
 	t.Run("create", func(t *testing.T) {
-		svc, idx := newDI01TestHarness(t)
+		svc, idx := newFTSBodyHarness(t)
 
 		created, err := svc.CreateWithBody(ctx, "", "di01-create", "\n\nzqxbodycreate here")
 		if err != nil {
@@ -124,7 +124,7 @@ func TestDI01_InteractiveSavesKeepBodyFTS(t *testing.T) {
 	})
 
 	t.Run("move", func(t *testing.T) {
-		svc, idx := newDI01TestHarness(t)
+		svc, idx := newFTSBodyHarness(t)
 
 		created, err := svc.CreateWithBody(ctx, "", "di01-move", "\n\nzqxbodymove payload")
 		if err != nil {

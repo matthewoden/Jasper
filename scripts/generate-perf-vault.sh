@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/generate-perf-vault.sh — Phase 8 Plan 08-14 / D-42.
 #
-# Deterministic synthetic vault generator for the PERF-01 5-second cold-start
+# Deterministic synthetic vault generator for the 5-second cold-start
 # gate. Writes <COUNT> .md files under <OUT_DIR>/notes/ with the distribution
 # locked by D-42:
 #

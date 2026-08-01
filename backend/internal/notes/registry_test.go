@@ -208,7 +208,7 @@ func TestRegistryHydrate_PopulatesMultipleTitles(t *testing.T) {
 // function actually called by the composition root at startup and after
 // vault hot-swap / admin reindex — see lifecycle.go and
 // admin_reindex_handler.go) populates BOTH byID and byTitle from
-// []NoteSummary. Regression for DI-02: Hydrate used to clear byTitle,
+// []NoteSummary. Regression: Hydrate used to clear byTitle,
 // leaving wiki-link resolution dead after every restart.
 func TestRegistryHydrate_PopulatesTitleIndex(t *testing.T) {
 	t.Parallel()

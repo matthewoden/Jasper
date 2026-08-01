@@ -7,15 +7,15 @@
 print-port:
 	@./scripts/port.sh
 
-# Phase 8 PERF-01: 5k-note startup gate. Requires bin/jasper (run
+# 5k-note startup gate. Requires bin/jasper (run
 # `make build` first). _perf-vault/ is populated by 08-14's
 # `make perf-vault`; absent that, this still runs as a smoke check
-# but is not a real PERF-01 gate.
+# but is not a real startup gate.
 perf-check:
 	@./scripts/perf-check.sh
 
 # Phase 8 Plan 08-14 / D-42: generate a deterministic 5k-note synthetic
-# vault under _perf-vault/notes/ for the PERF-01 cold-start gate.
+# vault under _perf-vault/notes/ for the cold-start gate.
 # Distribution: 80% body-only, 15% tagged, 5% wiki-link.
 # Full pipeline: `make build && make perf-vault && make perf-check`.
 # _perf-vault/ is .gitignored — local-only artifact.

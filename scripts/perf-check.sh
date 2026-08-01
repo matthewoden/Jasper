@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/perf-check.sh — PERF-01 5k-note startup gate.
+# scripts/perf-check.sh — 5k-note startup gate.
 #
 # Starts `bin/jasper serve --data-dir _perf-vault` and measures the
 # wall-clock time to first successful /api/v1/admin/status response.
@@ -10,7 +10,7 @@
 #   - _perf-vault/ exists (08-14 lands `make perf-vault` to populate
 #     this with 5k synthetic notes). If _perf-vault is missing or
 #     empty this script still runs as a smoke test, but the timing
-#     is not a real PERF-01 gate.
+#     is not a real startup gate.
 #
 # Exit codes:
 #   0  — startup completed within 5000ms
@@ -20,7 +20,7 @@ set -euo pipefail
 PORT="$(bash scripts/port.sh)"
 DATA="_perf-vault"
 if [[ ! -d "$DATA" ]]; then
-    echo "WARN: $DATA missing — run 'make perf-vault' for a real PERF-01 check" >&2
+    echo "WARN: $DATA missing — run 'make perf-vault' for a real check" >&2
     mkdir -p "$DATA"
 fi
 LOG=$(mktemp)

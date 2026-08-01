@@ -729,7 +729,7 @@ func TestBuildExcerpts_SameLineMultipleOccurrences_CollapsesToOne(t *testing.T) 
 	}
 }
 
-// TestSyncBacklinks_ResolvesAfterHydrateFromIndex — regression for DI-02:
+// TestSyncBacklinks_ResolvesAfterHydrateFromIndex — regression:
 // exercises the hydrate-FROM-index path (Hydrate([]NoteSummary) fed by
 // idx.List, the exact call the composition root makes at startup /
 // hot-swap / after admin reindex), NOT in-session AddRecord. A fresh
@@ -776,8 +776,8 @@ func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	}
 }
 
-// TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex — regression
-// for DI-02: a pending row (seeded before any registry existed, mirroring
+// TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex — regression:
+// a pending row (seeded before any registry existed, mirroring
 // TestResolvePendingBacklinks_Basic) must resolve once a registry is
 // hydrated FROM the index via Hydrate([]NoteSummary) fed by idx.List —
 // the real startup/rebuild path.

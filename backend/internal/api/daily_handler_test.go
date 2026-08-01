@@ -560,8 +560,8 @@ var _ notes.Index = (*fakeIndexForDaily)(nil)
 // newDailyRealTestServer wires notes.Service to a REAL fsstore.Store AND a
 // REAL sqlite-backed index.Indexer (not the in-memory fakeIndexForDaily,
 // which no-ops SearchFTS/backlink resolution) plus a recordingBroadcaster —
-// mirrors newDI01TestHarness (di01_fts_body_regression_test.go). Needed for
-// SY-01's FTS-searchable / [[date]]-resolvable / broadcast-contract
+// mirrors newFTSBodyHarness (fts_body_regression_test.go). Needed for the
+// FTS-searchable / [[date]]-resolvable / broadcast-contract
 // assertions, none of which the in-memory fake can exercise faithfully.
 func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Indexer, *recordingBroadcaster) {
 	t.Helper()
@@ -608,8 +608,8 @@ func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Inde
 	return srv, idx, bc
 }
 
-// TestGetDailyNote_BroadcastContract is the failing-first regression for
-// SY-01: the create branch must broadcast note:created exactly once; the
+// TestGetDailyNote_BroadcastContract is the failing-first regression:
+// the create branch must broadcast note:created exactly once; the
 // get branch (existing daily note) must broadcast nothing at all.
 func TestGetDailyNote_BroadcastContract(t *testing.T) {
 	t.Parallel()
@@ -640,7 +640,8 @@ func TestGetDailyNote_BroadcastContract(t *testing.T) {
 
 // TestGetDailyNote_FTSSearchableWithoutReconcile verifies a freshly-created
 // daily note's body is immediately FTS-searchable — no Reconcile call in
-// between (mirrors DI-01). The default template's body is just the date
+// between (mirrors the FTS-body regression). The default template's body
+// is just the date
 // itself, so a custom template supplies a distinct nonsense body term.
 func TestGetDailyNote_FTSSearchableWithoutReconcile(t *testing.T) {
 	t.Parallel()

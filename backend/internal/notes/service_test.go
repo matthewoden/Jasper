@@ -2553,7 +2553,7 @@ func TestService_Create_ScaffoldEmptyBodyTagsAreNoOp(t *testing.T) {
 	}
 }
 
-// TestServiceUpdate_RefreshesTitleIndex is a regression test for DI-02:
+// TestServiceUpdate_RefreshesTitleIndex is a regression test:
 // Service.Update never refreshed the registry's title index, so an H1
 // rename drifted the byTitle map out of sync with the file on disk (the
 // old title kept resolving; the new title never did).

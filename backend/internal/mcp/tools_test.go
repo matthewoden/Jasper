@@ -893,7 +893,7 @@ func TestUpdateNoteIfMatchWildcard(t *testing.T) {
 	})
 }
 
-// TestUpdateNoteIfMatchRequired locks in SY-05: update_note must reject an
+// TestUpdateNoteIfMatchRequired locks the contract: update_note must reject an
 // omitted if_match with a model-actionable error and perform no write, while
 // a valid current if_match still succeeds without claiming force_write.
 func TestUpdateNoteIfMatchRequired(t *testing.T) {

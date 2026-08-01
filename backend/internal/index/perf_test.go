@@ -70,13 +70,13 @@ func setupPhase3PerfVault(tb testing.TB) (*index.Indexer, func()) {
 	return idx, func() { _ = pair.Close() }
 }
 
-// TestBuildTree_PERF02_1000Notes asserts that BuildTree on a 1,000-note
+// TestBuildTree_1000Notes asserts that BuildTree on a 1,000-note
 // vault completes within 300ms wall clock (the 3× headroom budget over
 // the 100ms target) and that the JSON-encoded payload stays under 500KB.
 // On dev hardware the wall clock is typically well under 50ms.
-func TestBuildTree_PERF02_1000Notes(t *testing.T) {
+func TestBuildTree_1000Notes(t *testing.T) {
 	if testing.Short() {
-		t.Skip("skipping 1000-note PERF-02 test in -short")
+		t.Skip("skipping 1000-note tree-build test in -short")
 	}
 	idx, cleanup := setupPhase3PerfVault(t)
 	defer cleanup()
@@ -117,10 +117,10 @@ func TestBuildTree_PERF02_1000Notes(t *testing.T) {
 	}
 	const jsonBudget = 500 * 1024
 	if len(jsonBytes) > jsonBudget {
-		t.Errorf("JSON-encoded tree is %d bytes; budget %d (PERF-02 wire-payload sanity)",
+		t.Errorf("JSON-encoded tree is %d bytes; budget %d (wire-payload sanity)",
 			len(jsonBytes), jsonBudget)
 	}
-	t.Logf("PERF-02: BuildTree(1000-note vault) wall=%v, json=%dKB",
+	t.Logf("BuildTree(1000-note vault) wall=%v, json=%dKB",
 		elapsed, len(jsonBytes)/1024)
 }
 

@@ -43,7 +43,7 @@ frontend/test-results/
 .claude/
 .vite/
 
-# Phase 8 Plan 08-14 / D-42: synthetic 5k-note vault for PERF-01 cold-start
+# Synthetic 5k-note vault for the cold-start perf gate
 # benchmark. Populated by `make perf-vault`; never committed.
 /_perf-vault/
 

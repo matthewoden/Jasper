@@ -1,9 +1,9 @@
 /**
- * SY-01 — two-session broadcast proof: a mutation made in one browser
+ * Two-session broadcast proof: a mutation made in one browser
  * session (tab/context) must update another session's file tree live,
  * with no manual refresh/reload on the receiving side.
  *
- * Background: SY-01 found that (1) daily-note creation bypassed
+ * Background: an audit found that (1) daily-note creation bypassed
  * notes.Service and never broadcast `note:created`, and (2) /files
  * create/delete/move + attachment upload never broadcast `file:created` /
  * `file:deleted` / `file:moved`. Both were fixed to route through the
@@ -75,7 +75,7 @@ async function openTabInContext(ctx: BrowserContext, baseURL: string): Promise<P
   return page;
 }
 
-test.describe("SY-01 — cross-session broadcast updates other session's file tree", () => {
+test.describe("cross-session broadcast updates other session's file tree", () => {
   test("daily note created in session A appears live in session B's tree (note:created)", async ({
     browser,
   }) => {

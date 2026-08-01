@@ -749,7 +749,7 @@ func TestMoveFile_SrcMissingDifferentBasename(t *testing.T) {
 }
 
 // newAttachmentTestServerWithBroadcaster mirrors newAttachmentTestServer but
-// wires a recordingBroadcaster into the Server (SY-01: CreateFile/DeleteFile/
+// wires a recordingBroadcaster into the Server (CreateFile/DeleteFile/
 // PostFileMove/CreateAttachment must broadcast file:* events — the default
 // fixture wires nil so these assertions need their own variant).
 func newAttachmentTestServerWithBroadcaster(t *testing.T, summaries []notes.NoteSummary) (*Server, string, *recordingBroadcaster) {
@@ -769,8 +769,8 @@ func newAttachmentTestServerWithBroadcaster(t *testing.T, summaries []notes.Note
 	return srv, dir, bc
 }
 
-// TestCreateFile_BroadcastsFileCreated is the failing-first regression for
-// SY-01: a successful upload must broadcast file:created with the
+// TestCreateFile_BroadcastsFileCreated is the failing-first regression:
+// a successful upload must broadcast file:created with the
 // vault-relative path and final (post-collision-rename) filename.
 func TestCreateFile_BroadcastsFileCreated(t *testing.T) {
 	t.Parallel()
@@ -797,8 +797,8 @@ func TestCreateFile_BroadcastsFileCreated(t *testing.T) {
 	}
 }
 
-// TestDeleteFile_BroadcastsFileDeleted is the failing-first regression for
-// SY-01: a successful delete must broadcast file:deleted with the
+// TestDeleteFile_BroadcastsFileDeleted is the failing-first regression:
+// a successful delete must broadcast file:deleted with the
 // vault-relative path.
 func TestDeleteFile_BroadcastsFileDeleted(t *testing.T) {
 	t.Parallel()
@@ -827,8 +827,8 @@ func TestDeleteFile_BroadcastsFileDeleted(t *testing.T) {
 	}
 }
 
-// TestPostFileMove_BroadcastsFileMoved is the failing-first regression for
-// SY-01: a successful (real, non-idempotent) move must broadcast
+// TestPostFileMove_BroadcastsFileMoved is the failing-first regression:
+// a successful (real, non-idempotent) move must broadcast
 // file:moved with old_path/new_path.
 func TestPostFileMove_BroadcastsFileMoved(t *testing.T) {
 	t.Parallel()
@@ -901,8 +901,8 @@ func TestPostFileMove_NotFoundAndCollision_NoBroadcast(t *testing.T) {
 	})
 }
 
-// TestCreateAttachment_BroadcastsFileCreated is the failing-first regression
-// for SY-01: a successful attachment upload must broadcast file:created
+// TestCreateAttachment_BroadcastsFileCreated is the failing-first
+// regression: a successful attachment upload must broadcast file:created
 // with the note-parent-relative attachment path and final filename.
 func TestCreateAttachment_BroadcastsFileCreated(t *testing.T) {
 	t.Parallel()
