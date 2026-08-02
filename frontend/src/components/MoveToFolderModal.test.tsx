@@ -1,12 +1,7 @@
 /**
- * MoveToFolderModal tests:
- *   - typing a query fuzzy-filters the vault folder list; "No matching
- *     folders" shows when nothing matches
- *   - a "Vault root" row is present and selectable (moves to the vault root)
- *   - Enter on the highlighted folder calls moveNote(noteId, composedPath)
- *     — POST /notes/{id}/move's new_path wants the FULL destination path
- *     (target folder + the note's own basename), not just the folder — and
- *     closes; Esc dismisses without moving
+ * Enter on the highlighted folder calls moveNote with the FULL destination path
+ * — POST /notes/{id}/move's new_path wants target folder plus the note's own
+ * basename, not just the folder.
  */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

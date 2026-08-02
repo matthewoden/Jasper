@@ -1,28 +1,10 @@
 /**
- * Per-Pane Find/Replace bar (WS-09).
+ * Split actions route through the command palette rather than the raw Cmd+\
+ * shortcut: App-level shortcuts no-op while a contenteditable holds focus, and
+ * Cmd+P does not. Same rationale as phase25-uat.spec.ts.
  *
- * Covers the observable browser behaviors for the custom Find/Replace bar
- * Cmd+F opens a find-only bar; Cmd+Opt+F upgrades to
- * find+replace; live match count + highlight-all; Replace All mutates the
- * document (reversible via CM6 undo); Esc closes the bar and returns focus
- * to the editor; and per-pane scoping (opening Find in one pane never
- * affects a sibling pane's find state), matching the "per-view CM6 state
- * is per-pane for free" contract.
- *
- * Selector contract:
- *   - Leaf pane:          [data-testid="leaf-pane"]
- *   - Find bar container: [data-testid="find-bar"]
- *   - Match count label:  [data-testid="find-match-count"]
- *
- * Split actions route through the command palette (Cmd+P, mode="commands")
- * rather than the raw Cmd+\ shortcut — mirrors phase25-uat.spec.ts's
- * rationale (App-level shortcuts no-op while a contenteditable has focus;
- * Cmd+P does not).
- *
- * Discipline: ZERO fixed sleeps; every timing-sensitive step uses a
- * web-first assertion (expect / expect.poll). Run with `--repeat-each=3`
- * to prove non-flake (no-flaky-tests memory), matching every other
- * timing-sensitive scenario in this suite.
+ * Per-pane scoping is the point — CM6 search state is per-view, so a sibling
+ * pane's find state must be untouched.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";
@@ -47,21 +29,15 @@ const SELECTORS = {
   cmHostShell: '[data-testid="cm-host-shell"]',
 } as const;
 
-// IMPORTANT: Playwright's `devices["Desktop Chrome"]` (playwright.config.ts's
-// project) hard-codes a Windows userAgent/platform ("Win32") REGARDLESS of the
-// host OS running the test — confirmed via `navigator.platform` inside the
-// page. CM6's `Mod-` keymap normalization resolves against the IN-PAGE
-// `navigator.platform` at binding-build time (@codemirror/view's
-// `currentPlatform`), not the host OS, so every "Mod-X" binding in this
-// harness resolves to "Ctrl-X" — pressing "Meta+f" (Cmd+F) NEVER matches,
-// only "Control+f" does, on every host (Mac dev machine, Linux CI). This is
-// why Cmd+B/I's own e2e coverage (phase7-uat.spec.ts) is `test.skip`'d and
-// why phase25-uat.spec.ts's `Meta+z` undo test passes only because Chrome's
-// NATIVE contenteditable undo (not CM6's own Mod-z keymap) reverts the last
-// native keystroke — a fallback that does NOT exist for Find (no native
-// "find in a contenteditable" default action), so Find/Replace MUST be
-// exercised with the Control- combo that actually matches CM6's resolved
-// keymap in this harness.
+// Playwright's `devices["Desktop Chrome"]` hard-codes a Win32 userAgent/platform
+// REGARDLESS of host OS, and CM6 resolves `Mod-` against the IN-PAGE
+// navigator.platform at binding-build time. So every Mod- binding here resolves to
+// Ctrl-, and pressing Meta+f never matches on any host. Find/Replace must be driven
+// with the Control- combo.
+//
+// This is also why Cmd+B/I's coverage is test.skip'd, and why phase25's Meta+z undo
+// passes only via Chrome's NATIVE contenteditable undo — a fallback Find has no
+// equivalent of, since there is no native "find in a contenteditable".
 const FIND_KEY = "Control+f";
 const FIND_REPLACE_KEY = "Control+Alt+f";
 const UNDO_KEY = "Control+z";
@@ -313,7 +289,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
     });
   });
 
-  // ─── Highlight-clear-on-dismiss regression (260718-n6a Task 5) ────────────
+  // ─── Highlight-clear-on-dismiss regression ───────────────────────────────
   //
   // Root cause: FindReplaceBar's own Escape handling lives on ITS OWN
   // container onKeyDown (bubble-phase) — it only fires when the keydown's

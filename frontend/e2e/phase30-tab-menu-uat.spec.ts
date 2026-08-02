@@ -1,29 +1,9 @@
 /**
- * Right-Rail Tags & Context Menus: tab context menu
- * (CTX-01, WS-06 tab-split entry point, pin drag).
+ * All tests share ONE spawned binary/vault, but each Playwright test gets a fresh
+ * browser context — so tests need distinct note titles, not vault isolation.
  *
- * fills in the Wave-0 scaffold:
- *   CTX-01  Tab menu adds Close all, Open in split, New note to the
- *           right, Pin/Unpin, Rename, Show in file manager (locked
- *           locked order); close-others/to-right/all skip pinned
- *           tabs.
- *   WS-06   "Open in split" opens the tab's note in a new right/row
- *           split.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests). The pin-drag case is driven
- * with real page.mouse.move/down/up (never synthetic DragEvents — memory
- * verify-dnd-with-real-mouse) and tagged `@pin-drag` so it can be re-run
- * with --repeat-each=50 for a non-flake proof, mirroring
- * phase26-drag-uat.spec.ts's startDragToward pattern.
- *
- * All tests in this file share ONE spawned binary/vault (beforeAll/afterAll)
- * but each Playwright test gets its own fresh browser context (empty
- * client-side pane-layout state) — so tests only need distinct note titles
- * to avoid collisions, not per-test vault isolation.
+ * The pin-drag case is real page.mouse and tagged `@pin-drag` so it can be re-run
+ * with --repeat-each=50 for a non-flake proof.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

@@ -1,35 +1,13 @@
 /**
- * Search, Daily Notes, Attachments, Palette & Switcher.
+ * CM6 typing recipe: `.cm-content:visible` click, then page.keyboard.type() —
+ * never page.fill(), which is a silent no-op on a contenteditable.
  *
- * Scenarios (S1–S11):
- *   S1  Search: type query, results replace tree, click opens, X/Esc/len<2 clears
- *   S2  Search + tag filter AND combination
- *   S3  Today button creates daily/YYYY-MM-DD.md; second click opens same file
- *   S4  Today shortcut Cmd+Shift+D same handler as button
- *   S5  Cmd+O switcher: open, ArrowDown selects next, Enter opens
- *   S6  Cmd+P palette: open, type "tod", Enter on Today opens daily note
- *   S7  Cmd+/: cheat-sheet opens; Esc closes; close button closes; click outside closes
- *   S8  Drag-drop attachment: drag .png, drop-zone ring + hint, drop inserts markdown, image renders
- *   S9  Paste image: focus editor, paste clipboard image, markdown inserted
- *   S10 Oversize upload >100MB: toast "File too large" with locked description
- *   S11 Daily folder calendar icon: daily/ row renders CalendarDays in accent; sub-paths do not
- *
- * CM6 typing recipe: page.locator(".cm-content:visible").first().click() → page.keyboard.type()
- * NOT page.fill() (editor is CodeMirror 6 contenteditable).
- *
- * ALWAYS `.cm-content:visible` here — never the bare `.cm-content`, and never a
- * plain `.first()`. A settled note renders exactly ONE `.cm-content` (verified
- * by DOM probe; `data-language="yaml-frontmatter"` sits on the MAIN editor, it
- * does not indicate a separate frontmatter editor). But while an editor is being
- * torn down and remounted — e.g. S12's post-reindex reopen — a HIDDEN outgoing
- * `.cm-content` briefly coexists with the incoming visible one. Two consequences,
- * both observed as "flakes" on 2026-07-30 once the local-vs-UTC date bug stopped
- * masking these tests in the evening:
- *   - bare `.cm-content`   -> Playwright strict-mode violation (2 elements)
- *   - `.cm-content` .first() -> resolves the HIDDEN outgoing editor, so
- *                              toBeVisible fails with "Received: hidden"
- * `:visible` states the actual intent — the editor the user can see — and is
- * identical to the bare locator in the steady single-editor state.
+ * ALWAYS `:visible` here, never the bare `.cm-content` and never a plain
+ * `.first()`. A settled note renders exactly one `.cm-content`, but while an
+ * editor is torn down and remounted a HIDDEN outgoing one briefly coexists with
+ * the incoming visible one: the bare locator then trips strict mode with 2
+ * elements, and `.first()` resolves the hidden one so toBeVisible reports
+ * "Received: hidden". Both were observed as flakes.
  */
 import { test, expect } from "@playwright/test";
 import * as path from "node:path";
@@ -1284,18 +1262,9 @@ test.describe("Non-markdown files visible in sidebar tree", () => {
   });
 
   /**
-   * S22c: seed a note with an attachments/ subfolder containing photo.png,
-   * click the photo.png file row, and verify that the middle pane renders
-   * FilePreviewView (not a popup) with src pointing at /api/v1/files.
-   *
-   * Uses a dedicated jasper instance so S22c starts with a clean vault.
-   *
-   * Vault layout:
-   *   notes/
-   *     gallery/             ← directory created on disk
-   *       note.md            ← created via API (gives gallery/ a child note)
-   *       attachments/       ← attachments subfolder
-   *         photo.png        ← the file we want to click
+   * Uses a dedicated jasper instance so this starts with a clean vault, and seeds
+   * gallery/note.md alongside gallery/attachments/photo.png — the note is what
+   * gives gallery/ a child, so the folder renders at all.
    */
   test("S22c — clicking attachment file renders FilePreviewView in middle pane (popup contract obviated)", async ({ page }) => {
     const j22c = await spawnJasper();
@@ -1905,25 +1874,13 @@ test.describe("SaveIndicator-button in TopBar + Search icon + drop snap (S24 R1-
   });
 
   test("S24b — clicking Search icon in activity ribbon opens the in-sidebar Search panel", async ({ page }) => {
-    // v1.2 redesign: the Search affordance moved from SidebarToolbar to the
-    // activity ribbon, and it now opens the in-sidebar Search panel
-    // (SidebarSearchPanel) rather than an FTS5 modal dialog.
+    // SidebarTabRow does NOT auto-focus the input on tab switch, so a real click
+    // is required before it is interactive.
     //
-    // NAV-02 then removed the ribbon's Files/Search
-    // toggles entirely — panel selection now lives in the sidebar's own
-    // SidebarTabRow (Notes / Search / Bookmarks icon tabs, aria-label
-    // "Search"), which this test now drives instead. That row also does NOT
-    // auto-focus the input on tab switch (SidebarTabRow.tsx doc comment;
-    // matches phase29-uat.spec.ts's established pattern) — a real click is
-    // required before the input is interactive.
-    //
-    // owner review: possibly obsolete — the old premise "repeat click on the
-    // active toggle collapses the sidebar" has no current analog. SidebarTabRow's
-    // own doc comment states a tab click must NEVER no-op/collapse (the
-    // collapse control lives in the same row as a separate "Collapse sidebar"
-    // button), so re-clicking the active "Search" tab intentionally stays on
-    // the Search panel. This test asserts the closest current equivalent —
-    // switching to the "Notes" tab unmounts the Search panel/input.
+    // OPEN QUESTION for owner review: the original premise (repeat-click on the
+    // active toggle collapses the sidebar) has no current analog — a tab click
+    // must never no-op, and collapse is its own button. This asserts the closest
+    // equivalent: switching to "Notes" unmounts the Search panel.
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 

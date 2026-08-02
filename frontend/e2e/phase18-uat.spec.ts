@@ -1,39 +1,8 @@
 /**
- * Activity Ribbon & Chrome Shell.
- *
- * Regression gate: the tab-bar restyle (TABUI-01) touches every pixel
- *   value the pointer-drag math (`computeDropTarget`, wrapper
- *   `getBoundingClientRect`) depends on indirectly via layout. This spec
- *   proves — with real `page.mouse` against a rebuilt binary, never synthetic
- *   DragEvents (memory `verify-dnd-with-real-mouse`) — that drag-reorder, the
- *   cursor-following ghost, and the insertion indicator all still work.
- * TABUI-01: tabs are 40px tall, square-cornered (no border-radius), each has
- *   a leading file icon + a close X, and the active tab shows a 2px accent
- *   TOP border (moved from the old bottom-border position).
- * RIBBON-01/03/04: the 48px activity ribbon renders with the vault-initial
- *   badge, and its daily-note/command-palette buttons drive their
- *   already-shipped actions. RIBBON-02/03/04 (button-wiring describe block
- *   below) originally also covered standalone ribbon Files/Search TOGGLE
- *   buttons; those were removed by NAV-02 — panel
- *   selection now lives entirely in the sidebar's SidebarTabRow, and the
- *   two rewritten tests below guard that current equivalent instead.
- * TABUI-02: each sidebar owns its own toggle placement — the left sidebar's
- *   collapse control lives in its header row (SidebarTabRow) with reopen via
- *   a pane-corner button (NAV-03); the right rail's collapse
- *   control lives in its own tab row (RightRailTabRow) with reopen via the
- *   tab strip's right cluster, rendered only while collapsed AND on the
- *   rightmost leaf. Each toggle only
- *   affects its own sidebar.
- *
- * Harness mirrors phase17-uat.spec.ts: spawnJasper per describe block,
- * beforeAll/afterAll. Every binary-backed describe gets its own ephemeral
- * vault (spawnJasper's default dataDir), so tests never share mutable server
- * state across describes; Playwright's per-test browsing context means
- * client-side (localStorage/Zustand) state also resets between tests within
- * the same describe.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive step uses a web-first
- * assertion (expect / expect.poll).
+ * Regression gate for the tab-bar restyle: it moves every pixel value the
+ * pointer-drag math (computeDropTarget, wrapper getBoundingClientRect) depends on
+ * indirectly through layout, so drag-reorder is re-proven here with real
+ * page.mouse against a rebuilt binary.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -196,19 +165,11 @@ test.describe("@phase18 interleaved-hidden-tabs real-mouse drag does not swallow
     page,
   }) => {
     // Force the strip's available width into [388,507) so 5 tabs overflow to
-    // exactly 3 visible pills (window arithmetic:
-    // RESERVED=112, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28 -> visibleCount=3 for
-    // a strip content-box width in this range). RESERVED dropped from 136 to
-    // 112 (the panel-selector dropdown trigger's removal
-    // recomputed TabStrip's right-cluster arithmetic — see tabOverflow.test.ts's
-    // drift-guard test). Separately, the right rail is now
-    // open-by-default (it used to be collapsed by default here), so the
-    // middle grid column (== strip clientWidth) is now viewportWidth - 588
-    // (48 ribbon + 260 notes sidebar + 280 open right rail), not the old
-    // viewportWidth - 308 (collapsed rail). A 1150px viewport lands the
-    // strip's available width at ~450px, comfortably inside range (empirically
-    // verified: [1100,1200] all yield the 3-visible/2-hidden shape; 900px would
-    // now overflow to only 1 visible pill with the rail open).
+    // exactly 3 visible pills (RESERVED=112, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28).
+    // With the right rail open by default the middle column is
+    // viewportWidth - 588 (48 ribbon + 260 sidebar + 280 rail), so 1150px lands
+    // at ~450px. Empirically [1100,1200] all yield 3-visible/2-hidden; 900px
+    // would now overflow to a single pill.
     await page.setViewportSize({ width: 1150, height: 800 });
 
     await waitForConnected(page, jasper.baseURL);
@@ -391,24 +352,12 @@ test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () =
   });
 });
 
-// ─── RIBBON-02/03/04: ribbon button wiring ───────────────────────────────────
+// ─── Ribbon button wiring ────────────────────────────────────────────────────
 //
-// The ribbon's standalone Files/Search TOGGLE buttons this describe block
-// originally guarded were REMOVED entirely by NAV-02 —
-// see ActivityRibbon.tsx's header comment: "panel selection now lives
-// entirely in the sidebar's SidebarTabRow." The Activity ribbon today has
-// exactly one quick-switcher button plus daily-note/command-palette/
-// settings; no Files or Search button exists on it anymore. The equivalent
-// user value (a panel selector that is accent-colored while its panel is
-// active, and a Search entry point that focuses the sidebar's search input)
-// now lives on SidebarTabRow's "Notes"/"Search" tabs (Sidebar's own 40px
-// header row), which these two tests are rewritten to guard.
-//
-// NOTE for owner review: this now overlaps phase27-uat.spec.ts's NAV-01/
-// NAV-02 test, which already exercises SidebarTabRow panel-switching and
-// asserts the ribbon has no Files/Search buttons. Consider retiring one of
-// the two once confirmed redundant — left both per Rule 3 (no deletions
-// without owner sign-off).
+// OPEN QUESTION for owner review: these two tests overlap phase27-uat.spec.ts's
+// NAV-01/NAV-02, which already exercises SidebarTabRow panel-switching and
+// asserts the ribbon carries no Files/Search buttons. Retire one once confirmed
+// redundant — both left in place pending sign-off.
 test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
   let jasper: JasperHandle;
 

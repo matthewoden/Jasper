@@ -1,23 +1,3 @@
-/**
- * Settings Dialog UX Post-Redesign Fixes.
- *
- * SET2-01: Settings dialog height ≤ viewport − 48px; header+footer stay sticky
- *   after scrolling body to the bottom. Currently RED: footer is inside the
- *   scroll area and scrolls out of view (no sticky layout yet).
- *
- * SET2-05: Changing display_name in Settings and reloading shows the new name
- *   in the StatusBar and in the Settings input. Currently RED: PutConfig does
- *   not sync app.json, so GET /vault/current keeps returning the old name.
- *
- * SET2-06: Clicking a breadcrumb segment (data-testid="breadcrumb-segment")
- *   reveals the note in the sidebar and applies .jasper-pulse-target. Currently
- *   RED: the breadcrumb is a plain text element with no interactive segments.
- *
- * RED scaffold — DO NOT weaken assertions to make them pass. Fix production code.
- *
- * Pattern: one binary per describe (mirrors phase17-uat.spec.ts). All waits are
- * deterministic polls; no page.waitForTimeout() / fixed sleeps.
- */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
@@ -104,20 +84,10 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// SET2-05: display_name persists across page reload
-//
-// RETIRED (plan 32-11 gap-closure): plan 32-01 deleted
-// config.Config.DisplayName entirely — a vault's display name is now
-// always the derived filepath.Base of its data directory (see
-// PutConfig's app.json sync in backend/internal/api/config_handler.go),
-// never a free-text field the user can set. There is no remaining Settings
-// control this test could target; the capability itself, not just its UI,
-// no longer exists. Per this project's "Orphaned Code as Design Signal"
-// convention, retiring the test with this note rather than force-fitting
-// new behavior onto a removed feature. SET2-01 and SET2-06 above/below are
-// unaffected and remain in force.
-// ---------------------------------------------------------------------------
+// SET2-05 is retired, not skipped: config.Config.DisplayName was deleted
+// outright, and a vault's display name is now always the derived
+// filepath.Base of its data directory. There is no Settings control left for
+// this test to target — the capability is gone, not just its UI.
 
 // ---------------------------------------------------------------------------
 // SET2-06: breadcrumb segment reveals note in Files sidebar

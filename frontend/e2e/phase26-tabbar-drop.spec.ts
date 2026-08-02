@@ -1,31 +1,12 @@
 /**
- * polish UAT — Cross-pane tab-BAR positional insert (Obsidian
- * parity).
+ * Dropping a tab on a FOREIGN pane's tab STRIP inserts at the hovered pill
+ * boundary rather than appending — an additional drop target alongside the
+ * edge-band split and center-body move covered by phase26-drag-uat.spec.ts.
  *
- * Dragging a tab onto a FOREIGN pane's tab STRIP (not its body) shows an
- * insertion caret at the hovered pill boundary and, on drop, inserts the
- * dragged tab at THAT index in the target leaf's tab order — not appended
- * to the end (the pre-existing dropTabOnPane "center" behavior). This is an
- * ADDITIONAL drop target alongside the untouched edge-band split (WS-01)
- * and center-body move (WS-02), covered by phase26-drag-uat.spec.ts.
+ * Same-pane in-strip reorder is NOT re-verified here: it is the untouched
+ * React-synthetic path, already covered by TabStrip.test.tsx and phase25-uat.
  *
- * Every drag is driven with real `page.mouse.move/down/up` (multiple
- * intermediate moves so pointermove fires and crosses TabStrip's 5px
- * DRAG_THRESHOLD) against a freshly built binary — never synthetic
- * DragEvents, which false-pass in this codebase (verify-dnd-with-real-mouse
- * memory). Zero fixed sleeps; every timing-sensitive step uses a web-first
- * assertion.
- *
- * Selector contract (reuses the 26 contract):
- *   - Leaf pane:               [data-testid="leaf-pane"]
- *   - Tab strip:                [data-testid="tab-strip"]
- *   - Foreign-strip caret:      [data-testid="tab-drop-indicator"]
- *   - Tab pill wrapper:         [data-tab-wrapper="<tabId>"]
- *
- * Same-pane in-strip reorder (drag pill 0 past pill 1 within ONE strip) is
- * NOT re-verified here — it is the untouched React-synthetic
- * handleStripPointerMove/Up path, already covered exhaustively by
- * TabStrip.test.tsx and phase25-uat.spec.ts's own reorder scenarios.
+ * Drags are real page.mouse with intermediate moves past the 5px threshold.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";

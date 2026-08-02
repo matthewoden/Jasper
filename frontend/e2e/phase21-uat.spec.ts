@@ -1,18 +1,3 @@
-/**
- * Reading Surface & Markdown Extras.
- *
- * READ-01: every full-pane reading surface (note body, the
- *   `editor-pane-placeholder` empty state, FilePreviewView) renders inside a
- *   760px-max, horizontally-centered, border-box column. Content wider than
- *   760px scrolls horizontally inside the column; the column's outer edges
- *   never move. The breadcrumb band stays pane-wide chrome (unaffected).
- *
- * Harness mirrors phase20-uat.spec.ts: spawnJasper() per describe block
- * against a rebuilt binary, real page interactions, @phase21 tag.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll — never page.waitForTimeout.
- */
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

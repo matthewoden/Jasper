@@ -1,21 +1,7 @@
 /**
- * phase7Helpers.ts — UAT helper utilities.
+ * Shared Playwright helpers.
  *
- * Reusable helpers for the Playwright E2E scenarios:
- * - pressShortcut: translates symbolic shortcuts to keyboard combos
- * - openCommandMenu: opens Cmd+O (notes) or Cmd+P (commands) modal
- * - apiCreateNote: creates a note via POST /api/v1/notes + PUT /api/v1/notes/{id}
- * - waitForConnected: waits for the WebSocket connection-status dot to show "connected"
- * - openCommandMenuAndType: opens palette in specified mode and types a query
- * - expectPaletteVisibleWithNCommands: asserts all commands visible in palette
- * - seedDailyNoteWithTags: writes a daily note file directly to disk
- * - dispatchSyntheticDragOver: fires a synthetic DragEvent on an element
- * - dispatchSyntheticDragLeave: fires a synthetic dragleave DragEvent
- * - seedNoteWithMtime: seeds a note and sets its mtime on disk
- * - activateTagFilterChip: clicks a tag row in the right rail to set the active filter
- *
- * Platform: macOS uses Meta modifier; WSL/Linux uses Control.
- * The E2E suite runs on macOS (CI + dev); WSL is a secondary target.
+ * Platform: macOS uses the Meta modifier, WSL/Linux uses Control.
  */
 import type { Page } from "@playwright/test";
 
@@ -168,21 +154,10 @@ export async function openCommandMenuAndType(
 }
 
 /**
- * expectPaletteVisibleWithNCommands — asserts all expected commands are
- * visible in the Command palette dialog.
+ * Asserts every palette-visible command is present. The list is `inPalette: true`
+ * in shortcutsRegistry.ts and locked by its own unit test — update there, not here.
  *
- * The 17 palette-visible commands (inPalette: true in shortcutsRegistry.ts,
- * locked by shortcutsRegistry.test.ts's "registry has all 17 locked Cmd+P
- * palette entries" test — updated here as more commands were added across
- * later phases and "Switch / search notes" was relabeled to
- * "Quick switcher (notes)"):
- *   New note, Save, Today, Quick switcher (notes), Toggle theme,
- *   Refresh index, Reset and rebuild…, Show keyboard shortcuts,
- *   Show current note in file manager, Switch vault…, Toggle Zen Mode,
- *   Split right, Split down, Focus next pane, Focus previous pane,
- *   Toggle left sidebar, Bookmark current note.
- *
- * "Find in note" is absent — browser native Cmd+F fires instead.
+ * "Find in note" is absent on purpose: browser-native Cmd+F fires instead.
  *
  * @param page - Playwright Page
  * @param n    - Expected command count (used for diagnostic reporting)
@@ -335,12 +310,9 @@ export async function dispatchSyntheticDragLeave(
 }
 
 /**
- * seedNoteWithMtime — creates a note via the API and then sets the file's
- * mtime on disk to a specific Unix epoch time, for deterministic sort order.
- *
- * NOTE: Setting mtime changes the filesystem mtime but the SQLite index
- * stores updated_at from file stat. After seeding, trigger a reindex so the
- * modified_at value is reflected in the in-memory tree.
+ * Creates a note via the API, then sets the file's mtime on disk for deterministic
+ * sort order. The SQLite index reads updated_at from file stat, so a reindex is
+ * required afterward before the new value reaches the tree.
  *
  * @param page       - Playwright Page (for page.request)
  * @param baseURL    - Jasper server base URL
@@ -368,20 +340,8 @@ export async function seedNoteWithMtime(
 }
 
 /**
- * activateTagFilterChip — clicks a tag row in the right-rail Tags tab to
- * set the active tag filter, then waits for the ActiveTagFilterChip to render.
- *
- * Locator chain (audited from RightRail.tsx / RightRailTabRow.tsx / Right-
- * RailTagsPanel.tsx + ActiveTagFilterChip.tsx, current as of the
- * rail rewrite — the rail is a one-panel-at-a-time icon-tab row, not the
- * old stacked/collapsible-sections layout):
- *   1. If the rail is collapsed, the rightmost pane's tab-strip carries a
- *      "Show panels" reopen button — click it first.
- *   2. Click the "Tags" tab in the right-rail-tab-row testid to mount
- *      RightRailTagsPanel (there is no more per-section collapse header).
- *   3. Each tag row exposes data-testid="tag-row-${tag.name}".
- *   4. After click, ActiveTagFilterChip renders with aria-label
- *      "Active filter: #${tagName}" — wait for it.
+ * Clicks a tag row in the right-rail Tags tab and waits for ActiveTagFilterChip.
+ * Reveals the rail via "Show panels" first if it is collapsed.
  *
  * @param page    - Playwright Page
  * @param tagName - Tag name without leading "#"

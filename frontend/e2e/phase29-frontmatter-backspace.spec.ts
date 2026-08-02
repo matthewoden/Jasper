@@ -1,25 +1,9 @@
 /**
- * regression: "Backspace at note top edits hidden frontmatter."
+ * With YAML frontmatter hidden, Backspace at the first editable position must not
+ * delete into, reveal, or corrupt the hidden block.
  *
- * Proves frontmatterBackspaceGuardKeymap (frontmatterHidePlugin.ts) against a
- * real embedded binary + real keyboard input: with the YAML frontmatter
- * hidden (the default state), placing the caret at the first editable
- * position and pressing Backspace must NOT delete into, reveal, or corrupt
- * the hidden frontmatter block.
- *
- * Separate spec file from phase29-uat.spec.ts (this is an independent,
- * self-contained editor-correctness fix per 29-CONTEXT.md, unrelated to
- * sort/history) to avoid a file conflict with the sibling 29-09 plan.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary.
- *
- * Real key input only (memory verify-dnd-with-real-mouse's broader lesson:
- * synthetic events false-pass). `page.keyboard.press("Backspace")` drives a
- * genuine browser keydown, matching CM6's own internal dispatch mechanism.
- *
- * Discipline: zero fixed sleeps; every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
+ * page.keyboard.press drives a genuine browser keydown, matching CM6's own
+ * dispatch — a synthetic event would false-pass.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

@@ -1,45 +1,22 @@
 /**
- * (E2E half): proves both halves of the
- * exact reported scenario end-to-end against the real embedded binary — a
- * second commit from another session while the first is still unresolved
- * must not lose either edit, and an unedited tab-through of every Settings
- * pane must issue zero config write requests.
+ * Proves a second config commit from another session, while the first is still
+ * unresolved, loses neither edit — and that tabbing through every Settings pane
+ * unedited issues zero writes.
  *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary,
- * not the Vite dev server.
+ * The race is made deterministic by withholding session A's response through route
+ * interception, never by firing two edits fast and hoping. A local server answers
+ * within a keystroke, so a timing-based version passes even against the pre-fix
+ * client — a green test documenting a bug.
  *
- * Discipline: zero fixed-duration sleeps. The concurrency scenario uses TWO
- * independent sessions (separate pages, each its own React tree and its own
- * `useConfig()` state) editing different fields, made deterministic via
- * response-withholding route interception on session A (a real
- * request/response round-trip against the live server, with only the
- * response's arrival at session A delayed) — never "fire two edits fast and
- * hope they race", which a local server usually answers within a keystroke,
- * making a timing-based version pass even against the pre-fix client (a
- * green test documenting a bug, exactly what quick task `260726-ked` had to
- * clean up after `phase32-uat.spec.ts`'s original 157-168 raced this same
- * defect). Two sessions rather than one tab firing two events is also load-
- * bearing for a different reason: `useConfig.saveConfig`'s optimistic
- * `setConfig` (plan 03) plus React's synchronous discrete-event flush for
- * blur/focusout mean a SINGLE tab's second edit always reads the
- * just-committed value, regardless of how the two events are sequenced or
- * how many yield points separate them — confirmed empirically by
- * instrumenting the intercepted PATCH body against the reintroduced
- * stale-base spread. Two independent sessions have no such protection
- * (config changes are never pushed to other sessions — no WS broadcast
- * exists for `PATCH /config`), so this is also the more faithful
- * reproduction of "Settings is reachable from multiple sessions" (the
- * stated reason server-side serialisation was chosen over a client-side
- * queue). Every timing-sensitive assertion here uses Playwright's own
- * auto-retrying `expect`/`expect.poll` plus the explicit route gate — no
- * fixed-duration timer of any kind. The two edited fields
- * (`editor.fontSize`, `editor.autosaveMs`) are leaves of the SAME nested
- * `editor` object, which preserves the nested-merge coverage the retired
- * `dailyNotes.folder` / `dailyNotes.template` pair provided — merge-equivalent
- * to it, not stronger: a shallow top-level merge of session B's
- * `{editor:{autosaveMs}}` patch would replace the whole `editor` block and
- * silently drop session A's `fontSize` write.
+ * TWO sessions rather than one tab firing twice is also load-bearing:
+ * useConfig.saveConfig's optimistic setConfig plus React's synchronous discrete-
+ * event flush mean a single tab's second edit always reads the just-committed
+ * value however the events are sequenced. Independent sessions have no such
+ * protection, since no WS broadcast exists for PATCH /config.
+ *
+ * The two edited fields are leaves of the SAME nested `editor` object, so a
+ * shallow top-level merge would replace the block and drop the other session's
+ * write — that is what the assertion catches.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -85,34 +62,9 @@ test.describe("@phase32.1 concurrent settings edits + no-op writes", () => {
     jasper = await spawnJasper();
     const baseURL = jasper.baseURL;
 
-    // Two INDEPENDENT sessions (separate pages, each its own React tree and
-    // its own `useConfig()` state) editing DIFFERENT leaves of the same
-    // nested `editor` object (fontSize, autosaveMs) — this is the
-    // deterministic, faithful reproduction of the bug in the shipped codebase.
-    //
-    // A single-tab "fire two edits fast" version (even one driven by
-    // synchronous, zero-yield native DOM events dispatched from a single
-    // in-page script, bypassing Playwright's own per-action round-trips)
-    // does NOT reproduce the bug here: `useConfig.saveConfig`'s optimistic
-    // `setConfig(mergePatch(prev, patch))` (plan 03) runs synchronously
-    // before the network await, and React flushes discrete events (blur/
-    // focusout) synchronously before the dispatching call returns — so by
-    // the time ANY second same-tab event fires, the closure already reads
-    // the just-committed value, even against the reintroduced stale-base
-    // spread. Confirmed empirically: instrumenting the intercepted PATCH
-    // body showed PATCH #2 already carrying the corrected `autosaveMs` in
-    // both a two-action Playwright sequence AND a single synchronous-dispatch
-    // script.
-    //
-    // Two separate sessions have no such protection: there is no WebSocket
-    // (or any other) push of config changes to other sessions (verified —
-    // `backend/internal/api/config_handler.go` never calls the broadcaster),
-    // so session B's `config` state never learns about session A's edit
-    // without an explicit refetch. This is exactly the case the
-    // rationale names as unfixable client-side ("a client-side queue...
-    // only holds within a single tab; Settings is reachable from multiple
-    // sessions") — which is why the fix is the sparse payload (this test)
-    // plus server-side serialisation (plan 01), not a client-side lock.
+    // Two INDEPENDENT sessions editing different leaves of the same nested
+    // `editor` object. A single tab firing twice does NOT reproduce the bug —
+    // see this file's header for why.
     const pageA = await context.newPage();
     const pageB = await context.newPage();
 

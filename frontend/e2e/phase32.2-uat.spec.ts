@@ -1,23 +1,13 @@
 /**
- * the request-count acceptance cases from
- * Definition of Done (#1-#4), plus a standing-budget baseline
- * census of the never-measured sibling endpoints (§ "baseline census" below).
+ * Request-count acceptance cases plus a standing-budget census of sibling
+ * endpoints.
  *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) at the repo root before Playwright — this spec runs against the
- * EMBEDDED Go binary, not the Vite dev server.
+ * All four cases were proven FAILING against the pre-migration code before
+ * useMcpGrants and useTagBrowser moved onto createResource — the counts below are
+ * measured, not chosen.
  *
- * DoD #6 discipline: these four cases were proven FAILING against the
- * pre-migration code before being converted to `test.fixme`. The verbatim
- * RED transcript (actual observed request counts, not a claim) is recorded
- * in the plan. `test.fixme` reports as skipped, so the
- * committed tree stays green while the executable assertion is already in
- * place — plan 03 flips each back to `test(...)` once `useMcpGrants`/
- * `useTagBrowser` migrate onto the shared `createResource` primitive.
- *
- * Zero fixed-duration sleeps: every wait is either a Playwright
- * auto-retrying `expect`/`expect.poll`, or `settle()` from
- * `./helpers/requestCounter`, per project memory [no-flaky-tests].
+ * Every wait is an auto-retrying expect/expect.poll or settle() from
+ * ./helpers/requestCounter — never a fixed-duration sleep.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -117,7 +107,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
   });
 
   test(
-    // Flipped by plan 03: useMcpGrants now migrates onto createResource
     "grants: page load issues 1 request",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -135,7 +124,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
   );
 
   test(
-    // Flipped by plan 03: useMcpGrants now migrates onto createResource
     "grants: folder expand issues 0 additional",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -166,7 +154,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
   );
 
   test(
-    // Flipped by plan 03: useMcpGrants now migrates onto createResource
     // (event-bus fan-out fix).
     "grants: one WS event issues 1 refetch",
     async ({ page, context }) => {
@@ -201,7 +188,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
   );
 
   test(
-    // Flipped by plan 03: useTagBrowser now migrates onto createResource
     "tags: split pane issues 1 request",
     async ({ page }) => {
       const { firstNoteId } = await seedInvestigationVault(page, jasper.baseURL);
@@ -227,25 +213,14 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 });
 
 /**
- * standing per-endpoint request budget.
+ * Standing per-endpoint request budget. The ESLint gate catches a NEW raw
+ * client.GET, but structurally cannot catch a new mount effect calling an
+ * already-legitimate wrapper — only a request-count assertion closes that half.
  *
- * root-caused fetch-on-mount with zero sharing; the
- * ESLint gate (32.2-09 task 1) catches a NEW raw `client.GET` call, but it
- * structurally cannot catch a NEW mount effect that calls an
- * already-legitimate wrapper on every mount — only a request-count
- * assertion closes that half of the defect class ('s rationale).
- *
- * One scripted session drives every endpoint plan 02's before-count table
- * measured: open the app, open a note, expand every folder, open the
- * right-rail backlinks panel, open the right-rail tag panel, open Settings
- * and its About section, close Settings, open a split pane. Ceilings are
- * the AFTER counts plans 03/05/06/07/08 measured against the migrated
- * binary (not guesses) — see each `expect(...)` call's inline comment for
- * its source. `toBe` is used wherever the migration makes the count
- * deterministic; `toBeLessThanOrEqual` only for `/tree`, which
- * `phase5_5-uat.spec.ts` already documents as carrying a
- * genuine race window (a joiner that arrives while a fetch is in flight can
- * cost one extra GET when the never-join invalidation path is hit).
+ * Ceilings are measured AFTER counts against the migrated binary, not guesses.
+ * `toBe` wherever the migration makes the count deterministic;
+ * `toBeLessThanOrEqual` only for /tree, which carries a genuine race window where
+ * a joiner arriving mid-fetch can cost one extra GET.
  */
 test.describe("@phase32.2 standing request budget", () => {
   let jasper: JasperHandle;

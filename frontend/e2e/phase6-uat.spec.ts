@@ -1,33 +1,5 @@
 /**
- * Tags, Backlinks, Wiki-Links.
- *
- * Scenarios:
- *   S1  : new note ships with frontmatter scaffold
- *   S2  : one-time migration injects scaffold into pre-existing no-frontmatter files
- *   S3  : save with frontmatter removed auto-restores scaffold
- *   S4  : tags sync to tag browser
- *   S5  : tag click filters file tree; chip clears filter
- *   S6  : tag rename rewrites all carrier files on disk
- *   S7  : tag delete removes from all carrier files; N≤5 skips dialog
- *   S8  : [[Foo autocomplete shows matching titles + Create row
- *   S9  : full reindex reconstructs tags + backlinks
- *   S10 : pending link styled with cm-wiki-link-pending class
- *   S11 : rename note rewrites [[OldTitle]] references; backlinks panel updates
- *   S12 : Cmd+click on resolved [[Foo]] navigates; plain click is inert
- *   S13 : cross-tab tag rename: tab B's tag browser refreshes
- *   S14 : ambiguous wiki-link resolves same-folder-first
- *   S15 : wiki-links inside fenced code blocks stay literal / not decorated
- *   S16 : backlinks panel opens + shows referrer row with sanitized excerpt
- *   S17 : rename rewrite failure banner — test.fixme; needs server fault injection
- *
- * Selector notes:
- *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
- *   - Tree rows: data-tree-row-kind="note" / "folder"
- *   - Tag rows: data-testid="tag-row-{name}"
- *   - Active filter chip: aria-label="Remove tag filter: {name}"
- *   - Backlinks rail: role="region" aria-label="Notes that link to this note"
- *   - wikilink resolved: .cm-wiki-link; pending: .cm-wiki-link-pending
- *   - POST /api/v1/notes body: { parent_path: string, title: string }
+ * CM6 is contenteditable — use keyboard.type(), not .fill().
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

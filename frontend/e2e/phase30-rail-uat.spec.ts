@@ -1,40 +1,8 @@
 /**
- * Right-Rail Tags & Context Menus: right rail Tags tab
- * (TAGS-01, TAGS-02).
+ * Right-rail tab row and Tags panel.
  *
- * Wave-0 scaffold — this file is the substrate feature plans
- * fill in later waves:
- *   TAGS-01  30x30 icon-tab row (Outline / Linked mentions / Tags), one
- *            panel mounted at a time, active tab persisted to
- * workspace.json.
- *   TAGS-02  Tags tab: active-note tags above the vault tag list,
- * count-desc ordered, live CM6 doc sync.
- *
- * The smoke assertion below is a REAL, currently-passing check: the right
- * rail's <aside> shell + left-edge resize handle, which the tab-row
- * rewrite explicitly preserves. It proves the harness (spawn + tree open) works
- * end-to-end before the tab-row markup exists.
- *
- * TAGS-01 is a real, passing test: clicks each icon tab,
- * asserts exactly one panel is mounted (role-scoped locators, not just
- * visual visibility), waits for the PUT /vault/workspace persist request,
- * then reloads and re-asserts the same tab survives. Its Tags-tab empty
- * state locator uses the LOWER (vault-wide) section's "No tags in this
- * vault" copy (mock-literal — replaced the earlier "No tags
- * yet..." copy when the Tags tab grew to two sections).
- *
- * TAGS-02 (reworked): the Tags tab is now a
- * single vault-wide tag list — the upper active-note "Note tags" section
- * and its live-CM6 parse machinery (useNoteTagsStore) are fully deleted.
- * The test creates a note with a tag in its body, asserts the vault-list
- * row renders, then clicks it and asserts the left sidebar switches to the
- * Search panel with a `tag:livetag` query seeded (unchanged).
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
+ * The Tags-tab empty-state locator targets the LOWER vault-wide section's copy;
+ * the upper active-note section it could otherwise match no longer exists.
  */
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

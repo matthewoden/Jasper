@@ -1,45 +1,8 @@
 /**
- * Rail Chrome Polish.
+ * All scenarios share one bin/jasper instance and run in declaration order — use
+ * unique note and tag names to avoid cross-scenario interference.
  *
- * All scenarios share a single `bin/jasper` instance. Scenarios run in
- * declaration order; use unique note/tag names to avoid cross-scenario
- * interference.
- *
- * Scenarios:
- *   S1 (@UX-CHROME-01) : TopBar renders — sidebar toggle, breadcrumbs, panel
- *                        selector, right-rail toggle. Click sidebar toggle → hides.
- *   S2 (@panel-selector): Panel dropdown → uncheck Tags → hides; re-check → returns.
- *   S3 (@UX-CHROME-02) : StatusBar renders — connectivity dot, refresh button,
- *                        settings trigger. Verify NOT in the sidebar header.
- *   S4 (@UX-CHROME-02-refresh): Refresh button → disabled during reindex;
- *                               settings button opens settings dialog.
- *   S5 (@UX-CHROME-03) : Sidebar reads as floating panel — outer nav with 8px inset.
- *   S6 (@UX-CHROME-04) : InterPanelDivider has cursor row-resize; no color band.
- *   S7 (@UX-CHROME-05) : Note with frontmatter — no ".cm-frontmatter-affordance".
- *   S8 (@UX-CHROME-06) : Tag rows show "#tagname (count)"; no Key icon in header.
- *   S9 (@UX-CHROME-07) : Tag filter chip spans full width; × clears the filter.
- *   S10 (@breadcrumbs) : Nested note → breadcrumbs shows path; click folder → sidebar.
- * S11 (@phase-6.5-regression): features still work.
- *
- * Selector notes (current as of's rail rework — 30-05/30-13):
- *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
- *   - TopBar: data-testid="top-bar"
- *   - StatusBar: data-testid="status-bar" aria-label="Status bar"
- *   - Refresh button: aria-label="Reindex notes"
- *   - Left sidebar collapse/reopen: aria-label="Collapse sidebar" (header,
- * SidebarTabRow) / "Show sidebar" (pane-corner reopen button
- *     NAV-03)
- *   - Right rail collapse/reopen: aria-label="Collapse panels" (header,
- *     RightRailTabRow) / "Show panels" (tab-strip right cluster, rendered
- * only while collapsed)
- *   - Right rail tab row: data-testid="right-rail-tab-row"; tabs are
- *     aria-label "Outline" / "Linked mentions" / "Tags" — exactly ONE panel
- *     is mounted at a time (no independent per-panel collapse anymore; the
- * The SectionHeader/InterPanelDivider machinery was removed
- *     entirely in 30-05)
- *   - Tag row: data-testid="tag-row-{name}"
- *   - ActiveTagFilterChip: role="status" aria-label="Active filter: #tagname"
- *   - Breadcrumbs nav: aria-label="Note path"
+ * CM6 is contenteditable: use keyboard.type(), not .fill().
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

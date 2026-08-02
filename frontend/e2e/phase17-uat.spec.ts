@@ -1,21 +1,3 @@
-/**
- * Design Tokens & Theme Foundation.
- *
- * THEME-01: Dark token palette applied across all surfaces
- *   Editor bg #1e1e21, sidebar/chrome #1a1a1c, body #d4d4d8, muted #6a6a72.
- * THEME-02: 4-accent system in place with accent-tint pattern
- *   Default --color-accent = #a78bfa; active row tint is non-zero-alpha accent mix.
- * THEME-03: User picks accent in Settings; change applies live without reload, persists.
- *   aria-label="Sky" swatch sets --color-accent to #7dd3fc; survives page reload.
- * THEME-04: Code font = JetBrains Mono; reading-font toggle reflects in note surface.
- *   Code fence computed font-family contains "JetBrains Mono"; after "Serif" toggle,
- *   prose surface switches to "Source Serif 4" while code stays mono.
- *
- * These tests are in RED state until Waves 2–3 land. Do NOT weaken assertions to
- * make them pass prematurely.
- *
- * Harness mirrors phase11-uat.spec.ts: spawnJasper per describe block, beforeAll/afterAll.
- */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 

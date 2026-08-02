@@ -1,24 +1,9 @@
 /**
- * Divider resize (WS-05).
+ * Every drag is real page.mouse.move/down/up with intermediate moves, against a
+ * freshly built binary — synthetic DragEvents false-pass this interaction.
  *
- * Proves the interactive pane divider end-to-end against a rebuilt binary:
- *   1. Resize: dragging the divider live-reflows both panes.
- *   2. Clamp: dragging past a pane's edge stops at the 160px minimum
- *      rather than crushing the pane.
- *   3. Persistence: the final ratio survives a full page reload via
- *      the existing debounced per-vault layout write.
- *
- * Selector contract (mirrors phase25-uat.spec.ts):
- *   - Leaf pane:            [data-testid="leaf-pane"]
- *   - Divider hit zone:     [data-testid="pane-divider-handle"]
- *
- * Drag discipline (memory verify-dnd-with-real-mouse, no-flaky-tests): every
- * drag is driven with real `page.mouse.move/down/up` (intermediate moves
- * included) against a freshly built binary — never synthetic DragEvents,
- * which false-pass on this kind of pointer-driven interaction. ZERO fixed
- * sleeps; every timing-sensitive step (debounced 250ms persistence write,
- * reload restore) uses expect.poll / web-first assertions. Scenario 3 is
- * timing-sensitive and is run under --repeat-each=3 to prove non-flake.
+ * The persistence scenario is timing-sensitive (debounced 250ms write) and is run
+ * under --repeat-each=3 to prove non-flake.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";

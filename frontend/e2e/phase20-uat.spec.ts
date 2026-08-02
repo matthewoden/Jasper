@@ -1,29 +1,9 @@
 /**
- * Right Sidebar: Outline & Linked Mentions.
+ * Outline rows are parsed from the LIVE CM6 document, so the assertions type into
+ * the editor rather than seeding files on disk.
  *
- * RSIDE-01: the Outline panel parses headings from the LIVE CM6 document,
- *   indents rows by heading level (8 + (level-1)*12 px),
- *   includes the title-bound first H1, shows "No headings" when a note has
- *   none, and a row click smooth-scrolls (CSS `scroll-behavior: smooth` on
- *   `.cm-scroller`) + moves the cursor to that heading line.
- * RSIDE-02: Linked mentions renders one card per linking note (accent title,
- * `useTabStore.getState().openTab` on click), stacked per-mention
- *   excerpts, and "No backlinks found" when there are none.
- * The header count badge was dropped along with all right-rail
- * sub-headers — no longer asserted.
- * Chrome model: the tab-bar toggle is the sidebar's only
- *   show/hide control; the rail is visible by default on a fresh profile.
- *   The three sections (Outline / Linked mentions / Tags) are now exactly
- * one mounted panel at a time, switched via the icon tab row (the
- *   TAGS-01 rework; superseded the original independent SectionHeaders).
- *
- * Harness mirrors phase19-uat.spec.ts: spawnJasper() per describe block
- * against a rebuilt binary (`make build` — see task verify command), real
- * page.mouse/click interactions (never synthetic events), @phase20 tag.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion (scroll
- * settling, WS-driven backlinks refetch, section collapse) uses
- * expect/expect.poll — never page.waitForTimeout.
+ * Row click relies on CSS `scroll-behavior: smooth` on `.cm-scroller`; scroll
+ * settling is polled, never slept on.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -307,24 +287,12 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
   });
 });
 
-// ─── Chrome model: default-visible rail + single-mounted-panel tab-row ──
+// ─── Chrome model: default-visible rail + single-mounted-panel tab-row ──────
 //
-// The earlier three-collapsible-sections rail (independent SectionHeader
-// aria-expanded state per section, all three stacked and visible at once)
-// was REPLACED by the TAGS-01 tab-row rework (RightRail.tsx):
-// exactly ONE panel (Outline / Linked mentions / Tags) is mounted at a
-// time, selected by a 30x30 icon-tab row, with no per-section collapse
-// affordance left anywhere in the rail. This test is rewritten to guard
-// the current equivalent of the same user value this test
-// protected — "the right rail renders by default and its panel-switching
-// affordance works" — using the icon-tab row instead of section headers.
-//
-// NOTE for owner review: this now materially overlaps
-// phase30-rail-uat.spec.ts's "TAGS-01" test, which already exercises the
-// same single-mounted-panel tab-row contract (plus workspace.json
-// persistence across reload). Consider retiring one of the two once
-// confirmed redundant — left both in place per Rule 3 (no deletions
-// without owner sign-off).
+// OPEN QUESTION for owner review: this materially overlaps
+// phase30-rail-uat.spec.ts's TAGS-01, which exercises the same
+// single-mounted-panel contract plus workspace.json persistence. Retire one once
+// confirmed redundant — both left in place pending sign-off.
 test.describe("@phase20 chrome: right rail visible by default; icon-tab row mounts exactly one panel at a time", () => {
   let jasper: JasperHandle;
 

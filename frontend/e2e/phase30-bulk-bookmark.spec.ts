@@ -1,25 +1,7 @@
 /**
- * gap closure (30-12 CTX-02) — bulk-bookmark
- * client-store integrity.
- *
- * Root cause (VERIFICATION gap 3): `FileTree.handleBulkBookmark` loops
- * `await toggleBookmark(id)` over N selected notes. `toggleBookmark` used
- * to close over the render-time `bookmarks` array; every iteration after
- * the first overwrote the store with `B0 + created_i`, dropping earlier
- * iterations. Server state was always correct (each POST succeeded) — only
- * the client store, Bookmarks panel, and breadcrumb stars regressed to
- * showing just the LAST of the N bookmarks until a full reload.
- *
- * This spec proves the fix end-to-end against the embedded binary: select
- * 3 notes, bulk-bookmark them from the selection-aware tree context menu,
- * and assert the Bookmarks panel shows all 3 WITHOUT a reload.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect.poll / web-first assertions (memory no-flaky-tests). Run with
- * --repeat-each=3 to prove non-flake.
+ * Bulk-bookmarking N notes must leave all N in the Bookmarks panel WITHOUT a
+ * reload. Server state was never the problem — each POST succeeded; the client
+ * store dropped all but the last, so only an unreloaded assertion catches it.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -43,7 +25,7 @@ async function openSidebarTab(
 }
 
 // BookmarksPanel renders rows through the shared TreeRow component
-// (quick task 260719-jv1) — bookmark rows carry `data-tree-row-kind`
+// Bookmark rows carry `data-tree-row-kind`
 // rather than a `data-testid="bookmark-row-*"` prefix.
 function bookmarkRows(page: Page): Locator {
   return page.locator('[data-tree-row-kind="bookmark"]');

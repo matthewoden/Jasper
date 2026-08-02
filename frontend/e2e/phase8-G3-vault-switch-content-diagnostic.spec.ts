@@ -1,24 +1,8 @@
 /**
- * G3 diagnostic: vault switch doesn't take until SPA writes.
- *
- * Reproduces the G3 report:
- *   1. User in vault A, modifies scratchpad.
- *   2. Switches to vault B.
- *   3. Observed: editor still shows A's scratchpad content; brief error flash.
- *
- * Hypotheses under investigation:
- *   - H1: SPA never reloads (no navigation, no markSwitched fire).
- *   - H3: server-side race — request hits wrong notesService.
- *   - H4: WS broadcast cancels in-flight POST.
- *
- * Captures:
- *   - All WS frames (event names) seen by the SPA.
- *   - All console messages (errors + warnings + custom markers).
- *   - All page navigations (frame load events).
- *   - The editor's textContent BEFORE and AFTER the switch.
- *   - The vault.switched broadcast time vs the navigation time.
+ * Diagnostic, not an assertion suite: captures WS frames, console messages, page
+ * navigations, and the editor's textContent before and after a vault switch, to
+ * separate "SPA never reloads" from "server-side race" as the cause.
  */
-
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";

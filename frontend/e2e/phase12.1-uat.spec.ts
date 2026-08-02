@@ -1,27 +1,3 @@
-/**
- * Checkbox Editing UAT Fixes.
- *
- * RED-first test scaffolding: these tests encode the target post-fix behavior
- * for requirements U1-U7 + W1. They are EXPECTED TO FAIL until plans 02/03 land.
- * Exception: W1 documents a working case and should stay green through implementation.
- *
- * Run a single tagged test: npx playwright test e2e/phase12.1-uat.spec.ts -g "U3"
- *
- * U1 — visual: checkbox widget matches styling (screenshot; human review)
- * U2 — reveal: caret onto task line shows raw '- [ ] ' text, no widget
- * U3 — Enter on empty '- [ ] ' exits the list (marker removed, line NOT deleted)
- * U4 — Enter behavior is position-independent (same result after caret leave+return)
- * U5 — Enter on non-empty task → exactly one new '- [ ] ' line, no double-newline
- * U6 — Tab indents; Shift-Tab de-indents; focus stays in editor (not on widget)
- * U7 — off-cursor task shows checkbox widget only, no raw '-' dash beside it
- * W1 — regression: indented task Enter still creates one checkbox at correct indent
- *
- * Selectors (after plan 02 ships):
- *   - Editor content: .cm-content
- *   - Checkbox widget: span.cm-task-checkbox
- *   - Save indicator: button[data-save-state="saved"]
- *   - Note rows: [data-tree-row-kind="note"]
- */
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

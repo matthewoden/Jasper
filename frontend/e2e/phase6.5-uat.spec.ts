@@ -1,47 +1,10 @@
 /**
- * Tags + Rails Polish.
+ * All scenarios share one bin/jasper instance and run in declaration order, so
+ * data created earlier is visible later — use unique tag and title names.
  *
- * All scenarios share a single `bin/jasper` instance (beforeAll / afterAll) to
- * reduce runtime. Scenarios run in declaration order; data created earlier is
- * visible to later scenarios. Use unique tag/title names to avoid interference.
- *
- * Scenarios:
- * S1 (@UX-T-01) : REWRITTEN (tab-row rework removed the original
- *                   "panel cards + draggable inter-panel divider" design) —
- *                   now guards the current equivalent: right-rail tab
- *                   switching (Outline/Linked mentions/Tags swap the single
- *                   mounted panel) + the active tab persists across reload.
- *   S2 (@UX-T-02) : Type `#blue` in body → cm-inline-tag rendered; `# heading`
- *                   does NOT render as inline tag
- *   S3 (@UX-T-03) : Type `#newtag` in body → save → Tags panel shows newtag
- *                   within 2s → reload → frontmatter contains the tag
- *   S4 (@UX-T-04) : Open note with frontmatter → block hidden, affordance visible;
- *                   Cmd-Shift-Y → raw shown; Cmd-Shift-Y → hidden; note switch
- *                   resets to hidden
- *   S5 (@UX-T-05) : RETIRED in v1.2 — the Tags panel substring-filter input was
- * removed in the RightRail redesign (no replacement).
- *   S6 (@BUG-01)  : Save with new tag → Tags panel updates within 2s (no reload)
- *   S7 (@BUG-02)  : Open note with incoming [[...]] → Backlinks panel shows row
- *                   within 2s
- *   S8 (@BUG-03)  : Switch notes without editing → SaveIndicator stays idle;
- *                   actual edit + save → "Saved" appears (positive case)
- *   S9 (@autocomplete-polish) : `[[` popup and `#` popup have border-radius 8px
- *                               and foreground-contrast text
- *
- * Selector notes (right-rail tab-row rework, 30-05/30-08):
- *   - CM6 editor is contenteditable — use keyboard.type(), not .fill(). Tabs
- *     keep every open note's EditorPane mounted (inactive = display:none), so
- *     `.cm-content` can match several elements — target `.cm-content:visible`.
- *   - Tags panel uses data-testid="tag-row-{name}".
- *   - Frontmatter affordance: button.cm-frontmatter-affordance
- *   - Right-rail panels: RightRailTabRow renders icon-only Outline / Linked
- *     mentions / Tags tab buttons (aria-label = the panel name); exactly ONE
- *     panel is mounted below at a time, driven by the persisted rightPanel
- * field (useWorkspace). The earlier three-section stacked/collapsible
- *     rail (independent SectionHeader "Collapse/Expand <Title> panel"
- *     toggles, InterPanelDivider height-ratio persistence) was removed
- *     entirely — no per-section collapse state, no inter-panel divider.
- *   - The tag-list substring filter input ("Filter tag list") was removed.
+ * CM6 is contenteditable: use keyboard.type(), not .fill(). Tabs keep every open
+ * note's EditorPane mounted (inactive = display:none), so `.cm-content` can match
+ * several elements — target `.cm-content:visible`.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -116,20 +79,9 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
 }
 
 /**
- * Select a right-rail tab (Outline / Linked mentions / Tags) and reveal the
- * rail first if it is collapsed.
- *
- * the tab-row rework (30-05/30-08, TAGS-01) replaced the
- * three-section stacked/collapsible rail (independent SectionHeader
- * "Expand/Collapse <Title> panel" toggles, two draggable inter-panel
- * dividers) with a single-panel-at-a-time model: RightRailTabRow renders
- * icon-only Outline / Linked mentions / Tags tabs (aria-label = the panel
- * name), and exactly one panel is mounted below at a time, driven by the
- * persisted rightPanel field (useWorkspace, PUT /api/v1/workspace). There is
- * no more per-section collapse state or inter-panel divider — that machinery
- * was removed entirely. If the whole rail is collapsed, "Show panels" (the
- * TabStrip right-cluster reopen control, rendered on the rightmost pane) is
- * clicked first.
+ * Select a right-rail tab. Exactly one panel is mounted at a time, driven by the
+ * persisted rightPanel field — there is no per-section collapse. If the whole rail
+ * is collapsed, "Show panels" on the rightmost pane's tab strip is clicked first.
  */
 async function selectRightRailTab(
   page: Page,

@@ -1,19 +1,3 @@
-/**
- * Interactive Checkboxes.
- *
- * All synchronization uses deterministic assertion-based waits.
- *
- * Selectors:
- *   - Checkbox widget: span.cm-task-checkbox (aria-checked="true"|"false")
- *   - Checked text:    .cm-task-text-checked
- *   - Save indicator:  button[data-save-state="saved"]
- *   - Note rows:       [data-tree-row-kind="note"]
- *
- * E2E-1 (CHK-01 check):   click unchecked checkbox → file shows [x]
- * E2E-2 (CHK-01 uncheck): click checked checkbox   → file shows [ ]
- * E2E-3 (CHK-02 strike):  checked item text carries .cm-task-text-checked
- * E2E-4 (CHK-04 off-cursor): checkbox clickable when cursor is on a different line
- */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 

@@ -1,23 +1,10 @@
 /**
- * Offline operation.
+ * Asserts the SPA and setup wizard issue ZERO external network requests.
+ * context.route("**\/*") intercepts everything; loopback is allowed, anything
+ * else is recorded and aborted.
  *
- * Asserts the SPA + setup wizard issue ZERO external network requests during
- * a full app exercise. Any leaked request to a CDN font, analytics pixel,
- * remote help URL, or image with an absolute URL would surface here.
- *
- * Method: Playwright's `context.route("**\/*", ...)` intercepts every
- * outbound request. Localhost requests (127.0.0.1 / ::1 / localhost) are
- * allowed; anything else is recorded AND aborted. The assertion is that
- * `externalRequests` is empty.
- *
- * Two scenarios cover the lifecycle:
- *   1. First-run wizard — no external requests.
- *   2. Post-setup SPA shell (command palette, sidebar, editor mount) — no
- *      external requests.
- *
- * Lives outside the unit-test suite because only Playwright can intercept at
- * the browser-context layer and observe resource fetches
- * (HTML/JS/CSS/fonts/images/XHR/WebSocket-handshakes).
+ * Lives outside the unit suite because only Playwright can intercept at the
+ * browser-context layer and see fonts, images, XHR and WS handshakes.
  */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";

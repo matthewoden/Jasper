@@ -1,21 +1,7 @@
 /**
- * Tooltip UAT: proves the shared Radix Tooltip
- * system against a real embedded binary + real hover (never synthetic
- * events, memory verify-dnd-with-real-mouse's broader lesson).
- *
- * Covers:
- *   (a) hovering an icon-only ribbon control reveals its Tooltip content
- *       (label + shortcut) after the configured show delay.
- *   (b) once a tooltip has shown, hovering an ADJACENT ribbon control
- *       re-shows instantly via Radix's skipDelayDuration — no repeat of
- *       the full show-delay wait.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary.
- *
- * Discipline: zero fixed sleeps; every timing-sensitive assertion uses
- * Playwright's own auto-retrying `expect(...).toBeVisible()` polling
- * (memory no-flaky-tests) — never `page.waitForTimeout`.
+ * Covers both halves of the shared Radix Tooltip contract: the configured show
+ * delay on first hover, and Radix's skipDelayDuration making an adjacent control
+ * re-show instantly without repeating that wait.
  */
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

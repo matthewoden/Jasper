@@ -1,24 +1,9 @@
 /**
- * Cloud-icon click forces immediate WS reconnect.
+ * Clicking the cloud-off SaveIndicator while the WS is in jittered backoff must
+ * reconnect immediately rather than waiting out the ~45s attempt window.
  *
- * Pre-fix: after a server restart the SPA WS sat in jittered-exponential
- * backoff (up to ~45s/attempt). Clicking the cloud-off SaveIndicator fired
- * a doomed postAdminReindex against the dead server. Only a full page refresh
- * recovered connectivity.
- *
- * Post-fix:
- *   - useSessionSync publishes forceReconnect() on useTreeStore
- *   - StatusBar's handleRefresh routes saveState.status === "paused"
- *     to forceWsReconnect() instead of postAdminReindex
- *
- * This spec drives the full path:
- *   1. SPA connects, ConnectionStatusDot reads "connected"
- *   2. Kill the server → dot transitions to "reconnecting" + SaveIndicator
- *      flips to "paused"
- *   3. Respawn the server on the SAME port (so the WS URL still resolves)
- *   4. Click the SaveIndicator while in backoff
- *   5. ConnectionStatusDot returns to "connected" within a couple seconds
- *      — NOT the 30+s of natural backoff
+ * The server is respawned on the SAME port — useSessionSync builds its WS URL
+ * from window.location.host, so a new port would never be reached.
  */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";

@@ -1,54 +1,16 @@
 /**
- * install + first-run wizard + reveal + deep links + MCP grants.
+ * Install, first-run wizard, reveal, deep links and MCP grants. Each top-level
+ * describe spawns its own binary against a fresh ephemeral data dir.
  *
- * Scenarios (tagged for selective runs via --grep):
+ * The @reveal test asserts visibility only — clicking would pop Finder/Explorer.
  *
- *   @first-run   wizard redirect + happy-path entry. Redirect tests are
- *                test.fixme()'d — see "Known issue" below. The wizard SPA
- *                content assertions and tilde-expansion regression tests run.
- *
- *   @reveal      tree-row right-click exposes "Show in file manager". Test
- *                asserts visibility only — clicking would pop Finder/Explorer.
- *
- *   @deep-link   /?note=<bad-uuid> navigates to /note-not-found.
- *
- *   @grant       Toast contract asserted via pinned string constants.
- *                Unit tests in useMcpGrants.test.ts cover the firing path.
- *
- *   @sparkles    mcp-grant-indicator data-testid is rendered with
- *                data-grant-tier matching the level when a grant is present.
- *
- * Toast contract — two-line {title, description}:
- *   - Grant added:    title="AI access granted"   description="Edit only in {path}" | "Full in {path}"
- *   - Grant upgraded: title="AI access upgraded"  description="Now full in {path}"
- *   - Grant revoked:  title="AI access revoked"   description="{path}"
- *
- * Indicator contract:
- *   - data-testid="mcp-grant-indicator"
- *   - data-grant-tier="1"|"2"
- *
- * Each top-level test.describe block spawns its OWN binary against a fresh
- * ephemeral data dir so the test surfaces are isolated.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * KNOWN ISSUE — wizard redirect interleaving:
- *
- *   lifecycle.Run calls config.Load (which auto-writes config.json if missing)
- *   BEFORE the listener accepts connections. By the time a Playwright page
- *   navigates to "/", config.json already exists and the firstrun middleware
- *   no-ops — "/" doesn't redirect to "/setup" in the spawnJasper baseline.
- *
- *   Fix options:
- *     A. Defer config.Load auto-write until POST /setup runs.
- *     B. Check for a "wizard intent" sentinel (e.g., no notes/ subdir)
- *        and skip the auto-write.
- *     C. The install subcommand creates the data dir but does NOT
- *        pre-create config.json.
- *
- *   @first-run redirect tests are test.fixme()'d pending resolution.
- *   The wizard SPA renders correctly; only the redirect is broken in the
- *   test environment. This is also a real production gap.
- * ─────────────────────────────────────────────────────────────────────────
+ * KNOWN ISSUE, and a real production gap rather than a test artifact: lifecycle.Run
+ * calls config.Load, which auto-writes config.json if missing, BEFORE the listener
+ * accepts connections. By the time a page navigates to "/", config.json exists and
+ * the firstrun middleware no-ops, so "/" never redirects to "/setup". The
+ * @first-run redirect tests are test.fixme()'d pending a fix — deferring the
+ * auto-write to POST /setup, gating it on a wizard-intent sentinel, or having
+ * `install` not pre-create the file. The wizard SPA itself renders correctly.
  */
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

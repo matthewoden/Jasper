@@ -1,35 +1,11 @@
 /**
- * regression suite.
+ * Drives the live binary where the vitest suite mocks the API client,
+ * react-arborist's keymap and document focus.
  *
- * vitest mocks the typed API client / react-arborist's keymap / document
- * focus — this Playwright suite drives the live binary instead.
- *
- * Coverage (against the live ./bin/jasper binary):
- *   - Scenario A — toolbar `+` create → tree updates without reload;
- *     second create auto-increments to "untitled 1" instead of 409;
- *     folder create also auto-increments. Drag-drop reorganization is NOT
- *     covered — see the in-test comment in A.4 for the
- *     synthetic-DnD-vs-react-dnd limitation; drag remains a manual-UAT step.
- *   - Scenario D — external file write + Refresh click → new note appears in
- *     the tree AND opens successfully (admin/reindex re-hydrates the Registry;
- *     pre-fix this 404'd).
- *   - Scenario F — F2 enters rename, typing trapped, Enter commits to disk +
- *     tree. Strengthened to assert on the displayed tree row label after
- *     rename. Adds Scenario G + G.2 covering both directions of the
- *     filename↔H1 binding.
- *
- * Manual revert-spike (run by hand to confirm the suite catches regressions):
- *   1. Revert ONE line from one of the gap-closure fixes, e.g. delete
- *      `await refresh();` from useTreeMutations.createNote, or delete
- *      `rec.Title = freshTitle` from backend Service.Move.
- *   2. `make build && cd frontend && npx playwright test`
- *   3. The corresponding scenario MUST fail with a concrete assertion
- *      mismatch.
- *   4. Restore the line and re-run; suite returns to green.
- *
- * Drag-drop same-parent no-op is NOT covered here — synthetic events are
- * rejected by react-dnd's html5-backend. Regression-proof lives in
- * FileTree.test.tsx's handleMove unit cases.
+ * Drag-drop is deliberately NOT covered: synthetic events are rejected by
+ * react-dnd's html5-backend, so a synthetic version would false-pass. The
+ * same-parent no-op is proven in FileTree.test.tsx's handleMove cases, and the
+ * gesture itself is a manual step.
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import * as fs from "node:fs/promises";

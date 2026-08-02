@@ -1,18 +1,9 @@
 /**
- * vault storage path unification.
+ * Every wait is a deterministic sync point, never a polling timeout.
  *
- * All synchronization uses deterministic points — no polling loops with
- * timeouts.
- *
- * Deterministic sync points:
- *   - Test 1: POST /api/v1/setup returning 200 is the sync point. The DB
- *             is NOT asserted here — it is created on first server boot into
- *             the new vault, not inside the POST /setup handler.
- *   - Test 2: spawnJasper's `waitForReady` (HTTP probe of /api/v1/admin/status)
- *             is the sync point. After it resolves, migrations have run against
- *             <vault>/.jasper/app.db.
- *   - Test 3 (sqlite3-gated): same sync point as Test 2; sqlite3 query is a
- *             one-shot read against the DB created during boot.
+ * Test 1 stops at POST /api/v1/setup returning 200 and does NOT assert the DB:
+ * it is created on first server boot into the new vault, not inside that handler.
+ * Tests 2 and 3 use spawnJasper's waitForReady, after which migrations have run.
  */
 import { test, expect } from "@playwright/test";
 import * as os from "node:os";

@@ -1,26 +1,10 @@
 /**
- * Seamless title <-> body keyboard traversal.
+ * ArrowDown from the title must skip BOTH the hidden frontmatter block and the
+ * separately-hidden first ATX H1. A sentinel typed right after crossing proves it
+ * landed in the body rather than mutating either hidden region.
  *
- * Proves, against a real embedded binary + real keyboard/mouse input:
- *  - ArrowDown from the title lands the caret on the first VISIBLE body
- *    line — skipping BOTH the hidden frontmatter block AND the separately-
- *    hidden first ATX H1 line. A sentinel
- *    character typed immediately after crossing must land in the body only,
- *    never mutate the frontmatter or the H1 line.
- *  - Enter from the title moves focus into the body WITHOUT inserting
- *    anything into the document — the persisted note content is
- *    byte-identical before and after.
- *  - ArrowUp from the body's first visible line returns focus to the title.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary.
- *
- * Real input only (memory verify-dnd-with-real-mouse's broader lesson:
- * synthetic events false-pass): `page.mouse.click` + `page.keyboard.press`
- * drive genuine browser events, matching CM6's own internal dispatch.
- *
- * Discipline: zero fixed sleeps; every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
+ * Enter from the title must move focus without inserting anything — asserted by
+ * comparing persisted content byte-for-byte.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -34,22 +18,13 @@ Body line one.
 Body line two.
 `;
 
-// Regression repro shape: H1 directly after the
-// frontmatter's closing "---" (no blank line — failure mode 2), followed by
-// a BLANK line before the first real paragraph (failure mode 1 — also the
-// exact default new-note scaffold shape, backend/internal/markdown/newnote.go's
-// "---\ntags: []\n---\n\n# {title}\n\n"). The earlier NOTE_CONTENT above has
-// NO blank line after the H1 either, which happened to sidestep BOTH
-// failure modes: (1) a bare `Decoration.replace` (no widget) over just the
-// H1 node's own range left a normal-height, fully clickable/caret-accessible
-// phantom empty row in its place whenever a blank line followed the H1 —
-// indistinguishable from the genuine blank line, so a click "at the top of
-// the body" could land on the WRONG (hidden H1's) line; (2) a
-// `Decoration.line` display:none approach fixed (1) but silently failed to
-// apply when the H1's hidden range started EXACTLY where the frontmatter's
-// own hidden range ended (no blank line between them). Either way, ArrowUp's
-// `curLine.number !== target.number` guard then silently no-opped (root
-// cause; see firstH1HidePlugin.ts).
+// Repro shape: H1 directly after the frontmatter's closing "---" with NO blank
+// line, then a blank line before the first paragraph — which is also the default
+// new-note scaffold. It defeats two earlier attempts: a bare Decoration.replace
+// over the H1's own range left a clickable phantom empty row indistinguishable
+// from the real blank line, and a Decoration.line display:none silently failed to
+// apply when the H1's hidden range began exactly where frontmatter's ended.
+// Either way ArrowUp's line-number guard then no-opped.
 const NOTE_CONTENT_BLANK_AFTER_H1 = `---
 tags: [alpha]
 ---

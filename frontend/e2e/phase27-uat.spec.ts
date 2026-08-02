@@ -1,46 +1,10 @@
 /**
- * Left Sidebar Navigation & Bookmarks (NAV-01..03, BOOK-01..05).
+ * Integration gate for sidebar navigation and bookmarks: proves the full seam
+ * (internal/bookmarks store → API → WS → useBookmarks() → UI) works as one system
+ * against the embedded binary, not a mocked backend.
  *
- * Integration gate for the whole feature: proves the full-stack seam
- * (backend `internal/bookmarks` store -> API -> WS -> `useBookmarks()` ->
- * UI) works as one system, against the embedded Go binary — not a mocked
- * backend. Covers:
- *   NAV-01   sidebar tab row switches Notes/Search/Bookmarks panels
- *   NAV-02   ribbon shows exactly one quick-switcher button (no Files/Search
- *            toggles); it opens the Cmd+O switcher in notes mode
- *   NAV-03   collapse from the header control + reopen from the pane-corner
- *            button + Cmd+Shift+E toggle
- *   BOOK-01  breadcrumb star toggles a note's bookmarked state
- *   BOOK-02  bookmark rows open the note in the active pane
- *   BOOK-03  bookmark folders: create, move-to-folder, collapse
- *   BOOK-04  bookmarks persist across reload AND a full binary restart
- *            (`<vault>/.jasper/bookmarks.json`), and the bookmark keeps
- *            resolving to the same note across a rename AND a folder move
- *            (noteId identity) — the single most important
- *            robustness property this phase ships
- *   BOOK-05  "No bookmarks yet." empty state when the bookmark list is empty
- *
- * Selector contract (see "Selectors landed"):
- *   - Sidebar tab row:      [data-testid="sidebar-tab-row"]; tabs are
- *                           aria-label="Notes"|"Search"|"Bookmarks"
- *   - Sidebar collapse:     aria-label="Collapse sidebar" (header control)
- *   - Pane-corner reopen:   aria-label="Show sidebar"
- *   - Ribbon quick switch:  aria-label="Quick switcher" (Activity ribbon)
- *   - Bookmark star:        [data-testid="bookmark-star"] (EditorPane breadcrumb)
- *   - Bookmarks panel:      [data-testid="bookmarks-panel"]
- *   - Bookmark row:         [data-tree-row-kind="bookmark"]
- *   - Bookmark folder row:  [data-tree-row-kind="bookmark-folder"]
- *   - Empty state:          [data-testid="bookmarks-empty-state"]
- *   - New folder trigger:   aria-label="New bookmark folder"
- *   - New folder input:     aria-label="New bookmark folder name"
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive step uses a
- * web-first assertion (expect / expect.poll), mirroring
- * phase25/26-uat.spec.ts's existing discipline. Run with `--repeat-each=3`
- * to prove non-flake (no-flaky-tests memory).
+ * The property worth the most here is that a bookmark keeps resolving to the same
+ * note across a rename AND a folder move — it is keyed by noteId, not path.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";

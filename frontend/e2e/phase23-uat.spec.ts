@@ -1,21 +1,6 @@
 /**
- * Design Parity Fixes (P1 sidebar/section-header + note-title
- * sweep item).
- *
- * PARITY-02: the right rail (Outline / Linked mentions / Tags) has a 1px
- *   left border separating it from the editor. (The right-rail
- *   section-header uppercase/letter-spacing assertion this file originally
- * also carried was removed — sub-headers no longer exist,
- * per-panel close buttons.)
- * PARITY-03: the note title has -0.012em letter-spacing (sweep item).
- *
- * Harness mirrors phase21-uat.spec.ts: spawnJasper() per describe block
- * against a rebuilt binary, real page interactions, @phase23 tag.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll — never page.waitForTimeout. All three probes assert
- * on the rendered DOM node (never an ancestor that merely declares the
- * property without inheritance reaching descendants).
+ * Every probe asserts on the rendered DOM node, never an ancestor that merely
+ * declares the property without inheritance reaching descendants.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

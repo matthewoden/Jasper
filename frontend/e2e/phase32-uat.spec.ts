@@ -1,40 +1,16 @@
 /**
- * (SET3-01/02/04/06/07): proves every phase-32 success
- * criterion end-to-end against the real embedded binary, one test per
- * criterion. Each test spawns its OWN `spawnJasper()` instance against an
- * ephemeral vault + port (per-test isolation — the "config leniency" test
- * stops and restarts its instance, which would corrupt a shared instance).
+ * One test per Settings success criterion, each spawning its own binary against an
+ * ephemeral vault — the config-leniency test stops and restarts its instance,
+ * which would corrupt a shared one.
  *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary,
- * not the Vite dev server.
- *
- * Discipline: zero fixed-duration waits. Every timing-sensitive assertion
- * uses Playwright's own auto-retrying `expect()`/`toPass()` polling (memory
- * no-flaky-tests) — never a fixed-timeout wait. Drag interactions use real
- * `page.mouse` movement (memory verify-dnd-with-real-mouse), never
- * synthetic events.
- *
- * Two behaviors this spec deliberately does NOT assert, because they are
- * genuinely un-automatable and are routed to plan 32-11's human-verify
- * checkpoint instead (see ResetConfirmDialog.tsx's own header comment and
- *'s "Known Boundary" section):
- *   (a) Nested AlertDialog focus-trap return-to-trigger + Escape-key
- *       scoping when opened inside the already-open Settings Dialog —
- *       jsdom/Playwright's own DOM has no assertable focus-trap semantics
- *       distinct from "an element received focus".
- *   (b) TypePreviewPanel's OWN paragraph restyling live, mid-drag. Per
- *       AppearanceSection.tsx, the panel's fontSize/lineHeight props are
- *       React state set only inside SliderNumberPair's `onCommit` (fires on
- *       pointer-up/key-up) — NOT on every drag step. What genuinely
- *       restyles live, on every drag step, is `document.documentElement`'s
- *       `--editor-font-size`/`--editor-line-height` CSS custom properties
- *       (SliderNumberPair's `handleRangeChange`), which the real CodeMirror
- *       editor behind the dialog reads via `var(--editor-font-size)`
- *       (themeBridge.ts). This spec's "type preview" test therefore proves
- *       the REAL editor's live restyle during the drag — the automatable
- *       half of SET3-07 — and leaves the preview-panel's rendered-typography
- *       "feel" to the human checkpoint.
+ * The type-preview test proves the REAL editor's live restyle during a drag, not
+ * the preview panel's. TypePreviewPanel's fontSize/lineHeight props are React
+ * state set only in SliderNumberPair's onCommit (pointer-up), whereas
+ * documentElement's --editor-font-size/--editor-line-height custom properties
+ * update on every drag step and CodeMirror reads them via themeBridge. The
+ * preview panel's own rendered typography is left to human verification, as is
+ * nested-AlertDialog focus-trap scoping, which has no assertable DOM semantics
+ * distinct from "an element received focus".
  */
 import { realpathSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -123,7 +99,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     // Barrier: wait for a control in the arrived pane to be visible so the
     // second measurement below is taken after the pane has actually
     // rendered, not mid-switch. The template textbox is the only remaining
-    // control in this pane (the folder input was removed in plan 32.1-08) —
+    // control in this pane (the folder input was removed) —
     // its purpose here is purely "the pane has finished switching."
     await expect(dialog.getByRole("textbox", { name: "Daily note template" })).toBeVisible();
 

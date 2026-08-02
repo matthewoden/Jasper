@@ -1,31 +1,13 @@
 /**
- * uat3-flush-race.spec.ts — real-browser reproduction of the
- * flush-on-close save-failure race).
+ * Clicking a tab's close X blurs CM6 first, which starts a save; the close
+ * handler's own flush() then lands while that save is in flight and coalesces
+ * onto it. The bug was that the coalescing branch resolved { ok: true } without
+ * waiting for the real outcome, so a failed save silently dropped the edit.
  *
- * The common close path is: click the tab's close X while a note has
- * unsaved edits -> the click blurs the CodeMirror editor first -> blur
- * starts an in-flight save (EditorPane.performSave) -> the close handler's
- * own flush() call (App.tsx flushAndClose) lands WHILE that save is still
- * in flight and coalesces onto it (EditorPane's trailingWaiters queue).
- * Before the 18.2-01 fix, the coalescing branch optimistically resolved
- * `{ ok: true }` without waiting for the real outcome, so a failed save
- * silently closed the tab and dropped the edit. This spec proves the fix
- * ON the coalescing path specifically: the blur-started PUT is HELD in
- * flight (page.route defers settling it) until after the close click is
- * processed, so flush() is guaranteed to land while that save is still in
- * flight and coalesce onto its real outcome — an immediate abort could
- * settle first and let flush start its own save, bypassing coalescing.
- * Only then is the held PUT aborted; the "Save failed — close
- * anyway?" dialog (FlushConfirmDialog) must surface, and "Close without
- * saving" must leave zero tabs + the blank fallback pane (the
- * flush-reject close path also clears the legacy activeNoteId so the note
- * does not reappear in the tab-less fallback).
- *
- * Discipline: zero fixed sleeps; every timing-sensitive step uses a
- * web-first assertion (expect / expect.poll). Real keyboard input into
- * `.cm-content` — never `fireEvent`/DOM mutation — and a real click on the
- * tab's close X, never a synthetic blur event, so the actual browser
- * focus-then-click ordering drives the race.
+ * The blur-started PUT is HELD via page.route until after the close click is
+ * processed. Without the hold, an immediate abort could settle first and let
+ * flush() start its own save — bypassing the coalescing path this spec exists to
+ * cover.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

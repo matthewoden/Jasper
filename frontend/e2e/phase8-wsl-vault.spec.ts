@@ -1,23 +1,13 @@
 /**
- * vault picker — fake-WSL E2E (Docker harness).
+ * Connects to the compose/wsl-validation container, which boots with
+ * JASPER_OSRELEASE_PATH pointing at a fake file containing "microsoft" so
+ * platform.IsWSL() returns true — closing the gap between mocked coverage and a
+ * real WSL2 user's experience.
  *
- * Connects Playwright to the compose/wsl-validation jasper container, which
- * boots with JASPER_OSRELEASE_PATH pointing at a fake file containing
- * "microsoft" so platform.IsWSL() returns true. Asserts Windows-form
- * breadcrumb labels and the dual-line footer against a real binary — closes
- * the gap between unit-test/mocked coverage and a real WSL2 user's experience.
- *
- * Run via:
- *   make test-wsl-e2e        (docker compose up + this spec + down)
- *
- * Or manually, after the container is up:
- *   JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=6684 \
- *     npx playwright test phase8-wsl-vault.spec.ts
- *
- * Skipped by default — only runs when the harness is explicitly available
- * (env-var gate). CI runs both this and phase8-vault.spec.ts.
+ * Skipped by default behind an env gate. Run with `make test-wsl-e2e`, or against
+ * an already-running container:
+ *   JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=6684 npx playwright test phase8-wsl-vault.spec.ts
  */
-
 import { test, expect } from "@playwright/test";
 
 const HOST_PORT = process.env.JASPER_WSL_HOST_PORT ?? "6684";

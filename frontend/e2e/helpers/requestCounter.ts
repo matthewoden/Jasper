@@ -22,18 +22,12 @@ export interface RequestCounterHandle {
 }
 
 /**
- * Attach a `page.on("request", ...)` listener filtered by HTTP method and a
- * URL pattern. Callers should pass an ANCHORED pattern against the API
- * prefix, e.g. `/\/api\/v1\/mcp\/grants(?:\?|$)/` or `/\/api\/v1\/tags(?:\?|$)/`.
+ * Callers must pass an ANCHORED pattern, e.g. `/\/api\/v1\/tags(?:\?|$)/`.
+ * The `(?:\?|$)` tail is load-bearing: without it `/tags` also matches
+ * `/tags/{name}/notes`, and `/notes/{id}/backlinks` matches a plain `/notes` list.
+ * Anchor even where no same-prefix sibling exists yet — a future one might.
  *
- * The `(?:\?|$)` tail is load-bearing: without it `/tags` would also match
- * `/tags/{name}/notes`, and a keyed endpoint like `/notes/{id}/backlinks`
- * would incorrectly match a plain `/notes` list request. Anchor every
- * pattern passed here, even for endpoints that don't currently have a
- * same-prefix sibling — a future endpoint might introduce one.
- *
- * The listener is attached for the lifetime of the page; there is no
- * detach() because Playwright tears down all listeners with the page.
+ * The listener lives for the page's lifetime; Playwright tears it down.
  */
 export function countRequests(
   page: Page,

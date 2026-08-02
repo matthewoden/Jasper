@@ -1,20 +1,6 @@
 /**
- * Live Preview editor + theme + security headers.
- *
- * Scenarios (each maps to one or more requirements):
- *   1. Editor mount + cursor stability (EDIT-01)
- *   2. Autosave indicator transitions (EDIT-09)
- *   3. Cmd+S explicit save (EDIT-10)
- *   4. Cmd+F opens Find panel (EDIT-11)
- *   5. App always boots with dark theme; accent default is purple (EDIT-12)
- *   6. IME composition does not corrupt the editor (EDIT-14)
- *   7. CSP + Referrer-Policy headers on every response (SECURITY-01, SECURITY-04)
- *   8. External image click-to-load placeholder + fetch (SECURITY-03)
- *   9. Zero non-localhost requests on cold page load (SECURITY-07)
- *
- * Setup mirrors phase4-uat.spec.ts. Each test runs against a freshly
- * spawned Go binary so persistent state (config.json, allow-list) is
- * isolated.
+ * Each test runs against a freshly spawned binary so persistent state
+ * (config.json, the external-image allow-list) is isolated.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

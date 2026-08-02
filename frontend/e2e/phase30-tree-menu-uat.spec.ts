@@ -1,24 +1,3 @@
-/**
- * Right-Rail Tags & Context Menus: tree row context menu
- * (CTX-02, WS-06 tree-split entry point, bulk menu, the universal
- * delete-confirm dialog).
- *
- * Covers:
- *   CTX-02  Note-row menu adds Open in split, Bookmark/Remove bookmark;
- *           folder-row menu adds Show in file manager below New folder.
- *   WS-06   "Open in split" opens the row's note in a new right/row
- *           split.
- *   Bulk    A multi-select bulk variant (Open N tabs / Open in split /
- *           Bookmark N notes / Delete N notes) when selectionCount > 1.
- * The trash-based delete-confirm dialog gates both the
- *           single-target and bulk delete paths.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
- */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { waitForConnected, apiCreateNote } from "./helpers/phase7Helpers";

@@ -1,24 +1,10 @@
 /**
- * multi-tab session sync via WebSocket.
- *
- * Each scenario uses two BrowserContexts so the tabs have independent
- * sessionStorage (and therefore independent session_id UUIDs) — exercising
+ * Each scenario uses two BrowserContexts so the tabs get independent
+ * sessionStorage, and therefore independent session_ids — which is what exercises
  * server-side origin filtering for real.
  *
- * Scenarios:
- *   1. Mutate-in-A-appears-in-B for note + folder + move
- *   2. Stale-write conflict in tab B with Save-anyway + Discard
- *   3. Delete-in-another-session freezes the tab read-only with a "(deleted)"
- *      indicator; editor content stays intact (v1.2)
- *   4. 5-tab disconnect/reconnect spread
- *
- * Tree rows use `data-tree-row-kind="note"` (not `data-testid="tree-row"`).
- *
- * Delete flow: API-level DELETE is used for reliable WS event broadcasting;
- * this exercises the exact broadcast path (Service.Delete → Broadcaster)
- * that Tab B must observe.
- *
- * Spec uses UI-level assertions only — no WS payload shape assertions.
+ * Deletes go through the API rather than the UI to drive the exact
+ * Service.Delete → Broadcaster path tab B must observe.
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

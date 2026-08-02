@@ -1,31 +1,9 @@
 /**
- * Breadcrumb & Left Sidebar.
+ * Result-click must open the note through the tab system and never bypass to
+ * setActiveNote directly — that bypass is the regression this guards.
  *
- * BREAD-01/02: the breadcrumb band (above the page title, y=40/h=26 per the
- * POLISH-09 pin) shows `folder / title` segments (muted,
- *   ellipsized, clickable — SET2-06/07) on the left and a live, right-aligned
- *   word count ("N words" / "1 word") on the right that ticks up as the user
- *   types.
- * LSIDE-01: the active tree row shows the 12% accent-tint background +
- *   title-weight (--color-fg-title) label text; folder rows expose
- *   aria-expanded state (chevron swap) on toggle.
- * LSIDE-02: the sidebar's own "Search" tab (SidebarTabRow
- * — NAV-02 removed the Activity ribbon's Files/Search toggles
- *   entirely; panel selection now lives solely in the sidebar header) opens
- *   the Search panel (input focused). Panel switching (Notes/Search tabs)
- *   and the dedicated "Collapse sidebar" control replace the old
- *   toggle/collapse-on-repeat-click model; panel-memory persists across
- *   reload, Cmd+Shift+F re-points + refocus-selects, two-stage Escape, and
- *   result-click opens/activates the note through the tab system (never
- *   bypasses to setActiveNote directly — the Pitfall-1 guard).
- *
- * Harness mirrors phase18-uat.spec.ts: spawnJasper() per describe block,
- * connection-status-dot wait, @phase19 tags, JASPER_APP_HOME-isolated
- * (spawnJasper's ephemeral dataDir per describe).
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive step uses a web-first
- * assertion (expect / expect.poll) — the debounced search effect (250ms) is
- * waited out via expect.poll on the rendered results, never page.waitForTimeout.
+ * The debounced 250ms search effect is waited out with expect.poll on the
+ * rendered results, never page.waitForTimeout.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -249,7 +227,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
     // HALT (260721-suite Rule 2 — genuine app regression, not a stale
     // selector): SidebarTabRow's selectPanel() only calls
     // setSidebarPanel/setNotesSidebarVisible — it never dispatches the
-    // "focusSearch" phase7 event. The pre-Phase-27 ribbon Search button
+    // "focusSearch" event. The earlier ribbon Search button
     // explicitly dispatched it on click (commit b73b9ed9), and the
     // still-passing Cmd+Shift+F path (appShortcuts.ts's
     // handleAppCmdShiftF) still does today — this assertion

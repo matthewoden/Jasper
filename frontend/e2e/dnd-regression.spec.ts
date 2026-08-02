@@ -1,21 +1,10 @@
 /**
- * DnD regression tests — Bug A (drag past last row) + Bug B (folder→folder move).
+ * react-arborist uses react-dnd's HTML5Backend, which listens for native drag
+ * events. Playwright's page.dragAndDrop() dispatches those through CDP and is
+ * therefore compatible; mouse.down/move/up does NOT fire them, which is why the
+ * earlier unit tests passed while the browser was broken.
  *
- * These tests verify the fix for bugs that PASSED unit tests but FAILED in
- * the browser in commit ec79a91. All assertions must pass against a real
- * running binary using actual CDP-driven drag events.
- *
- * Background on drag events:
- *   react-arborist uses react-dnd's HTML5Backend which listens for native
- *   browser drag events (dragstart, dragenter, dragover, drop, dragend).
- *   Playwright's page.dragAndDrop() uses CDP Input.dispatchDragEvent on
- *   Chromium which fires the full HTML5 event chain, making it compatible
- *   with react-dnd. The older approach of mouse.down/move/up does NOT
- *   fire these events and was why previous unit tests were insufficient.
- *
- * Seed strategy: each test creates a known tree state via the API so we
- * can assert exact positions. The default vault has one scratchpad note;
- * we add more notes and folders via API before testing.
+ * (The opposite holds for TabStrip's pointer-event drag — see phase26-drag-uat.)
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -104,19 +93,9 @@ async function fetchTree(page: Page): Promise<{
 
 test.describe("Bug A regression — drag past last row", () => {
   /**
-   * Scenario: a note at root is dragged onto the empty grey area BELOW
-   * the last row of the sidebar tree. The note should move to root
-   * (which is a no-op for a root note) — but more importantly, the drop
-   * must COMPLETE (onMove fires) without being silently discarded.
-   *
-   * To make the drop observable, we instead drag a note that is INSIDE
-   * a folder onto the empty area below the tree. After the drag:
-   *   - the note must be at the root (moved out of the folder), OR
-   *   - the API reports the note's path as a root-level file
-   *
-   * Because we can observe the result via the API, we know the drop
-   * actually fired. On the broken code, no move happens and the note
-   * stays inside the folder.
+   * Drags a note that is INSIDE a folder onto the empty area below the tree, not
+   * a root note: dropping a root note to root is a no-op, so the API result could
+   * not distinguish "the drop fired" from "the drop was silently discarded".
    */
   test("note dragged below last row moves to root", async ({ page }) => {
     await openApp(page);

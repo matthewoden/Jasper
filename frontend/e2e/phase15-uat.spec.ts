@@ -1,26 +1,7 @@
 /**
- * Tab System (TAB-01/02/05/07/10).
- *
- * Covers the end-to-end tab behaviors that are observable in the browser:
- *   TAB-01/02  open notes from the tree as tabs; re-opening an already-open
- *              note does NOT duplicate, it just activates the existing tab.
- *   TAB-05     middle-click a tab pill closes it.
- *   TAB-07     enough open tabs overflow the strip → the overflow dropdown
- *              appears and selecting a hidden tab activates it.
- *   TAB-10     tabs + active tab persist across a full page reload (per vault);
- *              switching vaults clears the strip for the new vault's session.
- *
- * Manual-only (per 15-VALIDATION.md — NOT asserted here): Ctrl+Tab cycle and
- * CM6 scroll/cursor preservation across hide/show. These need real focus +
- * native key timing that the headless harness cannot deterministically prove.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive step uses a web-first
- * assertion (expect / expect.poll). Selectors:
- *   - Tab strip:      [data-testid="tab-strip"]
- *   - Tab pill:       role="tab" scoped inside the strip
- *   - Overflow btn:   [aria-label="Show all tabs"]
- *   - Tree note row:  [data-tree-row="<id>"][data-tree-row-kind="note"]
- *   - Connection dot: [data-testid="connection-status-dot"][data-status="connected"]
+ * Ctrl+Tab cycling and CM6 scroll/cursor preservation across hide/show are
+ * deliberately NOT asserted — both need real focus and native key timing the
+ * headless harness cannot prove deterministically. They stay manual.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";

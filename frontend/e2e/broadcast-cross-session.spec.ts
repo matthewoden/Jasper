@@ -1,45 +1,11 @@
 /**
- * Two-session broadcast proof: a mutation made in one browser
- * session (tab/context) must update another session's file tree live,
- * with no manual refresh/reload on the receiving side.
+ * Proves a mutation in one browser session updates a SECOND session's file tree
+ * live. The Go broadcast contract already has unit coverage; what was missing is
+ * the browser-to-browser half.
  *
- * Background: an audit found that (1) daily-note creation bypassed
- * notes.Service and never broadcast `note:created`, and (2) /files
- * create/delete/move + attachment upload never broadcast `file:created` /
- * `file:deleted` / `file:moved`. Both were fixed to route through the
- * service/broadcaster, and useSessionSync.ts (frontend) was updated to
- * call refreshTree() on those events. The Go/handler broadcast contract
- * already has unit/integration coverage — this spec is the missing E2E
- * proof that a *second* browser session's tree actually updates.
- *
- * Two scenarios:
- *   1. Daily note (note:created): session A clicks the real "Today" toolbar
- *      button (SidebarToolbar); session B must see the new "daily" folder
- *      appear, and the new dated note inside it, without reloading.
- *   2. Attachment upload (file:created): session A uploads an attachment to
- *      a note via the attachments API (same trigger phase7-uat.spec.ts S8
- *      uses for the actual upload step — multipart POST from the page's
- *      request context); session B must see the new "attachments" folder
- *      and the uploaded file appear, without reloading.
- *
- * Both assertions poll with Playwright web-first `expect(...).toBeVisible()`
- * / `toHaveCount()` — no fixed sleeps — per the project's zero-flake policy.
- *
- * Selectors mirror existing conventions:
- *   - Tree rows: `[data-tree-row-kind="note"|"folder"|"file"]` (dnd-regression.spec.ts,
- *     phase6-uat.spec.ts S13 cross-tab pattern)
- *   - Today button: `getByRole("button", { name: "Open today's daily note" })`
- *     (phase7-uat.spec.ts S3)
- *   - Connection dot: `getByTestId("connection-status-dot")` (all specs)
- *
- * Daily note filename/title: backend `notes.GetOrCreateDailyNote` (daily.go)
- * uses relPath `daily/<date>.md` and title `<date>` where date is
- * `YYYY-MM-DD` — the LOCAL calendar date computed by the frontend's
- * useDailyNote.ts (getFullYear/getMonth/getDate), NOT a UTC date. This test
- * derives its expected date the same way, via the shared local-calendar
- * helper (see `helpers/localDate.ts` for why `toISOString()` is wrong here),
- * so the tree row's display label (title, per TreeRow.tsx's `displayLabel`)
- * equals the test's computed `todayStr` exactly.
+ * The expected daily-note date is derived through helpers/localDate.ts, not
+ * toISOString() — the backend names the file from the frontend's LOCAL calendar
+ * date, so a UTC date fails for several hours each evening.
  */
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

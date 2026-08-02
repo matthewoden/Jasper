@@ -1,27 +1,11 @@
 /**
- * openNoteFromTree.ts — shared deterministic tree-row-open helper.
+ * Shared deterministic tree-row-open helper.
  *
- * Extracted from the ~15 duplicated inline copies across the phase15/18-28
- * UAT specs (closes folded todo
- * 2026-07-18-phase26-e2e-opennotefromtree-tree-row-flake.md).
- *
- * The prior inline version only waited on `toBeVisible` before clicking:
- *   async function openNoteFromTree(page, id) {
- *     const row = noteRow(page, id);
- *     await expect(row).toBeVisible({ timeout: 10_000 });
- *     await row.click();
- *   }
- * `toBeVisible` proves the row is painted, but does not prove
- * react-arborist has finished (re-)hydrating the row's click binding after
- * a virtualized re-render triggered by the just-created note's WS-driven
- * tree update — roughly 1 run in ~63 the click landed on a row that was
- * present-but-not-yet-interactive and the note never opened.
- *
- * Fixed here with a bounded, deterministic retry: after each click
- * attempt, wait for the row's own `data-active="true"` attribute (set by
- * TreeRow.tsx whenever `activeNoteId` matches the row's note id) to
- * confirm the click actually registered before returning. No
- * `page.waitForTimeout`/sleep is used as a primary wait.
+ * `toBeVisible` proves the row is painted but NOT that react-arborist has
+ * rehydrated its click binding after a virtualized re-render — roughly 1 run in
+ * 63, the click landed on a present-but-not-interactive row and the note never
+ * opened. So each click attempt is followed by a wait on the row's own
+ * data-active="true" before returning.
  */
 import { expect, type Page, type Locator } from "@playwright/test";
 

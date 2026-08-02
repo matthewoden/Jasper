@@ -1,27 +1,17 @@
 /**
- * Spawn ./bin/jasper serve against an ephemeral data dir + free port.
- * Polls GET /api/v1/admin/status until 200 (mirrors smoke_test.go's
- * readiness pattern). Returns { proc, port, dataDir, baseURL, kill, restart }.
+ * Spawn ./bin/jasper serve against an ephemeral data dir + free port, polling
+ * GET /api/v1/admin/status until 200.
  *
- * The caller MUST invoke kill() in afterEach/afterAll — leaked processes
- * exhaust the OS's launchctl/systemd handle table and cause spurious
- * test flakes on the next run.
+ * Run `make build` first, NOT `npm run build` — the binary serves an EMBEDDED
+ * copy of the frontend, so a Vite-only build leaves the page stale.
  *
- * restart() kills the running binary and spawns a new one against the SAME
- * data directory on the SAME port. This allows browser tabs to reconnect
- * autonomously via their WS onclose → reconnect timer (useSessionSync
- * connects to window.location.host, so the port must match).
+ * The caller MUST invoke kill() in afterEach/afterAll — leaked processes exhaust
+ * the OS handle table and cause spurious flakes on the next run.
  *
- * Same-port restart rationale vs. new-port: useSessionSync builds the WS URL
- * from window.location.host at mount time. A new port would require navigating
- * all tabs to the new baseURL, which defeats the purpose of testing autonomous
- * reconnection. We therefore reuse the same port.
- *
- * TIME_WAIT risk: on macOS and Linux, the OS holds a port in TIME_WAIT for
- * ~4× MSL (up to 60s on some systems) after graceful close. In practice the
- * binary binds SO_REUSEADDR so immediate rebind works. If flakiness is
- * observed, add a retry loop in the spawn path — see the `waitForReady` loop
- * which already has a 15s window.
+ * restart() reuses the SAME port deliberately: useSessionSync builds its WS URL
+ * from window.location.host at mount, so a new port would force navigating every
+ * tab and defeat the point of testing autonomous reconnection. The binary binds
+ * SO_REUSEADDR, so TIME_WAIT does not block the immediate rebind.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";

@@ -1,24 +1,9 @@
 /**
- * Duplicate-name regression tests — Bug 5 (file/folder same-name coexistence).
+ * A note "untitled.md" and a folder "untitled" must coexist in the same parent.
  *
- * These tests verify that a note "untitled.md" and a folder "untitled" can
- * coexist in the same parent without any "already exists" error, and that the
- * new-folder / new-note create flows work correctly when a same-named but
- * different-kind sibling already exists.
- *
- * Root cause (identified 2026-05-08):
- *   handleCommitRename in FileTree.tsx calls moveFolder(path, path) or
- *   moveNote(id, path) when the user presses Enter on the placeholder name
- *   without changing it (isNew=true path in RenameInput). The backend's
- *   MoveDir rejects a same-path move with ErrCycle (400) and MoveFile
- *   rejects it with ErrCaseCollision (409). Both produce an error toast
- *   even though the file is already on disk with the correct name.
- *
- * These tests MUST be run against the real binary (not jsdom) because
- * the bug involves a network round-trip to the backend that vitest mocks
- * away. Lesson learned from DnD regression (commit ec79a91).
- *
- * Test pattern: write RED first (against current code), then fix until GREEN.
+ * Must run against the real binary: the bug is a network round-trip (MoveDir
+ * rejects a same-path move with ErrCycle, MoveFile with ErrCaseCollision) that
+ * vitest mocks away entirely.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

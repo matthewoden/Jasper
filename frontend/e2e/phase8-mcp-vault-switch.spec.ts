@@ -1,31 +1,15 @@
 /**
- * Scripted E2E for the "MCP write in-flight during vault switch" race.
+ * The race between an MCP create_note and a vault switch is ~50ms — below
+ * hand-testing threshold. JASPER_MCP_TEST_DELAY=1500 (env-gated hook in
+ * backend/internal/mcp/tools.go) sleeps before the atomic write to make it
+ * deterministic.
  *
- * The race window between an MCP create_note and a user clicking "switch
- * vault" is ~50ms — below reliable hand-testing threshold. Deterministic
- * timing is achieved via JASPER_MCP_TEST_DELAY=1500 (env-gated hook in
- * backend/internal/mcp/tools.go) which sleeps 1.5s before the atomic
- * write.
+ * What must hold: the in-flight note is fully written or absent, never a partial
+ * scaffold-only file, and the MCP listener ends up bound to the new vault's grants.
  *
- * Strategy:
- *   1. Two vaults A and B bootstrapped via /vault/create (MCP listener is
- *      always on; no toggle to set). POST /api/v1/mcp/grants seeds
- *      A:notes/projects/ and B:notes/research/.
- *   2. Spawn an MCP create_note against A's projects/race.md — DO NOT await;
- *      wait ~200ms (write is mid-throttle), then switch vault via the UI.
- *   3. After both settle, assert:
- *        (a) A's notes/projects/race.md is either fully written OR absent —
- *            never a partial scaffold-only file.
- *        (b) MCP listener is bound to B's grants — list_grants returns
- *            B's notes/research/; create_note against notes/projects/ returns
- *            no_grant (A's grants are gone).
- *        (c) StatusBar reflects vault B.
- *
- * The cancellation arm (JASPER_MCP_TEST_DELAY > drain cap) is covered by
- * TestCreateNoteRespectsTestDelay unit test. Not duplicated here — the cancel
- * path would require a flaky scripted scenario with little marginal coverage.
+ * The cancellation arm is covered by TestCreateNoteRespectsTestDelay and is not
+ * duplicated here — a scripted version would be flaky for little marginal cover.
  */
-
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";

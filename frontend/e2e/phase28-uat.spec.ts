@@ -1,34 +1,3 @@
-/**
- * Quick Switcher Reconciliation (QUICK-01..04).
- *
- * Closes the Wave 0 E2E gap identified in 28-VALIDATION.md: proves the
- * restyled Cmd+O quick switcher end-to-end against the embedded binary.
- *
- *   QUICK-01  Restyle smoke: `#quick-switcher-listbox` renders; note rows
- * carry a leading "Note" kind badge; a matched query highlights
- *             characters via inline `<span>` nodes; the input
- *             placeholder reads "Find or create a note…"; the always-on
- *             footer legend shows "open"/"create"/"split".
- *   QUICK-02  Shift+Enter: a novel query creates a note by
- *             that name and opens it; an existing title (different case)
- *             opens the existing note instead of creating a duplicate; the
- *             synthetic "Create "{query}"" row (`#qs-option-create`) only
- *             appears for a novel, non-empty query.
- *   QUICK-03  Cmd/Ctrl+Shift+Enter: opens the selected note in a
- *             NEW split — leaf-pane count increases by 1, and the new pane
- *             becomes active with that note visible.
- *   QUICK-04  Cmd+K is retired (mode="all" removed outright) — it must
- *             open nothing at all.
- *
- * Harness mirrors phase22/26/27-uat.spec.ts: spawnJasper() per describe
- * block against a rebuilt binary, real page interactions, @phase28 tag.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
- */
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";

@@ -1,18 +1,3 @@
-/**
- * Soft-Delete to .trash/
- *
- * Covers TRASH-01 (note delete → gone from UI + present in .trash/ on disk)
- * and TRASH-02 (folder delete → folder subtree present in .trash/ on disk).
- *
- * Selectors:
- *   - Note rows:   [data-tree-row-kind="note"]
- *   - Folder rows: [data-tree-row-kind="folder"]
- *   - Kebab menu:  [data-tree-row-kebab]
- *   - Connection:  [data-testid="connection-status-dot"][data-status="connected"]
- *
- * Harness: spawnJasper / kill; waitForConnected polls connection-status-dot.
- * No fixed sleeps — all waits are assertion-based (expect / expect.poll).
- */
 import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";

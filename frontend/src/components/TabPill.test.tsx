@@ -1,12 +1,6 @@
 /**
- * TabPill tests:
- *   TAB-04 — close (X) button is always present and never display:none / visibility:hidden,
- *            even when the title is long and truncated.
- *   TAB-05 — middle-click on the pill closes; X click closes without selecting (stopPropagation).
- *   TAB-12 — isDeleted renders "(deleted)" in destructive color.
- *
- * Native DnD props (draggable, onDragStart, etc.) are gone — reorder moved to
- * pointer-event handlers on the TabStrip wrapper (round 2).
+ * The close (X) must never be display:none or visibility:hidden, even when a long
+ * title truncates — that was the regression.
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";

@@ -1,23 +1,9 @@
 /**
- * Sidebar & Editor Shell Polish.
+ * Tree-fetch coalescing is counted with `page.on("request", ...)` from the browser
+ * side, so no log-file access is needed.
  *
- * Scenarios:
- * save on blur / visibilitychange / beforeunload
- * live H1 → sidebar label sync
- * resizable sidebar with localStorage persistence
- * full-bleed editor + click-anywhere-to-type
- * reading-width line wrap (max-width 72ch)
- * create-at-current-level (toolbar + right-click)
- * multi-select + batch delete + multi-drag
- * tree-fetch coalescing (≤2 GET /tree per CRUD session)
- * heading + body share left edge off-cursor
- * bullet column stable across cursor on/off
- *
- * uses `page.on("request", ...)` to count `/api/v1/tree` GETs from
- * the browser side (no log file access needed).
- *
- * The `beforeunload` keepalive path cannot be verified end-to-end via
- * Playwright; it is covered at the unit level. See `test.fixme()` blocks.
+ * The beforeunload keepalive path cannot be driven through Playwright; it is
+ * covered at unit level and left as test.fixme() here.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

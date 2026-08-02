@@ -1,18 +1,13 @@
 /**
- * Security hardening — happy-path confirmation.
+ * Deliberately makes NO rejection assertions. A browser owns the Host and Origin
+ * headers and treats both as forbidden to page script, so a rejection test driven
+ * from page context cannot forge a rebound Host or a cross-origin Origin — the
+ * browser overwrites them with legitimate loopback values, the request passes, and
+ * the test looks like it proved something while proving nothing. Every rejection
+ * assertion lives in Go httptest, where the headers are settable.
  *
- * This suite deliberately makes NO rejection assertions. A browser owns the
- * Host and Origin headers and treats both as forbidden to page script, so a
- * rejection test driven from page context cannot forge a rebound Host or a
- * cross-origin Origin — the browser overwrites them with legitimate loopback
- * values, the request passes, and the test looks like it proved something
- * while proving nothing. Every rejection assertion lives in Go httptest
- * (backend/internal/{app,wshub,mcp,api}) where the headers are settable.
- *
- * What this suite is for is the other half: confirming the app still works
- * once the Host allowlist, the raw-file CSP, and the daily-note verb split
- * are in place. Legit-origin mutations succeed, the WebSocket connects, the
- * SPA loads, and images still render inline.
+ * This suite covers the other half: the app still works with the Host allowlist,
+ * the raw-file CSP, and the daily-note verb split in place.
  */
 import { expect, test } from "@playwright/test";
 

@@ -1,72 +1,15 @@
 /**
- * Sort Orders & Search History (SORT-01..03, HIST-01..02).
+ * Sort orders and search history against the real binary.
  *
- * The phase acceptance gate: aggregates the per-plan unit-test guarantees
- * (29-05 NotesSortMenu/sortTree, 29-06 backend `sort` param + workspace.json,
- * 29-07 SearchHistoryHints/searchHistory) into user-observable, real-binary
- * E2E flows.
- *
- *   SORT-01/03  Notes-panel sort menu: folders always
- *               precede notes and stay A→Z regardless of the active order;
- * notes reorder per the six sort options; the chosen order
- *               persists per vault across reload (workspace.json GET/PUT,
- * removable per row).
- *   SORT-02     Search-result sort: switching the sidebar
- *               Search panel's sort dropdown between Relevance/Modified/
- *               Created re-orders results via the real backend `sort`
- *               query param — SQLite orders before the LIMIT, not a
- *               client-side reshuffle.
- *   HIST-01/02  Recent-searches hints dropdown: committed
- *               searches (Enter) build an MRU, deduped, vault-namespaced
- *               localStorage history; the hints layer is keyboard-navigable
- *               (ArrowUp/Down + Enter re-runs a hint, which re-dedupes it to
- *               the top); history survives a full page reload.
- *
- * The backspace-at-frontmatter-top fix has its own spec
- * (phase29-frontmatter-backspace.spec.ts) — not duplicated here.
- *
- * Selector contract (current, post-Phase-27 sidebar redesign):
- *   - Sidebar tab row:  [data-testid="sidebar-tab-row"]; tabs are
- *                       aria-label="Notes"|"Search"|"Bookmarks" (NOT the
- *                       stale Activity-ribbon Files/Search toggle pattern
- *                       phase19-uat.spec.ts used pre-Phase-27).
- *   - Notes nav:        nav[aria-label="Notes navigation"] — wraps ALL
- *                       three sidebar panel variants (notes/search/
- *                       bookmarks), so tree rows and search-result rows can
- *                       both be scoped through it.
- *   - Notes sort:       button[aria-label="Sort notes"] (NotesSortMenu)
- *   - Search sort:      button[aria-label="Sort search results"]
- *                       (SearchSortDropdown)
- *   - Search input:     placeholder "Search notes… (tag:name to filter)"
- *   - Recent searches:  role="listbox" aria-label="Recent searches"
- *                       (SearchHistoryHints), rows role="option"
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — this spec runs against the EMBEDDED binary.
- *
- * Real page.mouse (via .click()) / page.keyboard input only — no synthetic
- * DOM events. `.fill()` on plain <input> elements is the established
- * convention for this codebase's non-CM6 text inputs (see phase28-uat's
- * quick-switcher combobox); ArrowDown/Enter/Tab keyboard routing uses real
- * page.keyboard.press so the component's actual onKeyDown handlers fire.
- *
- * Timestamp control differs per test, deliberately avoiding two discovered
- * pitfalls (see inline comments at each site):
- *   - SORT-01/03 (tree "Modified"): seedNoteWithMtime (fs.utimes) + a
- *     `mode:"full"` admin/reindex is safe here because the FileTree's
- *     "updated_at" wire field is sourced from mtime_unix (store.go), which
- *     full-reindex preserves per-file.
- *   - SORT-02 (search "Modified"/"Created"): NEVER uses admin/reindex or
- *     fs.utimes. A `mode:"full"` reindex mints a fresh note id AND
- *     homogenizes the SQL `updated_at` column (searchOrderClause's
- *     "modified" branch) to the reindex instant for every row; separately,
- *     fs.utimes-ing an mtime to before the file's real birthtime gets
- *     silently clamped by APFS, dragging birthtime down with it. Instead,
- *     real create-then-edit timing (see sleepMs) drives genuinely distinct,
- *     unfaked birthtime/created_at and mtime/updated_at values.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
+ * Timestamp control differs per test, avoiding two discovered pitfalls:
+ *   - Tree "Modified" may use seedNoteWithMtime (fs.utimes) plus a full
+ *     admin/reindex, because the tree's updated_at is sourced from mtime_unix,
+ *     which a full reindex preserves per file.
+ *   - Search "Modified"/"Created" must NOT. A full reindex mints fresh note ids
+ *     and homogenizes the SQL updated_at column to the reindex instant for every
+ *     row; separately, fs.utimes-ing an mtime to before the file's real birthtime
+ *     is silently clamped by APFS, dragging birthtime down with it. Real
+ *     create-then-edit timing drives genuinely distinct values instead.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
@@ -152,24 +95,16 @@ async function triggerFullReindex(page: Page, baseURL: string): Promise<void> {
 }
 
 /**
- * Root-level tree row order, scoped to the Notes navigation nav. Sorted by
- * visual top position (NOT raw DOM order) so the assertion is robust to
- * react-arborist's internal virtualization node-recycling — a real
- * user only ever perceives the visual order. Only folders and root notes are
- * expected here: collapsed folders never render their children in the DOM,
- * so no explicit level filter is needed.
+ * Root-level tree row order, sorted by visual top position rather than raw DOM
+ * order — react-arborist recycles virtualized nodes, and a user only perceives the
+ * visual order.
  *
- * Keyed on the row's rendered LABEL text (data-tree-row-label), not its
- * data-tree-row id: a `mode: "full"` admin/reindex (used below to pick up
- * seeded mtimes) mints a fresh UUID for every note lacking a prior known ID
- * (index/indexer.go's chooseID — existingID is always uuid.Nil in the full-
- * reindex walk), so a note's id captured from its POST /notes response is
- * NOT stable across a full reindex. The filename-derived label is.
+ * Keyed on the rendered LABEL, not the row id: a `mode: "full"` admin/reindex mints
+ * a fresh UUID for every note lacking a prior known ID, so an id captured from a
+ * POST /notes response does not survive one. The filename-derived label does.
  *
- * Excludes the "scratchpad" note that every fresh spawnJasper() vault ships
- * with by default — it is not part of this test's seeded fixture set and
- * its real (spawn-time) mtime/birthtime would otherwise land it
- * unpredictably relative to the seeded T-based timestamps below.
+ * Excludes the "scratchpad" note every fresh vault ships with — its real spawn-time
+ * timestamps would land unpredictably among the seeded ones.
  */
 async function getRootRowOrder(page: Page): Promise<Array<{ kind: string; label: string }>> {
   return page.evaluate(() => {

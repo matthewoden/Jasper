@@ -1,30 +1,7 @@
 /**
- * Drag-to-Split-Pane (WS-01/WS-02).
- *
- * Every drag in this file is driven with real `page.mouse.move/down/up`
- * (multiple intermediate moves so pointermove fires and crosses TabStrip's
- * 5px DRAG_THRESHOLD) against a freshly built binary — never synthetic
- * DragEvents, which false-pass in this codebase (verify-dnd-with-real-mouse
- * memory). Zero fixed sleeps; every timing-sensitive step uses a web-first
- * assertion (expect / expect.poll), matching phase15/phase25-uat.spec.ts's
- * discipline.
- *
- * Scenarios (Task 3 acceptance criteria):
- *   1. Drag-to-split RIGHT (WS-01): overlay right half → release →
- *      leaf-pane count 1→2, dragged tab lands in the new right pane and is
- *      removed from the source.
- *   2. Drag-to-split BOTTOM: same but a col split (top/bottom).
- *   3. Drag-to-move CENTER (WS-02): overlay full-pane → release → NO
- *      new pane, tab relocates into the target pane's strip.
- *   4. Last-tab-out collapse: dragging a pane's only tab elsewhere
- *      collapses the now-empty source pane (leaf-pane count 2→1).
- *   5. Ghost floats across panes: the reused TabStrip ghost pill is
- *      visible mid-drag while the cursor is over a DIFFERENT pane's body.
- *
- * Selector contract (new in this plan, alongside the contract):
- *   - Drop-region overlay:   [data-testid="drop-overlay"][data-drop-region="…"]
- *   - Cross-pane drag ghost: [data-testid="tab-drag-ghost"] (reused)
- *   - Droppane hit-test root: [data-droppane]
+ * Every drag is real page.mouse.move/down/up with enough intermediate moves for
+ * pointermove to fire and cross TabStrip's 5px DRAG_THRESHOLD, against a freshly
+ * built binary — synthetic DragEvents false-pass in this codebase.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";

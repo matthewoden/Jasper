@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 /**
- * capture-parity-shots.ts — PARITY-03.
+ * Ad hoc capture script, never a CI gate: walks every surface in the re-verify
+ * checklist and screenshots each to `.parity-shots/` for the owner's side-by-side
+ * review. These images are for human review only — this is not a pixel-diff
+ * pipeline.
  *
- * Ad hoc (non-CI-gating) Playwright capture script. Reuses spawnJasper()
- * (never hand-rolls a new spawn path) against a freshly `make build`-rebuilt
- * binary and walks every surface in the re-verify checklist
- * screenshotting each to `.parity-shots/` with a stable center-column-first
- * ordering prefix for the owner's side-by-side review against the
- * canonical Vault.dc.html mock.
- *
- * This does NOT build a pixel-diff/visual-regression pipeline — these
- * images are for human review only, never an automated pass/fail gate.
- *
- * NOTE: a stale bin/jasper silently screenshots the
- * pre-fix UI. Always run `make build` immediately before this script.
+ * A stale bin/jasper silently screenshots the pre-fix UI. Always `make build`
+ * immediately before.
  *
  * Usage: cd frontend && make build && npx tsx e2e/scripts/capture-parity-shots.ts
  */

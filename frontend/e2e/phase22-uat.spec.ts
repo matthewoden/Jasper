@@ -1,39 +1,12 @@
 /**
- * Zen Mode.
+ * Zen mode.
  *
- * PALETTE-01/02's old shortcut-K unified-palette mode this suite originally
- * also covered was retired outright: the merged-results
- * mode no longer exists and its shortcut is unbound. That coverage was
- * removed here — `phase28-uat.spec.ts` is now the
- * switcher/palette E2E gate, and the durable Esc-closes/arrow-nav/shortcut-P-
- * scoping assertions this block also exercised were already independently
- * covered by `phase7-uat.spec.ts` (shortcut-O ArrowDown/Enter/Escape) —
- * nothing load-bearing was dropped.
- *
- * ZEN-01: Cmd+. / the StatusBar button toggle zen mode, hiding the activity
- *   ribbon, both sidebars, the tab bar, and the breadcrumb band while the
- *   StatusBar stays visible; the reading column reflows 760px -> 700px; the
- *   palette remains fully operational while zen is active; toggling off
- *   restores the exact prior layout.
- *
- * Occlusion note: the ribbon / left sidebar / right sidebar
- * stay MOUNTED in zen (their grid track collapses to 0px, but each component
- * keeps its own explicit CSS width) rather than unmounting — confirmed by a
- * pre-flight diagnostic showing `document.elementFromPoint` at each
- * component's visual center resolves to the editor's `.cm-scroller` (i.e.
- * the editor pane visually covers them; a real user cannot see or click
- * them). Plain Playwright `toBeVisible()` does not detect this occlusion
- * (it only checks display/visibility/opacity/size, not paint order), so
- * this suite verifies "not visible to the user" via a same-point
- * `elementFromPoint` occlusion check for those three elements. The tab bar
- * and breadcrumb genuinely unmount in zen (`{!zen && (...)}` guards), so
- * plain visibility/count assertions are used for those two.
- *
- * Harness mirrors phase21-uat.spec.ts: spawnJasper() per describe block
- * against a rebuilt binary, real page interactions, @phase22 tag.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll.
+ * The ribbon and both sidebars stay MOUNTED in zen — their grid track collapses to
+ * 0px but each component keeps its own explicit CSS width — so the editor pane
+ * merely covers them. Playwright's toBeVisible() checks display/visibility/opacity/
+ * size, not paint order, and therefore does NOT catch this. Those three are
+ * asserted with a same-point document.elementFromPoint occlusion check instead.
+ * The tab bar and breadcrumb genuinely unmount, so plain assertions suffice there.
  */
 import * as fs from "fs";
 import * as path from "path";

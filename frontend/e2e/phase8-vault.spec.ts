@@ -1,21 +1,10 @@
 /**
- * vault picker E2E spec.
- *
- * Scenarios:
- *   1. No-vault boot shows picker with create+open tabs (default tab = create)
- *   2. Create new vault → app.json registers entry → SPA reloads to main shell
- *   3. Path validation refuses non-ASCII paths inline
- *   4. Missing-folder recent entry renders V11 affordances (Folder not found +
- *      Reconnect + Remove)
- *
- * Each test uses a fresh JASPER_APP_HOME so vault state is isolated.
- * JASPER_APP_HOME stores app.json (current_vault + recent_vaults). Without a
+ * Each test uses a fresh JASPER_APP_HOME so vault state is isolated. Without a
  * pre-existing vault, GET /vault/current returns null and VaultPicker mounts.
  *
- * Uses a local spawnVaultJasper (not the shared spawnJasper helper) because
- * this spec uses JASPER_APP_HOME, not --data-dir.
+ * Uses a local spawnVaultJasper rather than the shared helper because this spec
+ * drives JASPER_APP_HOME, not --data-dir.
  */
-
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";

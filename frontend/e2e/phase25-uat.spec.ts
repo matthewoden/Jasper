@@ -1,47 +1,12 @@
 /**
- * Split-Pane Foundation (WS-03/04/07/08/10).
+ * Split-pane behaviors observable in the browser.
  *
- * Runs against the integrated split-pane UI (PaneTree /
- * LeafPane / usePaneStore / sharedDocRegistry landed in Waves 1-6). Covers
- * the end-to-end pane behaviors observable in the browser, matching the 4
- * ROADMAP.md success criteria for this phase:
- *   WS-03        each pane has its own independent tab strip, active tab, and
- *                breadcrumb — opening/switching a tab in one pane never
- *                affects another pane's tab strip.
- *   WS-04        closing the last tab in a leaf collapses that leaf; the
- *                sibling subtree fills the freed space (rebalance). The
- *                final remaining pane never collapses.
- *   WS-07/WS-08  active-pane tracking (keyboard/palette target the active
- *                pane; singletons like RightRail/StatusBar retarget on
- *                pane-focus change) AND the full layout — tree, active pane,
- *                ratios — persists across a full page reload, per vault.
- *   WS-10        the same note open in two panes shares one live document:
- *                edits in one pane are mirrored into the other, and there is
- *                exactly one save-state machine for the note (not one per
- *                pane).
- *
- * Selector contract (stable across Wave 0 → implementation):
- *   - Leaf pane:        [data-testid="leaf-pane"]
- *   - Per-leaf tab strip (scoped WITHIN a leaf): [data-testid="tab-strip"]
- *   - Active-pane marker: [data-active-pane="true"]
- *   - Split divider:    [data-testid="pane-divider"]
- *
- * Split/focus-cycle actions are invoked through the command palette (Cmd+P,
- * mode="commands") rather than their raw keyboard shortcuts (Cmd+\ / Cmd+Alt+
- * Arrow, appShortcuts.ts). appShortcuts.ts's handleAppSplitRight/
- * handleAppSplitDown/handleAppFocusNextPane/handleAppFocusPrevPane share an
- * `isTypingTarget()` do-not-hijack-typing guard that no-ops while a
- * contenteditable (CM6's `.cm-content`) has focus — which it does immediately
- * after opening any note. Cmd+P is NOT guarded that way (handleAppCmdP fires
- * unconditionally), so routing through the palette is the deterministic path
- * regardless of what currently has focus; App.tsx's commandActions.onSplitRight
- * etc. dispatch into the exact same usePaneStore actions the raw shortcuts do.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive step uses a web-first
- * assertion (expect / expect.poll), mirroring `phase15-uat.spec.ts`'s
- * existing discipline. The reload + shared-buffer scenarios are timing
- * sensitive (debounced persistence write, live CM6 mirroring) — run them
- * with `--repeat-each=3` to prove non-flake (no-flaky-tests memory).
+ * Split and focus-cycle actions are invoked through the command palette rather
+ * than their raw shortcuts. appShortcuts.ts's handleAppSplitRight and friends
+ * share an isTypingTarget() guard that no-ops while a contenteditable has focus —
+ * which CM6 does immediately after opening any note. Cmd+P is not guarded, and
+ * App.tsx's commandActions dispatch into the same usePaneStore actions, so the
+ * palette is the deterministic path regardless of what holds focus.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import * as fs from "node:fs";
@@ -223,18 +188,13 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
 
 // ─── WS-03 — each pane renders its OWN metadata bar, even when inactive ──
 //
-// Locks the round-4 fix: the breadcrumb row is sourced from each pane's own
-// note controller (getNotePath, seeded by that pane's getNote load) rather
-// than the per-pane useFileTree() fetch, so it appears atomically with the
-// note content and is present regardless of which pane is active. Before the
-// fix, an inactive/freshly-split pane could render its note body while its
-// metadata bar was still absent (the reported bug).
+// The breadcrumb row is sourced from each pane's own note controller rather than
+// its useFileTree() fetch, so it appears atomically with the note content
+// regardless of which pane is active. Before the fix a freshly-split pane could
+// render its body while its metadata bar was still absent.
 //
-// Word count moved OUT of the per-pane breadcrumb bar
-// entirely and into the single, shared bottom StatusBar — it tracks the
-// FOCUSED pane's note (activeNoteId), not a per-pane value, so this test now
-// asserts the status bar's count follows whichever pane is active/focused
-// instead of each leaf rendering its own word-count element.
+// Word count lives in the shared StatusBar and tracks the FOCUSED pane, so it is
+// asserted there rather than per-leaf.
 
 test.describe("@phase25 WS-03: per-pane metadata bar", () => {
   let jasper: JasperHandle;
@@ -560,20 +520,15 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
 
 // ─── Unrelated sibling survives a split elsewhere ───────────────────────────
 //
-// Locks the fix: PaneTree's split-node wrapper is no longer
-// keyed by a content-derived string that flips whenever a child transitions
-// leaf<->split, which previously forced React to unmount+remount the ENTIRE
-// subtree (destroying every descendant pane's CM6 view/cursor/undo) on every
-// split/collapse — including panes completely uninvolved in the operation.
+// PaneTree's split-node wrapper must not be keyed by anything that flips when a
+// child transitions leaf<->split, or React unmounts the ENTIRE subtree and
+// destroys every descendant's CM6 view, cursor and undo — including panes
+// uninvolved in the operation.
 //
-// Proxy for "cursor survives": type distinctive text, place the cursor via
-// keyboard (not a mouse click, so no coordinate precision needed) at a KNOWN
-// position, trigger an UNRELATED split elsewhere, reactivate the pane via its
-// TAB PILL (not its editor body, so reactivating never itself repositions the
-// cursor), then type one more character. If the cursor survived, the new
-// character lands exactly where it was left; if the pane was torn down and
-// recreated, CM6's fresh EditorView resets the cursor to start-of-doc and the
-// character lands at the front instead.
+// Cursor survival is proved by proxy: place the cursor by keyboard (no coordinate
+// precision needed), split elsewhere, reactivate via the TAB PILL (clicking the
+// editor body would itself reposition the cursor), then type one character. A
+// recreated EditorView resets to start-of-doc, so the character lands at the front.
 
 test.describe("@phase25 uninvolved pane survives a split elsewhere", () => {
   let jasper: JasperHandle;

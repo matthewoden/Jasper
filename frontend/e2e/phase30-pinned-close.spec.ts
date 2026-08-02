@@ -1,18 +1,9 @@
 /**
- * gap closure (30-11) — VERIFICATION gap 2 (CTX-01):
- * pinned tabs must refuse to close via EVERY close path, not just the x
- * button. This spec proves the two remaining paths (Alt+W, middle-click)
- * now refuse a pinned tab exactly like the x-path/pin-glyph does, and that
- * unpinned tabs still close normally on both paths.
+ * Pinned tabs must refuse to close via EVERY path, not just the x button — this
+ * covers the remaining two, Alt+W and middle-click.
  *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps; every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests). The middle-click case is
- * driven with real page.mouse (button: "middle"), never a synthetic
- * `auxclick` DOM event (memory verify-dnd-with-real-mouse discipline
- * extends to all pointer-driven interactions here).
+ * Middle-click is driven with real page.mouse (button: "middle"), never a
+ * synthetic auxclick.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

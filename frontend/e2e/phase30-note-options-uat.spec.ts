@@ -1,28 +1,6 @@
 /**
- * Right-Rail Tags & Context Menus: note-options menu
- * (CTX-03, WS-06 note-options-split entry point, active-pane cue).
- *
- * Covers:
- *   CTX-03  Each pane's breadcrumb row grows a 3-dot note-options button
- *           opening: Rename, Move to…, Bookmark/Remove bookmark, Split
- *           right, Split down, Find, Replace, Reveal in navigation, Show
- *           in file manager, Delete (locked order).
- *   WS-06   "Split right"/"Split down" open the note in a new split from
- *           the note-options entry point, alongside the tree menu, tab
- *           menu, and quick-switcher entry points already proven in
- * earlier plans.
- * The active-pane inset accent cue is present in a
- *           split layout and absent in a single-pane layout.
- *
- * All tests in this file share ONE spawned binary/vault (beforeAll/afterAll)
- * but each Playwright test gets its own fresh browser context (empty
- * client-side pane-layout state) — mirrors phase30-tab-menu-uat.spec.ts.
- *
- * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
- * build`) before Playwright — the spec runs against the EMBEDDED binary.
- *
- * Discipline: ZERO fixed sleeps. Every timing-sensitive assertion uses
- * expect/expect.poll (memory no-flaky-tests).
+ * All tests share ONE spawned binary/vault, but each Playwright test gets a fresh
+ * browser context, so client-side pane-layout state starts empty per test.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

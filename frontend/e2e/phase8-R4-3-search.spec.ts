@@ -1,16 +1,10 @@
 /**
- * Search "123" finds note-00123 + hyphenated tokens don't 500.
+ * Two FTS5 bugs in one stack: the unicode61 tokenizer with tokenchars '_-' indexes
+ * "note-00123" as ONE token, so a "123*" prefix match never fired (fixed with a
+ * title/path LIKE backstop); and FTS5's query grammar parses '-' as a binary
+ * operator, so "note-00123*" errored (fixed by quoting hyphen/underscore tokens).
  *
- * Two bugs in the same FTS5 stack:
- *   (a) "123" was prefix-wrapped to "123*" but the unicode61 tokenizer with
- *       tokenchars '_-' indexes "note-00123" as ONE token, so the prefix
- *       match never fired. Fix: title/path LIKE backstop.
- *   (b) "note-00123" prefix-wrapped to "note-00123*"; FTS5 query grammar
- *       parses '-' as a binary operator, erroring with "no such column:
- *       00123". Fix: quote hyphen/underscore tokens before wrapping.
- *
- * Drives the full path: seeded notes → indexer → search API → SPA modal
- * render. Mock-the-API style wouldn't catch the FTS5 query syntax issue.
+ * Driven end-to-end because a mocked API cannot reach the FTS5 query syntax.
  */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
