@@ -1,13 +1,7 @@
 /**
- * TabStrip tests:
- *   Task 1 — renders one pill per tab, wires select/close, overflow dropdown.
- *   Pointer drag — a non-threshold click still calls onSelectTab; no draggable attrs.
- *   TAB-11 — Alt+] calls onCycleTab(1); Alt+[ calls onCycleTab(-1);
- *            Ctrl+Tab / Ctrl+Shift+Tab cycle too. Ctrl+Tab preventDefault is guarded.
- *   TAB-05 — Alt+W requests close of the active tab; plain Ctrl+W does NOT.
  * TabStrip is leaf-scoped: the keydown handler gates on
- *     usePaneStore.getState().activePaneId === leafId, so an
- *     inactive leaf's strip is a no-op for every shortcut.
+ * usePaneStore.getState().activePaneId === leafId, so an inactive leaf's strip is
+ * a no-op for every shortcut.
  *
  * All timing is synchronous event dispatch — no sleeps, no fake timers needed.
  */

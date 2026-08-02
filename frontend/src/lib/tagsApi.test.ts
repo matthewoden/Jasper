@@ -1,15 +1,8 @@
 /**
- * Tests for tagsApi typed wrappers. Validates that:
- *   - tagsResource.read() routes through client.GET("/tags") correctly and
- * resolves/rejects (there is no exported listTags to call
- *     directly any more — the resource is the only entry point)
- *   - listTagNotes routes through client.GET("/tags/{name}/notes") correctly
- *   - renameTag routes through client.PUT("/tags/{name}") correctly
- *   - deleteTag routes through client.DELETE("/tags/{name}") correctly
- *   - Non-2xx errors throw/reject with the server's error message
+ * Paths do NOT include the /api/v1 prefix because the openapi-fetch client is
+ * created with baseUrl="/api/v1" — the typed paths are the post-servers segments.
  *
- * Note: paths do NOT include the /api/v1 prefix because the openapi-fetch client
- * is created with baseUrl="/api/v1" — the typed paths are the post-servers segments.
+ * There is no exported listTags any more; tagsResource is the only entry point.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

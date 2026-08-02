@@ -1,16 +1,10 @@
 /**
- * MoveToFolderModal — fuzzy folder picker, fully replacing the
- * mockup's `window.prompt` implementation.
+ * Reuses CommandMenu.tsx's Dialog shell SHAPE rather than forking it: narrower
+ * card, single-line folder rows, and a plain non-virtualized list, since a
+ * vault's folder count is small relative to its note count.
  *
- * Reuses CommandMenu.tsx's Dialog shell SHAPE (overlay, centered card, 44px
- * input header, list body, footer hint row) — not a copy-paste fork, this
- * is a smaller, self-contained component: narrower card (480px vs.
- * 600-620px), single-line folder-path rows instead of two-line note
- * previews, and a plain (non-virtualized) list, since a vault's folder
- * count is small relative to its note count.
- *
- * Fuzzy matching mirrors useQuickSwitcher.ts's fuzzysort.go options
- * (key/limit/threshold) for matching-feel consistency across the app.
+ * Fuzzy matching mirrors useQuickSwitcher.ts's fuzzysort options so matching
+ * feels the same across the app.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import fuzzysort from "fuzzysort";

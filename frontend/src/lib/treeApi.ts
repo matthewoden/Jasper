@@ -1,15 +1,10 @@
 /**
- * Typed wrappers over the tree/note/folder endpoints.
- * All requests go through the openapi-fetch client; no hand-written request shapes.
- *
  * Each wrapper returns { data } on success or { error: { code, message, status } }
  * on failure so callers can distinguish 404 / 409 / 500 without re-parsing the body.
  *
- * GET /tree sits behind treeResource, the shared fetch-once-and-cache primitive
- * (createResource). walkTreeCollect lives here rather than in useFileTree.ts so
- * the fetchTree() wrapper below can prune stale tree-store state once per
- * fetch, not once per subscriber — importing it from useFileTree.ts would
- * cycle back to treeResource.
+ * walkTreeCollect lives here rather than in useFileTree.ts so fetchTree() can prune
+ * stale tree-store state once per fetch instead of once per subscriber — importing
+ * it from useFileTree.ts would cycle back to treeResource.
  */
 import { client } from "../api/client";
 import type { components } from "../api/schema";

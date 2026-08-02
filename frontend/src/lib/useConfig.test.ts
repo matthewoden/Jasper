@@ -1,16 +1,10 @@
 /**
- * useConfig.test — verifies the hook fetches GET /config on mount, saveConfig
- * dispatches PATCH /config with a sparse body and updates state optimistically
- * via a deep merge against the last persisted config, and replaceConfig PUTs
- * a whole document rebased on the freshest persisted config.
+ * Mocks the openapi-fetch client at the module level, so configApi.ts and the
+ * resource layer run for real underneath and the overlapping-save interleaving
+ * exercises the actual mutate()/rollback machinery.
  *
- * Mocks the openapi-fetch client at the module level via vi.mock, same
- * boundary as before the extraction — configApi.ts and the resource
- * layer run for real underneath so the overlapping-save
- * interleaving exercises the actual mutate()/rollback machinery, not a
- * hand-rolled stand-in for it. Resource-layer state is module-global, so
- * every test resets both createResource's registry and configApi's
- * lastPersisted between cases.
+ * Resource-layer state is module-global, so every test resets both
+ * createResource's registry and configApi's lastPersisted between cases.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";

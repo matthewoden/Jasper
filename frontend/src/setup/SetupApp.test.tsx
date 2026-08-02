@@ -1,14 +1,4 @@
 /**
- * Tests for SetupApp — the /setup wizard root.
- *
- * Coverage:
- * - All 3 section headings render (the MCP section was removed —
- *     grants are managed post-setup via the folder right-click menu).
- *   - "Start Jasper" is disabled until DataDirSection reports valid=true.
- *   - Successful submit: calls clearDraft() and window.location.assign("/").
- *   - Failed submit: shows error banner with prefix and suffix copy.
- *   - Appearance controls apply accent + reading font live (dark-only).
- *
  * client.{POST,GET} mocked via vi.mock so no real network calls fly.
  * window.location.assign spied via vi.spyOn (jsdom's location is read-only).
  */

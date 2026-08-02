@@ -1,15 +1,11 @@
 /**
- * highlightExtension — hand-rolled @lezer/markdown MarkdownConfig extension
- * adding `==highlight==` support (READ-03). Structurally templated on
- * @lezer/markdown's own bundled Strikethrough extension (`~~text~~`),
- * verified in node_modules/@lezer/markdown/dist/index.js:2020-2046.
+ * Hand-rolled @lezer/markdown extension adding `==highlight==`, templated on that
+ * package's own bundled Strikethrough extension.
  *
- * Flanking rule: whitespace-only (no punctuation check). Strikethrough's
- * verbatim shape also tests a `Punctuation` regex, but that symbol is a
- * private, unexported helper in @lezer/markdown — copying it verbatim would
- * hit a missing import. This is a deliberate, documented scope reduction: `==word==` still parses correctly;
- * the only edge case is punctuation-adjacent delimiters (e.g. `word==word.`)
- * being flanked slightly differently than CommonMark emphasis would be.
+ * The flanking rule is whitespace-only. Strikethrough also tests a `Punctuation`
+ * regex, but that helper is private and unexported, so copying it verbatim would
+ * not compile. Deliberate scope reduction: `==word==` still parses; only
+ * punctuation-adjacent delimiters flank differently than CommonMark emphasis.
  */
 import type { MarkdownConfig } from "@lezer/markdown";
 import { tags } from "@lezer/highlight";

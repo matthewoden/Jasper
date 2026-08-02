@@ -29,17 +29,10 @@ export type PathValidationError = {
 export type PathValidationResult = { ok: true } | PathValidationError;
 
 /**
- * validateVaultPath — 6-rule validation pipeline for vault paths.
+ * Pure validator, exported so components and tests can use it without a fetch.
  *
- * Rules (in order):
- *   1. Non-empty
- *   2. Must start with "/" (absolute path)
- *   3. Must not contain ".." segments (traversal)
- *   4. Must not contain "//" (double slash)
- *   5. NFC-normalized (checked before ASCII to give actionable error for NFD paths)
- *   6. ASCII-only (charCode <= 0x7F) — required for cross-platform safety
- *
- * Exported so components and tests can use the pure validator without triggering a fetch.
+ * NFC normalization is checked BEFORE the ASCII rule so an NFD path gets an
+ * actionable error rather than a bare "non-ASCII".
  */
 export function validateVaultPath(path: string): PathValidationResult {
   if (!path) {

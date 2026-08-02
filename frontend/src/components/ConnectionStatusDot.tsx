@@ -3,17 +3,11 @@ import { useTreeStore, type ConnectionStatus } from "../lib/useTreeStore";
 import { Tooltip } from "./Tooltip";
 
 /**
- * ConnectionStatusDot — green/amber dot, leftmost in the StatusBar.
- *
  * Retry-forever means there is no red/failed state — amber persists until
  * reconnect succeeds. Renders only a 3-value enum, never the session ID.
  *
- * Treated as an icon-tier control — a 24x24/padding-4
- * footprint matching the other status-bar icon buttons (StatusBar.tsx's
- * zenButtonBase / SettingsMenu's buttonBase), wrapped in the shared Tooltip
- * (native `title` dropped, same Tooltip-migration every other icon control
- * got this phase). StatusBar centers this footprint inside a 48px-wide
- * column so the dot lines up under the left-rail ribbon's icon column.
+ * StatusBar centers this icon-tier footprint inside a 48px column so the dot
+ * lines up under the left rail's icon column.
  */
 const COLORS: Record<ConnectionStatus, string> = {
   connected: "var(--color-success, #22c55e)",

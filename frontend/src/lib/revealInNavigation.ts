@@ -1,15 +1,9 @@
 /**
- * revealInNavigation — the note-options menu's "Reveal in navigation"
- * action. Switches the left sidebar to the Notes panel, scrolls the
- * tree to the note's row (fileTree.utils.scrollToNoteRow expands any
- * collapsed ancestors along the way via react-arborist's own openParents),
- * and applies the pulse-highlight class already used by the breadcrumb's
- * folder/note "reveal" jump (EditorPane.handleBreadcrumbClick) — reusing
- * that mechanism rather than inventing a new one.
+ * Reuses the pulse-highlight already driven by the breadcrumb's reveal jump
+ * (EditorPane.handleBreadcrumbClick) rather than inventing a second mechanism.
  *
- * The CSS class applied is `jasper-pulse-target` (theme.css) — this is the
- * class name, not the @keyframes name it references — do not confuse the
- * two, they are named differently on purpose.
+ * The class applied is `jasper-pulse-target` — that is the class name, not the
+ * @keyframes name it references. They are named differently on purpose.
  */
 import { scrollToNoteRow } from "../components/fileTree.utils";
 import { useTreeStore } from "./useTreeStore";

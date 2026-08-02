@@ -1,16 +1,10 @@
 /**
- * SidebarResizeHandle — 8px transparent hit-area at the sidebar's right edge.
- * Cursor change (col-resize) is the only visual cue.
+ * 8px transparent hit-area at the sidebar's right edge; the col-resize cursor is
+ * the only visual cue.
  *
- * Drag lifecycle:
- *   - pointerdown → mark draggingRef, attach pointermove + pointerup to document
- *     (listeners stay active even when cursor leaves the 8px hit area)
- *   - pointermove → clamp(MIN, clientX, MAX) where MAX = computeMaxWidth()
- *     (keeps editor pane ≥320px)
- *   - pointerup → clear draggingRef, detach both listeners
- *
- * e.preventDefault() on pointerdown is required — without it, the browser
- * starts a native text-selection drag on the sidebar content.
+ * pointermove/pointerup attach to the document, not the handle, so the drag
+ * survives the cursor leaving the 8px strip. e.preventDefault() on pointerdown is
+ * required — without it the browser starts a native text-selection drag.
  */
 import { useCallback, useRef } from "react";
 import type React from "react";

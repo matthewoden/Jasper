@@ -1,13 +1,6 @@
 /**
- * Jittered exponential backoff for WS reconnect.
- * 1s base, doubles per attempt, 30s cap, 0.5–1.5× jitter, retries forever.
- *
- *   attempt 0 → [500, 1499] ms
- *   attempt 1 → [1000, 2999] ms
- *   attempt 2 → [2000, 5999] ms
- *   attempt 3 → [4000, 11999] ms
- *   attempt 4 → [8000, 23999] ms
- *   attempt N≥5 → [15000, 44999] ms (BACKOFF_CAP_MS dominates)
+ * Jittered exponential backoff for WS reconnect: 1s base, doubles per attempt,
+ * 30s cap, 0.5–1.5x jitter, retries forever.
  *
  * `rng` is injectable for deterministic tests (default Math.random).
  */

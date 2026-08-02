@@ -57,20 +57,6 @@ describe("breadcrumbTrail", () => {
   });
 });
 
-// ─── breadcrumbSegments (SET2-07) ──────────────────────────────────────────
-//
-// RED scaffold: `breadcrumbSegments` is NOT yet exported from breadcrumbPrefix.ts.
-// These tests FAIL until plan 03 adds the function.
-//
-// Contract (SET2-06/07):
-//   breadcrumbSegments(notePath) → BreadcrumbSegment[]
-//   BreadcrumbSegment = { label: string; folderPath: string; kind: "folder" | "note" }
-//
-// - Root note "note.md" → 1 segment  (kind "note", label "note", folderPath "note.md")
-// - Nested "a/b/c.md"  → 3 segments  (2 folder + 1 note; folderPaths: "a", "a/b", "a/b/c.md")
-// - Empty ""            → []
-// - N segments → N-1 separators (SET2-07 slash separator count)
-
 describe("breadcrumbSegments", () => {
   it("root note 'note.md' yields a single note segment", () => {
     const result = breadcrumbSegments("note.md");

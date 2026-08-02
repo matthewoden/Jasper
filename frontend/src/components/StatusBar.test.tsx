@@ -1,15 +1,8 @@
 /**
- * StatusBar tests.
+ * Layout: [ConnectionStatusDot] [vault?] [word count?] [spacer] [SaveIndicator] [zen]
  *
- * Layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
- *
- * The duplicate Settings gear (SettingsMenu) was removed
- * from the status bar — ActivityRibbon's own gear is the sole entry point
- * now (see ActivityRibbon.test.tsx for its coverage).
- *
- * Positive assertions: footer styles, ConnectionStatusDot, spacer, zen-toggle placement,
- * zIndex, SaveIndicator-button presence and click behavior, vault segment, focused-note word count.
- * Negative assertions: no standalone "Reindex notes" button, no settings-menu-trigger.
+ * The negative assertions matter: no standalone "Reindex notes" button and no
+ * settings-menu-trigger, since ActivityRibbon's gear is the sole Settings entry.
  */
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

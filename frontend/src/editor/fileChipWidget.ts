@@ -1,16 +1,12 @@
 /**
- * fileChipWidget — CM6 ViewPlugin that detects markdown links whose href starts
- * with `attachments/` (but NOT image links with a leading `!`) and renders a
- * clickable file-chip below the source line.
+ * Renders a clickable file-chip below the source line for markdown links into
+ * `attachments/` (excluding image links, which imageAttachmentWidget owns).
  *
- * Widget is at `line.to` with `side: 1`. block: true is prohibited in ViewPlugin
- * decorations; CSS display:inline-flex provides visual block appearance instead.
- * The source `[name](attachments/…)` text stays editable.
+ * The widget is at `line.to` with `side: 1`. block: true is prohibited in
+ * ViewPlugin decorations; CSS display:inline-flex gives the same appearance while
+ * the source text stays editable.
  *
- * Click opens `/api/v1/attachments/{noteId}/{filename}` in a new tab.
- *
- * Icon category is derived from the file extension. All color values use
- * var(--color-*) tokens; user-supplied strings are set via textContent (no innerHTML).
+ * User-supplied strings are set via textContent, never innerHTML.
  */
 import {
   Decoration,

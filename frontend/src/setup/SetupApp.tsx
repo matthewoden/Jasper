@@ -1,18 +1,11 @@
 /**
- * SetupApp — single-page React root mounted at /setup.
+ * Composes the four section components over draft state and owns the submit
+ * pipeline. loadDraft() hydrates from localStorage on mount so a mid-wizard reload
+ * resumes; every field change re-saves.
  *
- * Composes the four section components over draft state and owns the submit pipeline.
- *
- * State flow:
- *   1. loadDraft() hydrates from localStorage on mount so mid-wizard reloads resume.
- *   2. Every field change calls updateDraft() → setState + saveDraft().
- *   3. DataDirSection calls onValidityChange to gate the submit button.
- *   4. Appearance step applies accent + reading font live (dark-only);
- *      useEffects on draft.accent/draft.readingFont keep the DOM in sync.
- *   5. On success: clearDraft() then window.location.assign("/") (reload IS the
- *      confirmation — no toast). On failure: surface the error message and re-enable.
+ * On success it clears the draft and assigns window.location to "/" — the reload
+ * IS the confirmation, so there is deliberately no toast.
  */
-
 import { useEffect, useState } from "react";
 import { loadDraft, saveDraft, clearDraft, type SetupDraft } from "./draft";
 import { submitSetup, type SetupRequest } from "./setupApi";

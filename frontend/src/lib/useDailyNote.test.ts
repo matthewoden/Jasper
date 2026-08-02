@@ -1,15 +1,6 @@
 /**
- * Tests for useDailyNote hook.
- *
- * Coverage:
- *   - Happy path: calls openTodayDailyNote, sets activeNote, clears loading
- *   - Error path: shows toast on failure, still clears loading in finally
- *   - Re-entrancy guard: second openToday() while in-flight is a no-op
- *   - isLoading mirrors dailyNoteLoading from useTreeStore
- *
- * openTodayDailyNote is mocked so network is not hit.
- * useTreeStore is used directly (real store) — reset between tests.
- * useToast is provided via ToastProvider wrapper.
+ * openTodayDailyNote is mocked so the network is not hit. useTreeStore is the real
+ * store, reset between tests; useToast comes from a ToastProvider wrapper.
  */
 import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
