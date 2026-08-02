@@ -1,18 +1,11 @@
 /**
- * Tree empty state.
+ * Tree empty state, rendered only when the vault has zero notes AND zero
+ * folders.
  *
- * Rendered ONLY when tree.root is empty (zero notes AND zero folders).
- * Left-aligned (NOT centered — keeps visual anchor consistent with where
- * rows would appear). 24px (lg) padding-top so the empty state sits below
- * the toolbar with breathing room.
+ * Left-aligned, NOT centered, so it sits where rows would appear.
  *
- * The [+] glyph in the body is rendered as the same lucide FilePlus 14px
- * icon used in the toolbar (text-muted) so the user can visually link
- * "the icon they see in the body" to "the icon they see in the toolbar."
- *
- * Locked copy (verbatim):
- *   "No notes yet."
- *   "Press [+] to create your first note."
+ * The [+] in the body is the same lucide icon the toolbar uses, so the user can
+ * link the two.
  */
 import { FilePlus } from "lucide-react";
 

@@ -1,22 +1,13 @@
 /**
- * useDeepLink — boot handler for ?note=<uuid> / ?path=<rel> deep links.
+ * useDeepLink resolves ?note=<uuid> / ?path=<rel> at boot.
  *
- * Resolves via REST rather than WebSocket because WS may not be connected
- * at boot time. Prefers ?note=<uuid> (rename-resilient) over ?path=<rel>.
+ * Over REST, not WebSocket — WS may not be connected yet. ?note is preferred
+ * because it survives renames.
  *
- * Gates on `treeReady` so openInActivePane runs after GET /tree resolves —
- * hooks that consume activeNoteId assume the tree is populated.
+ * Gated on treeReady: hooks consuming activeNoteId assume a populated tree.
  *
- * Opens the resolved note as a real tab in the active pane (WS-08's
- * openInActivePane) rather than the retired setActiveNote +
- * promoteActiveNote load-time-promotion path: a deep link now lands
- * as a tab directly, so there is nothing left for promotion to do.
- *
- * On successful resolve, strips the params via history.replaceState so a
- * refresh doesn't re-resolve and race the daily-note-on-boot setting.
- *
- * Security: the path string is sent to the backend for re-validation;
- * the frontend does not trust the param value.
+ * Strips the params on success via replaceState, so a refresh does not
+ * re-resolve and race the daily-note-on-boot setting.
  */
 
 import { useEffect } from "react";

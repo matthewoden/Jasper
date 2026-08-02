@@ -1,24 +1,10 @@
 /**
- * RightRailTabRow — icon-only Outline / Linked mentions / Tags tab row +
- * collapse control for the right rail's tab-row shell (TAGS-01).
+ * RightRailTabRow mirrors SidebarTabRow horizontally: icon tabs at the app edge
+ * (right here, left there) and the collapse control at the inner edge, so the
+ * two rails read as a mirrored pair.
  *
- * Mirrors SidebarTabRow.tsx: same tabBase, same active/hover color-mix
- * formula, same 8px gap, same space-between + collapse-button pattern —
- * but horizontally mirrored. The left rail has its icon tabs at the app
- * edge (left) and its collapse control at the inner edge (right); this row
- * puts its icon tabs at the app edge (right) and its collapse control at
- * the inner edge (left), producing a mirror image of the left rail.
- *
- * Active tab is driven by the persisted rightPanel field (useTreeStore
- * rightPanel slice, hydrated by useWorkspace — Plan 01). Clicking a tab
- * calls useWorkspace().setRightPanel(value), which optimistically updates
- * the slice and persists to workspace.json.
- *
- * The collapse control reuses the existing backlinksRailExpanded slice
- * (useTreeStore) — already persisted to localStorage by App.tsx — so no
- * new persistence or workspace.json field is introduced. Reopening a
- * collapsed rail (260721-cjt: the rail unmounts to 0 width when collapsed)
- * is handled by the rightmost pane's own tab-bar toggle, not by this row.
+ * The active tab is the persisted rightPanel field; clicking writes through
+ * useWorkspace, which updates optimistically and persists.
  */
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";

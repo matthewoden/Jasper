@@ -1,28 +1,10 @@
 /**
- * codeblockExpand — Enter-key handler that turns a freshly-typed
- * ``` line into a bounded fenced-code block with the cursor sitting
- * inside.
+ * codeblockExpand completes a fence on Enter: typing ``` and pressing Enter
+ * leaves the cursor on a blank line with the closing fence already below.
  *
- * Trigger: cursor is at the END of a line that IS the freshly-typed
- * OPENING fence of an unclosed block. Pressing Enter inserts:
- *
- *     [user line: ```]
- *     [empty line — cursor lands here]
- *     ```
- *
- * Net effect: the user has a finished fence with a closing marker
- * already in place. Mirrors VS Code, Obsidian, and most editor
- * conventions for "complete the fence on Enter."
- *
- * Anti-trigger guards (return false → fall through to default Enter):
- *   - Cursor not at end of line.
- *   - Line content is not a bare ``` (with optional language tag).
- *   - This line is the CLOSING fence of an already-open block. We
- *     detect this by counting fences in the lines ABOVE: an even
- *     count means we're outside any block (this line is opening an
- *     unbalanced one — expand); an odd count means we're inside an
- *     open block (this line is the close — let Enter pass through).
- *   - A balanced close already exists below.
+ * The load-bearing guard is the fence count ABOVE the cursor. An EVEN count
+ * means this line opens an unbalanced block, so expand; an ODD count means it
+ * closes an open one, so let Enter through untouched.
  */
 import { keymap } from "@codemirror/view";
 

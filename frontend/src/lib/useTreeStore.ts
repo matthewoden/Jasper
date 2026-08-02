@@ -1,24 +1,13 @@
 /**
- * useTreeStore — zustand store for the file-tree sidebar.
+ * useTreeStore — client UI state for the sidebar. No server data lives here:
+ * notesSort/searchSort/rightPanel are hydrated INTO these slices by
+ * useWorkspace, and bookmarks/grants live in the shared resource cache.
  *
- * Client UI state only — no server data lives here. notesSort/
- * searchSort/rightPanel are backend-persisted but hydrated INTO these
- * slices by useWorkspace.ts, not read from them directly by other hooks;
- * bookmarks/bookmarkFolders/mcpGrants (formerly slices here) now live in
- * the shared resource cache (bookmarksResource/mcpGrantsResource).
+ * Persisted slices are debounced and tolerate corrupted localStorage.
+ * pendingRename, draftCreate and selectedRow are deliberately transient.
  *
- * Persistent slices (debounced 250ms, tolerates corrupted localStorage):
- *   - localStorage["jasper.tree.expanded"]      JSON Array<string>
- *   - localStorage["jasper.tree.activeNoteId"]  JSON string-or-null
- *
- * Transient slots (never persisted): pendingRename, draftCreate, selectedRow.
- *
- * selectedRow is read by App.tsx's document-level F2 listener to route rename
- * to the right row even after focus has shifted to the editor.
- *
- * pruneStaleTreeState(folderPaths, noteIds) is called by useFileTree after every
- * successful tree fetch to drop expanded entries / activeNoteId that no longer
- * exist. Does not touch transient slots.
+ * selectedRow exists so App.tsx's document-level F2 listener can route a rename
+ * to the right row after focus has moved into the editor.
  */
 import { create } from "zustand";
 

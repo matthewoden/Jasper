@@ -1,16 +1,12 @@
 /**
- * useTreeMutations — typed mutation wrappers for tree CRUD.
+ * useTreeMutations wraps tree CRUD, refreshing on success and throwing
+ * TreeMutationError on failure.
  *
- * Each wrapper calls the matching treeApi.* function, then on success returns
- * the typed payload and calls broadcastRefresh() so every consumer sees the new
- * server state. On error, throws a TreeMutationError carrying { code, message,
- * status } for the caller's toast layer. The throw happens before refresh() so
- * a failed mutation never triggers a tree repaint — the server is the source of
- * truth and a failed mutation means the tree did not change.
+ * The throw happens BEFORE the refresh, so a failed mutation never repaints the
+ * tree — the server is the source of truth and nothing changed.
  *
- * Auto-refresh lives here (not in callers) because the previous "caller chooses
- * refresh-vs-optimistic" pattern was consistently forgotten in practice — mutations
- * returned 2xx but the React tree never repainted until a hard reload.
+ * Auto-refresh lives here, not in callers: the caller-chooses pattern was
+ * consistently forgotten, leaving 2xx mutations invisible until a hard reload.
  */
 import { useCallback } from "react";
 

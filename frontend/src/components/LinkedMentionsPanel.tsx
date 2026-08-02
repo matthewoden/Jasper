@@ -1,20 +1,10 @@
 /**
- * LinkedMentionsPanel — body-only linked-mentions card list (RSIDE-02;
- * formerly BacklinksRail).
+ * LinkedMentionsPanel — one card per linking note, with per-mention excerpts
+ * sanitized INDIVIDUALLY, never joined first.
  *
- * No own header, no × close button — SectionHeader (RightRail.tsx) wraps this
- * component. One <li> card per linking note (row.sourceId), title button in
- * var(--color-accent) (never the literal mockup hex), stacked per-mention
- * excerpts sanitized individually — never join-then-sanitize.
- *
- * Card click uses usePaneStore.getState().openInActivePane(row.sourceId)
- * — NOT the legacy active-note setter, which this rename retires from
- * this surface.
- *
- * Backlink data arrives as props from RightRail's single useBacklinks call —
- * this component must NOT fetch on its own, or the SectionHeader count badge
- * and the card list would issue duplicate requests and could render
- * different snapshots of the same note's backlinks.
+ * Backlink data arrives as props from RightRail's single useBacklinks call. This
+ * component must NOT fetch: two callers would issue duplicate requests and could
+ * render disagreeing counts.
  */
 import { sanitizeHtml } from "../lib/sanitize";
 import type { BacklinkRow } from "../lib/backlinksApi";

@@ -1,14 +1,9 @@
 /**
- * MarkdownEditor — CM6 lifecycle owner (presenter half of the EditorPane split).
+ * MarkdownEditor owns the CM6 lifecycle. The EditorView mounts ONCE, for cursor
+ * stability; updates flow through view.dispatch.
  *
- * EditorView is mounted ONCE on mount (useEffect with []) for cursor stability.
- * Updates flow via view.dispatch from the ref API or via ServerUpdateAnnotation
- * for silent WS reloads.
- *
- * onChange fires on user-typed docChanged transactions only — IME composing
- * transactions and server-update annotations are filtered.
- *
- * Ref API: getContent / setContent / applyServerUpdate / focus / focusEnd.
+ * onChange fires only for user-typed docChanged transactions — IME composition
+ * and server updates are filtered out.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Annotation, Compartment, Prec, RangeSetBuilder, type Transaction } from "@codemirror/state";
@@ -462,21 +457,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             EditorView.updateListener.of((u) => {
               if (!u.docChanged) return;
               if (u.view.composing) return;
-              // Outline (RSIDE-01): headings must reflect the doc after EVERY
-              // docChanged transaction, including server-driven ones — the
-              // initial GET-loaded content and silent WS reloads both dispatch
-              // via applyServerUpdate (ServerUpdateAnnotation), which is the
-              // OVERWHELMINGLY common way a note's real content first reaches
-              // the editor (a brand-new pane mounts with initialDoc="" before
-              // the async GET resolves — see EditorPane's `initialDoc={loadStatus
-              // === "loaded" ? content : ""}` — then applyServerUpdate dispatches
-              // the real content once loaded). Gating this on "not a server
-              // update" left Outline showing "No headings" for every note until
-              // the user made a live edit — a real, live-browser-only bug this
-              // plan's E2E caught (never reproduced by mocked component tests).
-              // onChange/onH1Change/checkbox-flush below stay guarded: those DO
-              // have side effects (autosave-loop / rename-detection) that must
-              // not re-fire for a server-originated document replace.
+              // Headings must update on EVERY docChanged, server-driven ones
+              // included: a pane mounts with initialDoc="" and the real content
+              // arrives via applyServerUpdate, so gating on "not a server
+              // update" left Outline empty until the first live edit.
+              //
+              // The handlers below stay guarded — they have side effects
+              // (autosave, rename detection) that must not fire for a
+              // server-originated replace.
               if (cbRef.current.onHeadingsChange) {
                 cbRef.current.onHeadingsChange(extractHeadings(u.state));
               }

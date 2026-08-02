@@ -1,28 +1,12 @@
 /**
- * useTreeCreateActions — shared create-note / create-folder handlers.
+ * useTreeCreateActions — the shared create-note / create-folder flow, so the
+ * toolbar and the per-row menus behave identically.
  *
- * Used by Sidebar's toolbar (root-level create) and FileTree's context-menu /
- * kebab callbacks (per-row create at a specific parent) so the flow is identical
- * regardless of trigger.
+ * The name is computed from the target's existing siblings, so clicking + twice
+ * yields "untitled" then "untitled 1" rather than a 409.
  *
- * Behavior:
- *   1. Reads current tree state, finds the target parent's children, and computes
- *      the lowest non-colliding default name via nextUntitledName(siblings, "untitled").
- *      Clicking + twice in the same folder now produces "untitled.md" then
- *      "untitled 1.md" instead of a 409 case_collision.
- *   2. POSTs with parentPath + the auto-incremented name. useTreeMutations refreshes
- *      the tree on success automatically (the auto-refresh contract is in the data
- *      layer, not the caller).
- *   3. After the POST resolves, calls startRename with isNew=true so the new node
- *      immediately enters inline-rename mode. isNew=true means Escape / same-name
- *      blur deletes the ephemeral node instead of leaving an auto-generated name on disk.
- *   4. On TreeMutationError, surfaces a destructive toast. case_collision toasts now
- *      only fire for genuine race-condition collisions (another process created a
- *      same-named file between the tree fetch and the POST).
- *   5. In-flight guard: isCreating blocks a second create call during the first's
- *      flight (the rapid-double-click race where both calls read the same pre-create
- *      snapshot and both compute "untitled"). Cleared in finally so retry is
- *      always available.
+ * The new node enters inline rename with isNew=true, which makes Escape or a
+ * same-name blur DELETE it rather than leave an auto-generated name on disk.
  */
 import { useCallback, useState } from "react";
 

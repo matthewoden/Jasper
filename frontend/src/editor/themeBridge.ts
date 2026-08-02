@@ -1,18 +1,11 @@
 /**
- * themeBridge — CM6 EditorView.theme that paints every color through
- * var(--color-*) lookups. Single source of truth = the data-theme
- * attribute on <html>. One DOM mutation flips the entire app and editor —
- * no JS-side theme dispatch.
+ * themeBridge paints every CM6 color through var(--color-*), so the single
+ * data-theme attribute on <html> flips the whole app with no JS dispatch.
  *
- * Token contract: --color-bg, --color-surface, --color-surface-subtle,
- * --color-fg, --color-muted, --color-border, --color-accent, --color-success,
- * --color-destructive, --color-warning(-surface).
+ * Three fixed hexes remain for syntax highlighting, scoped to .cm-content.
  *
- * Three fixed hex exceptions (syntax highlight only, scoped to .cm-content):
- * keyword purple, string green, number orange.
- *
- * `dark: false` on EditorView.theme is intentional — CSS variables drive the
- * dark/light flip, not CM6's built-in mode flag.
+ * `dark: false` is intentional — the CSS variables drive the flip, not CM6's
+ * built-in mode flag.
  */
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -55,16 +48,10 @@ export const jasperEditorTheme = EditorView.theme(
       caretColor: "var(--color-fg)",
       fontFamily: "var(--font-reading)",
     },
-    // CM6's OWN baseTheme applies
-    // `.cm-line { padding: 0 2px 0 6px }` unconditionally — a 6px left inset
-    // with no equivalent on TitleElement.tsx's 0-padding contentEditable div.
-    // The two share the SAME `.cm-content`/title-wrapper left edge (both
-    // 760px-max, margin:auto, 56px horizontal padding), so that
-    // inherited 6px was the entire visible misalignment between the title's
-    // first glyph and the body's first glyph. Zeroing only the LEFT side
-    // (right 2px is cosmetic breathing room before wrapped/long lines and
-    // not part of this bug) makes both columns' text start at the identical
-    // x-coordinate.
+    // CM6's baseTheme adds `.cm-line { padding-left: 6px }`, which TitleElement's
+    // contentEditable has no equivalent for. Since both share the same column
+    // edge, that 6px WAS the visible title-vs-body misalignment. Only the left
+    // is zeroed; the right 2px is unrelated breathing room.
     ".cm-line": {
       paddingLeft: "0",
     },

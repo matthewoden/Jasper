@@ -1,21 +1,10 @@
 /**
- * useFileTree — reads GET /tree off the shared resource layer (treeResource,
- * a createResource "cached" singleton in treeApi.ts). No coalescer, no boot
- * fetch, and no subscriber Set of its own: those all live in createResource.ts
- * now, generalized from this hook's original hand-rolled coalescer.
+ * useFileTree reads GET /tree off the shared resource layer. No coalescer, boot
+ * fetch or subscriber set of its own — createResource owns all three now,
+ * generalized from this hook's original hand-rolled version.
  *
- * Public shape:
- *   useFileTree(): {
- *     tree:    Tree | null
- *     loading: boolean
- *     error:   Error | null
- *     refresh: () => Promise<void>
- *   }
- *
- * The fetcher's T is { data?: Tree; error?: ApiError } — a transport-level
- * failure (fetch threw) surfaces as snapshot.error; an API-level error (a
- * well-formed error response) surfaces as snapshot.data.error. Both paths
- * are preserved below.
+ * Transport failures surface as snapshot.error; API-level errors surface as
+ * snapshot.data.error. Both paths are preserved.
  */
 import { useResource } from "./resources";
 import { treeResource, type Tree } from "./treeApi";

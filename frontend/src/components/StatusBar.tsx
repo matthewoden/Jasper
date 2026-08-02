@@ -1,24 +1,15 @@
 /**
- * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
+ * StatusBar — [dot] [vault] [word count] · [save] [zen].
  *
- * The duplicate Settings gear (SettingsMenu) that used to
- * sit at the far right was removed — ActivityRibbon's own gear is now the
- * sole Settings entry point (it keeps the `settings-menu-trigger` testid so
- * existing E2E selectors keep resolving).
+ * ActivityRibbon's gear is the sole Settings entry point now; the duplicate here
+ * was removed but kept its `settings-menu-trigger` testid so E2E selectors still
+ * resolve.
  *
- * SaveIndicator doubles as a manual-reindex trigger — clicking it calls
- * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
- * forces a WS reconnect instead.
+ * SaveIndicator doubles as a manual reindex, or forces a WS reconnect while
+ * paused.
  *
- * Word count: moved here from the editor's top-chrome
- * cluster — reflects the currently FOCUSED pane's note, not a sum across
- * split panes. `activeNoteId` already mirrors the active pane's active tab
- * (App.tsx's usePaneStore -> useTreeStore sync), so reading it here
- * gets split-pane-aware focus tracking for free. The note's live content
- * comes from its noteBufferController (one singleton per open note,
- * shared by every pane showing it) via the SAME subscribe/getContent
- * bridge EditorPane itself uses — updates on every keystroke in the
- * focused pane and re-targets automatically when focus moves panes.
+ * Word count reflects the FOCUSED pane, not a sum across splits — activeNoteId
+ * already mirrors the active pane's active tab, so that comes for free.
  */
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";

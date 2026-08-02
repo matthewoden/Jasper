@@ -1,22 +1,7 @@
 /**
- * bookmarksApi — typed wrappers over the /bookmarks* endpoints.
- * All calls route through the openapi-fetch client; no hand-written request shapes.
- *
- * Endpoints:
- *   GET    /api/v1/bookmarks             → getBookmarks(): BookmarksDocument
- *   POST   /api/v1/bookmarks             → postBookmark(noteId, folderId?): Bookmark
- *   DELETE /api/v1/bookmarks/{id}        → deleteBookmark(id): void
- *   POST   /api/v1/bookmarks/{id}/folder → postBookmarkMove(id, folderId): {id, folder_id}
- *   POST   /api/v1/bookmark-folders      → postBookmarkFolder(name): BookmarkFolder
- *   POST   /api/v1/bookmarks/reorder     → reorderBookmarks(folderId, orderedIds): void
- *
- * Every wrapper throws on non-2xx so callers can use try/catch — including
- * getBookmarks(), which used to swallow errors and return an empty document
- * (27-UI-REVIEW finding #1: a failed fetch silently rendered the SAME empty
- * state as "no bookmarks yet", with no way to tell the difference). The
- * distinction between "surface an error" and "keep the last-known-good
- * cache on a transient hiccup" now lives one layer up, in useBookmarks.ts —
- * this file's contract is simply "throw on failure, always."
+ * Typed wrappers over /bookmarks*. Every one THROWS on non-2xx, including
+ * getBookmarks — it used to swallow errors, which silently rendered the empty
+ * state on a failed fetch.
  */
 
 import { client } from "../api/client";

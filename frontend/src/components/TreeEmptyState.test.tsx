@@ -1,13 +1,6 @@
 /**
- * TreeEmptyState tests — the tree's empty state.
- *
- * Locked copy:
- *   "No notes yet."
- *   "Press [+] to create your first note."
- *
- * The [+] glyph is rendered as the lucide FilePlus 14px icon (so it ties
- * visually to the toolbar's [+] button). Test asserts an inline svg in the
- * body and that the headline + body copy are present verbatim.
+ * Asserts the locked copy verbatim, plus an inline svg for the [+] glyph — it
+ * must be the same lucide icon the toolbar shows, so the two read as connected.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";

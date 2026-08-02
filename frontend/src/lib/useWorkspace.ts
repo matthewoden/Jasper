@@ -1,24 +1,14 @@
 /**
- * useWorkspace — reads the shared `workspaceResource` cache and projects it
- * into the notesSort/searchSort/rightPanel zustand UI slices, then composes
- * those slices with PUT /vault/workspace calls. The GET side is
- * fetch-once-and-cache via the resource layer: mounting
- * never issues a network request by itself; only the resource's own 0->1
- * subscriber transition and `workspace:changed` WS invalidation do.
+ * useWorkspace projects the shared workspaceResource into the notesSort /
+ * searchSort / rightPanel slices and composes them with PUT calls. Mounting
+ * issues no request by itself.
  *
- * Public surface:
- *   - notesSort / searchSort / rightPanel: current store slices (hydrated
- *                              from the shared cache, never localStorage)
- *   - setNotesSort(value):    optimistic write, NO debounce — one
- *                              PUT per selection. Reverts + toasts on failure.
- *   - setSearchSort(value):   same shape as setNotesSort, other field.
- *   - setRightPanel(value):   same shape as setNotesSort, rightPanel field
- *                              (TAGS-01).
+ * Writes are optimistic and deliberately NOT debounced — one PUT per selection,
+ * reverting and toasting on failure.
  *
- * Note: notesSort/searchSort/rightPanel remain zustand slices (they're
- * read directly by components through their own store selectors), not the
- * resource cache itself. This hook is the ONLY place that projects the
- * shared cache INTO those slices — see the sync effect below.
+ * These stay zustand slices rather than living in the cache because components
+ * read them through store selectors; this hook is the only place that projects
+ * one into the other.
  */
 
 import { useCallback, useEffect } from "react";

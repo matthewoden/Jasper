@@ -1,14 +1,7 @@
 /**
- * FindReplaceBar — per-pane Find / Find-and-Replace bar (WS-09).
- *
- * Custom React chrome driving
- * @codemirror/search commands underneath, replacing CM6's off-brand built-in
- * panel. Fully controlled — the parent (LeafPane) owns query/toggle state and
- * drives the active pane's EditorView; this component only renders and emits
- * intent callbacks.
- *
- * Chrome idiom mirrors SearchInputBar.tsx: inline `focused` state driving an
- * accent border + 20% box-shadow ring, and a muted→fg hover X close button.
+ * FindReplaceBar — custom chrome driving @codemirror/search directly, replacing
+ * CM6's built-in panel. Fully controlled: LeafPane owns the state and the
+ * EditorView; this only renders and emits intent.
  */
 import { useEffect, useRef, useState } from "react";
 import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react";

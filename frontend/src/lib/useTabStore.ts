@@ -1,22 +1,12 @@
 /**
- * useTabStore — zustand store for the editor tab strip.
+ * useTabStore — the ordered, vault-scoped tab list.
  *
- * Replaces the legacy single-`activeNoteId` model with an ordered, UUID-keyed
- * tab list that survives reload and is isolated per vault.
+ * CRITICAL departure from useTreeStore: that store hydrates at module load
+ * because its keys are global. This key is vault-scoped, so hydration and the
+ * debounced subscribe are wired inside initForVault once the vault resolves.
+ * There is deliberately NO module-level init here.
  *
- * Persistence (deferred, vault-scoped):
- *   localStorage["jasper.tabs.<encodeURIComponent(vaultPath)>"]
- *     JSON { tabIds: string[]; activeTabId: string | null }   // order preserved
- *
- * CRITICAL DEPARTURE from useTreeStore: the tree store hydrates synchronously at
- * module load because its keys are global. The tab key is vault-scoped, so the
- * vault path must be known first — hydration + the debounced subscribe are wired
- * inside initForVault(), called from AppInner once the vault is resolved. There is
- * NO module-level init block here on purpose.
- *
- * deletedTabIds is live-session only and is NEVER persisted: a note marked
- * deleted keeps its tab open read-only for the session, but that state must not
- * outlive a reload.
+ * deletedTabIds is live-session only and never persisted.
  */
 import { create } from "zustand";
 

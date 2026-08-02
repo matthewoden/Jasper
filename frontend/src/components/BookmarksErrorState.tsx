@@ -1,13 +1,8 @@
 /**
- * Bookmarks-fetch error state — closes 27-UI-REVIEW finding #1 (a failed
- * GET /bookmarks silently rendered the empty state, since getBookmarks()
- * swallowed all errors). Verbatim structural clone of TreeErrorState.tsx
- * (quick task 260719-jv1, item 5) — same 24px/16px padding, same 28px
- * "Try again" button, same role="alert" — swapping only the locked copy.
+ * Bookmarks-fetch error state. Exists because a failed GET silently rendered
+ * the EMPTY state — getBookmarks swallows its errors.
  *
- * Locked copy (verbatim):
- *   Headline:   "Couldn't load bookmarks."   (text-destructive)
- *   Action btn: "Try again"                   (28px tall, 1px border-border)
+ * Structural clone of TreeErrorState, swapping only the copy.
  */
 
 export interface BookmarksErrorStateProps {

@@ -1,21 +1,10 @@
 /**
- * NoteOptionsMenu — per-pane 3-dot note-options menu (CTX-03).
+ * NoteOptionsMenu — the per-pane 3-dot menu (CTX-03). DropdownMenu only; it has
+ * no right-click trigger, so it copies only TreeRowMenu's dropdown half.
  *
- * DropdownMenu-only (click-triggered, never right-click) — structurally
- * copies TreeRowMenu.tsx's TreeRowDropdownMenu HALF, not the dual-primitive
- * ContextMenu/DropdownMenu pattern (this menu has no right-click trigger).
- * Deliberately does NOT import styles from TreeRowMenu — this menu has
- * its own "floating card" formula (10px radius / 210px width),
- * distinct from TreeRowMenu/TabContextMenu's 6px shared convention — mixing
- * radii within one visual family would look like a bug, not a choice.
- *
- * Mounted at the right edge of EditorPane's breadcrumb header row, beside
- * the bookmark star. Split right/down call usePaneStore.getState()
- * .splitActivePane() directly (no explicit "activate this pane" step): the
- * trigger button's click already bubbles through LeafPane's
- * onClickCapture={activate} handler (capture phase, fires before this
- * component's own onClick) before the menu even opens, so by the time a
- * split item is picked this pane is already usePaneStore's activePaneId.
+ * Deliberately does NOT import TreeRowMenu's styles: this menu has its own
+ * floating-card radius, and mixing radii within one visual family reads as a bug
+ * rather than a choice.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {

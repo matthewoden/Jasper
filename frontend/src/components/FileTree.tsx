@@ -1,28 +1,14 @@
 /**
- * FileTree — react-arborist <Tree> wrapper + state routing.
+ * FileTree — the react-arborist host for notes, plus its error/loading/empty
+ * routing.
  *
- * Branches:
- *   - useFileTree.error       → <TreeErrorState onRetry={refresh} />
- *   - loading + tree==null    → 1px indeterminate progress stripe
- *   - tree.root.length === 0  → <TreeEmptyState />
- *   - tree.root has children  → <Tree> with adapted data + TreeRow renderer
+ * Folder ids are "folder:"+path and note ids "note:"+uuid; the wire shape stays
+ * under .data so TreeRow can branch without re-parsing.
  *
- * Wire-shape adapter: react-arborist requires stable id+name+children. Folder
- * ids are "folder:" + path, note ids are "note:" + uuid. The original wire shape
- * is preserved under .data so TreeRow can branch on data.kind without re-parsing.
- *
- * Key behaviors: drag-drop dispatches the appropriate move endpoint then
- * refresh()es (server is source of truth); disableDrop prevents cycle drops;
- * DeleteConfirmDialog is managed here; after a successful note rename,
- * handleCommitRename rewrites the H1 to match the new basename (no-op when
- * the file has no H1 or when H1 already matches — loop guard against
- * the editor's direction-A round-trips).
- *
- * Sort (SORT-01): the tree-data memo applies sortTree(..., notesSort) —
- * folders always A→Z, notes/files reorder per the six sort modes.
- * `renderCursor={() => null}` on <TreeView> suppresses react-arborist's
- * between-rows insertion line; the remaining drag
- * feedback is TreeRow's willReceiveDrop-driven folder highlight.
+ * Drag-drop dispatches the move endpoint then refreshes — the server is the
+ * source of truth. After a rename, handleCommitRename rewrites the H1 to match,
+ * no-oping when it already does, which is the loop guard against the editor's
+ * own H1-to-filename direction.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeApi, TreeApi } from "react-arborist";

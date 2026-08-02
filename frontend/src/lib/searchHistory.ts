@@ -1,23 +1,11 @@
 /**
- * searchHistory — vault-namespaced localStorage MRU search-history store
- * (HIST-01/02). Powers SearchHistoryHints.
+ * searchHistory — a vault-namespaced MRU of committed searches (HIST-01/02).
  *
- * Recorded ONLY on committed searches (Enter-open or result-row click) —
- * NEVER from SidebarSearchPanel's debounced fetch effect. Capacity
- * 10, MRU order (most-recent first), case-insensitive dedupe on the exact
- * query string: re-running an existing query moves it to the top.
+ * Recorded ONLY on a commit (Enter or a result click), never from the debounced
+ * fetch effect. Capacity 10, case-insensitive dedupe.
  *
- * Namespacing follows usePaneStore.ts's layoutKeyForVault precedent
- * (`jasper.layout.${encodeURIComponent(vaultPath)}`), NOT the stale
- * `jasper:tabs:<base64(vaultPath)>` key some docs cite — that key does not
- * exist anywhere in the codebase.
- *
- * Plain module-level array + subscriber set (not a zustand store) — only
- * SearchHistoryHints and SidebarSearchPanel consume it, and a small pub/sub
- * is simpler than standing up a new store for a single array. Corruption
- * tolerance mirrors useTreeStore.ts's LS_KEY_SWITCHER_RECENCY shape
- * (try/catch + Array.isArray + filter(isString) + slice(0, CAPACITY)):
- * a bad/missing localStorage value never throws, it just yields [].
+ * A plain module array plus a subscriber set, not a store: two consumers do not
+ * justify one. A corrupt localStorage value yields [] rather than throwing.
  */
 import { useSyncExternalStore } from "react";
 

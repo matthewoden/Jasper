@@ -1,12 +1,10 @@
 /**
- * useConfig — thin hook over configApi's shared, boot-scoped resource
- * (fetched once per session, no per-mount GET /config). Reads are a
- * useResource() render-time snapshot; writes go through
- * configResource.mutate() so every mounted instance's optimistic frame and
- * rollback target the same cache entry. Two write channels: `saveConfig`
- * sends a sparse patch via PATCH (serialised server-side);
- * `replaceConfig` sends a whole document via PUT, used only by per-section
- * Reset.
+ * useConfig reads the boot-scoped config resource — fetched once per session.
+ * Writes go through configResource.mutate so every mounted instance shares one
+ * optimistic frame and one rollback target.
+ *
+ * saveConfig PATCHes a sparse patch; replaceConfig PUTs a whole document and is
+ * used only by per-section Reset.
  */
 import { useCallback } from "react";
 import { useResource } from "./resources";
@@ -47,18 +45,14 @@ export function useConfig(): {
   const config = snapshot.data ?? null;
   const error = toApiError(snapshot.error);
 
-  // The optimistic frame is the sparse patch merged into the last persisted
-  // config (not the patch alone) — this mirrors the server's own merge
-  // semantics, so the local frame and the eventual server echo agree.
+  // The optimistic frame merges the patch into the last persisted config, not
+  // the patch alone, mirroring the server's merge so the local frame and the
+  // eventual echo agree.
   //
-  // patchConfig/putConfig resolve with { error }, they never reject
-  // (openapi-fetch never throws on an HTTP error response) — so a failure
-  // can't rely on the primitive's own rollback path, which only fires on a
-  // REJECTED request(). `commit` re-reads getLastPersisted() on failure
-  // instead, producing the identical observable result: a sibling save that
-  // confirmed while this one was in flight is never discarded, because a
-  // failed write never landed server-side and the newest confirmed document
-  // is already the correct post-failure state.
+  // These resolve with { error } and never reject, so the primitive's own
+  // rollback (which needs a rejection) cannot fire. commit re-reads
+  // getLastPersisted() instead — identical result, and a sibling save that
+  // confirmed mid-flight is never discarded.
   const saveConfig = useCallback(async (patch: ConfigPatch) => {
     const result = await configResource.mutate<{ data?: Config; error?: ApiError }>({
       optimistic: (current) => {

@@ -1,21 +1,14 @@
 /**
- * wikilinkResolver — title → note-id resolution backed by tree data.
+ * wikilinkResolver answers "does a note with this title exist?" in O(1) off a
+ * lowercase title Set. Disambiguation stays on the backend, which owns the
+ * same-folder-then-alphabetical rule; the frontend keeps whichever id it saw
+ * last, so an ambiguous link may need a server round-trip.
  *
- * Division of responsibility:
- *   Frontend (this module): answers "does a note with this title exist?"
- *   using a case-insensitive Set<string> of lowercase titles — O(1) check.
- *   Backend (registry.go): implements same-folder-then-alphabetical
- *   disambiguation and returns the canonical id for ambiguous titles. The
- *   frontend stores whichever id was seen last in tree-walk order; ambiguous
- *   links may fall back to an async server round-trip.
+ * NFC normalization happens at set-build time so decomposed and precomposed
+ * accents compare equal.
  *
- * NFC normalization: applied at set-build time so accented-character variants
- * (e.g. "ñ" as n+combining-tilde vs. precomposed "ñ") compare equal.
- *
- * Module-level snapshot: wikilinkPlugin runs in CM6's synchronous decoration
- * build and cannot call React hooks. MarkdownEditor uses a useEffect to call
- * setResolvedTitlesSnapshot() whenever useResolvedTitleSet returns a new Set.
- * The plugin reads the snapshot synchronously.
+ * Exposed as a module-level snapshot because wikilinkPlugin builds decorations
+ * synchronously and cannot call a React hook.
  */
 
 import { useMemo } from "react";

@@ -1,21 +1,14 @@
 /**
- * useAttachmentUpload — drag-over/drop and clipboard-paste handlers that
- * upload files to the backend and insert the resulting markdown reference
- * into the active CodeMirror editor view.
+ * useAttachmentUpload — drag-drop and paste handlers that upload a file and
+ * insert the resulting markdown reference into the active editor.
  *
- * Counter pattern: nested dragenter/dragleave on child elements fire extra
- * events on the parent. A depth ref ensures drop-active state only clears
- * when the drag truly leaves the root container.
+ * A depth counter is required: nested dragenter/dragleave on children fire on
+ * the parent too, so drop-active state must only clear when the drag truly
+ * leaves the root.
  *
- * Paste: only intercepts clipboard items with an image/* MIME type; text-paste
- * falls through to CodeMirror's default handler.
+ * Paste intercepts image/* items only; text falls through to CodeMirror.
  *
- * Paste filename convention: paste-YYYY-MM-DDTHH-MM-SS.{ext}
- * (ISO date with colons replaced by hyphens for filesystem safety.)
- *
- * Toast copy (LOCKED):
- *   413   → "File too large" / "The maximum upload size is 100 MB. Use an external link instead."
- *   other → "Couldn't attach file" / "Try again, or use Show in file manager to add it manually."
+ * Toast copy is locked.
  */
 import { useCallback, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";

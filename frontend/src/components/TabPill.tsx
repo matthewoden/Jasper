@@ -1,19 +1,11 @@
 /**
- * TabPill — a single editor tab: title (truncated), an always-visible close
- * (X), middle-click close, and a "(deleted)" read-only indicator. No file
- * icon — the title alone carries the tab identity, matching the mock.
+ * TabPill — one editor tab. Pure props-in / callbacks-out; TabStrip owns the
+ * drag-to-reorder.
  *
- * Pure props-in / callbacks-out. TabStrip owns pointer-event drag-to-reorder;
- * this pill only carries selection and close callbacks. Active styling uses
- * brighter title color (fg-title vs muted) and a 2px accent top-border; the
- * background is flush with the tab bar (--color-surface) for inactive pills,
- * --color-bg (matches the editor column) for the active pill.
- *
- * forwardRef: ContextMenu.Trigger asChild clones this element and injects its
- * own ref + handlers (onPointerDown, onContextMenu). Without forwardRef the
- * injected ref is silently dropped. Explicit handlers spread AFTER {...rest} so
- * our select handler always wins over Radix-injected same-key props; Radix's
- * context-menu-specific handlers (distinct keys) pass through untouched.
+ * forwardRef is required: ContextMenu.Trigger asChild clones this element and
+ * injects its own ref, which is silently dropped without it. Explicit handlers
+ * spread AFTER {...rest} so ours win on key collisions while Radix's own
+ * distinct keys pass through.
  */
 import { useState, forwardRef } from "react";
 import type { CSSProperties, HTMLAttributes } from "react";
@@ -97,16 +89,11 @@ const closeButtonStyle: CSSProperties = {
   color: "var(--color-muted)",
   borderRadius: 2,
   flexShrink: 0,
-  // (group B, item 5): the owner expects the close-× vertically
-  // centered on the tab's LABEL text, not bottom-pinned. tabPillStyle's row
-  // already uses alignItems:"center", so simply not overriding alignSelf here
-  // lets the button share the label's vertical center (this REVERSES the prior
-  // bottom-pin/co-centering contract with the new-tab + and
-  // overflow chevron — TabStrip.tsx/TabOverflowDropdown.tsx were re-centered
-  // to match, see their own comments).
-  // Optical centering: lineHeight:0 strips the inherited text-line strut
-  // an inline-flex button otherwise reserves around its SVG child, which was
-  // nudging the 12px X glyph a hair below true vertical center.
+  // Deliberately does NOT override alignSelf — the row already centers, so the
+  // × shares the label's vertical center.
+  //
+  // lineHeight:0 strips the text-line strut an inline-flex button reserves
+  // around its SVG child, which nudged the glyph below true center.
   lineHeight: 0,
 };
 

@@ -1,14 +1,9 @@
 /**
- * useTagBrowser — reactive tag list hook, reading the shared `tagsResource`
- * cache. There is no per-instance copy of the tag list any
- * more: every mounted `MarkdownEditor` pane and `RightRailTagsPanel` reads
- * the SAME cache entry, so split view no longer duplicates the list or the
- * fetch.
+ * useTagBrowser reads the shared tagsResource. No per-instance copy, so split
+ * view no longer duplicates the list or the fetch.
  *
- * WS integration: `tagsResource` declares `invalidatedBy: ["tags:updated",
- * "tags:rewritten"]` at registration time (mcpGrantsApi.ts's sibling
- * pattern) — the resource layer subscribes to the event bus itself, so this
- * hook no longer needs a module-level subscriber Set or a dispatch function.
+ * The resource declares its own invalidatedBy events, so this hook needs no
+ * subscriber set of its own.
  */
 
 import { publish, useResource } from "./resources";

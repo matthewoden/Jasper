@@ -1,18 +1,11 @@
 /**
- * frontmatterHidePlugin — CM6 extension that hides the YAML frontmatter block
- * by default, replacing it with an invisible empty widget (zero visible UI).
- * Cmd-Shift-Y toggles between hidden and raw YAML view.
+ * frontmatterHidePlugin hides the YAML frontmatter behind an invisible widget;
+ * Cmd-Shift-Y toggles raw view.
  *
- * Block decorations must come from a StateField, not a ViewPlugin (CM6
- * constraint: "Block decorations may not be specified via plugins"). The
- * StateField holds `{ hidden: boolean; decos: DecorationSet }` and rebuilds
- * on `toggleFrontmatterVisibility` effect or doc change.
+ * Block decorations must come from a StateField, not a ViewPlugin.
  *
- * When hidden=false (raw view), only line decorations are applied — no
- * Decoration.replace — to avoid cursor-position mismatch from multi-line replaces.
- *
- * The ViewPlugin is a thin shim that exposes `decorations` for test introspection
- * via `view.plugin()`.
+ * Raw view applies LINE decorations only, never Decoration.replace — a
+ * multi-line replace there mismatches the cursor position.
  */
 import {
   Decoration,
@@ -224,15 +217,13 @@ const frontmatterHiddenEditFilter = EditorState.transactionFilter.of((tr) => {
 
 
 /**
- * frontmatterSelectionClamp — cursorDocStart (Ctrl/Cmd-Home) sets the
- * selection to absolute position 0, INSIDE the hidden block: atomic ranges
- * only guard incremental cursor motion, not absolute jumps. A caret parked
- * there makes every line-anchored command (Tab indent, etc.) resolve against
- * the frontmatter's own first line, which frontmatterHiddenEditFilter then
- * silently drops (phase12.1 U6 regression). Clamp selections that fall
- * ENTIRELY inside the hidden block to the boundary — the first visible line.
- * Selections that extend past the boundary (select-all) pass through so the
- * documented select-all-replace behavior is preserved.
+ * Atomic ranges only guard incremental motion, so Ctrl/Cmd-Home jumps straight
+ * to position 0 INSIDE the hidden block. A caret parked there makes every
+ * line-anchored command resolve against the frontmatter's first line, which the
+ * edit filter then silently drops.
+ *
+ * Selections extending past the boundary (select-all) pass through, preserving
+ * select-all-replace.
  */
 const frontmatterSelectionClamp = EditorState.transactionFilter.of((tr) => {
   if (!tr.selection) return tr;

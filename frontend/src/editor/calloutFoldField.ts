@@ -1,26 +1,13 @@
 /**
- * calloutFoldField — CM6 extension tracking which foldable callouts
- * (`> [!type]-` — trailing dash) are collapsed, and hiding their body
- * lines when folded (READ-02).
+ * calloutFoldField tracks which `> [!type]-` callouts are collapsed and hides
+ * their bodies (READ-02). Session-only, never persisted.
  *
- * Block decorations must come from a StateField, not a ViewPlugin (CM6
- * constraint: "Block decorations may not be specified via plugins").
+ * Block decorations must come from a StateField, not a ViewPlugin.
  *
- * Folded state is keyed by the blockquote's start position (`Set<number>`,
- * not a single boolean — mirrors frontmatterHidePlugin.ts's toggle-effect +
- * StateField shape, but supports multiple independent callouts). Foldable
- * callouts start COLLAPSED the first time they're seen (seeded from
- * `[!type]-` callouts at `create` AND on every subsequent docChanged for
- * any position not already tracked in `known`) — this covers both a
- * same-session `create()` with real content already present, and the
- * common app pattern of mounting with `initialDoc=""` and loading the
- * real content later via a docChanged `applyServerUpdate` transaction
- * (MarkdownEditor.tsx). Session-level only — never persisted across reloads.
- *
- * The fold chevron itself is rendered by livePreviewPlugin.ts's
- * CalloutTitleWidget (same title-line widget as the dot/title), which
- * reads `isCalloutFolded()` to pick ChevronRight (collapsed) vs
- * ChevronDown (expanded) and dispatches `toggleCalloutFold` on click.
+ * Folded state is keyed by blockquote start position, so multiple callouts fold
+ * independently. Foldable callouts seed COLLAPSED on first sight — on create AND
+ * on every later docChanged for an untracked position, because the app usually
+ * mounts with initialDoc="" and the real content arrives in a later transaction.
  */
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";

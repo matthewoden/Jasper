@@ -1,22 +1,13 @@
 /**
- * inlineTagPlugin — CM6 ViewPlugin that decorates `#tagname` occurrences in
- * the document body as clickable styled spans.
+ * inlineTagPlugin decorates `#tagname` in the body as clickable spans.
  *
- * Uses MatchDecorator with `/#([a-z0-9_-]+)/g`. lezer-markdown has no HashTag
- * node, so regex matching is the only option (same rationale as wikilinkPlugin).
+ * Regex, not the syntax tree: lezer-markdown has no HashTag node.
  *
- * Decoration.mark (not replace) so #tagname text stays visible when the cursor
- * is inside it — avoids needing a per-cursor-line guard.
+ * Decoration.mark rather than replace, so the text stays visible with the cursor
+ * inside it — which removes the need for a per-cursor-line guard.
  *
- * isInsideCodeOrFrontmatter and isHeadingLine guards prevent decorating tags
- * inside code blocks, inline code, frontmatter, and markdown headings. Both
- * guards are copied (not imported) from wikilinkPlugin for independent testability.
- *
- * Click handler calls useTreeStore.getState().setActiveTagFilter() via the
- * module-level getState() pattern — safe from outside the React render tree.
- *
- * data-tag is constrained to `[a-z0-9_-]+` by the regex; passed to Zustand
- * as a plain string with no innerHTML path.
+ * The code/frontmatter/heading guards are COPIED from wikilinkPlugin rather than
+ * imported, to keep the two independently testable.
  */
 import {
   Decoration,

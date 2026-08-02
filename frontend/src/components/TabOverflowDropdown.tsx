@@ -1,12 +1,7 @@
 /**
- * TabOverflowDropdown — Radix DropdownMenu pinned to the tab strip's right
- * edge, always rendered — the owner wants the tab-list
- * dropdown "always visible, pinned to the right"). The trigger no longer
- * gates on overflow: it renders even with zero or few tabs. The menu lists
- * EVERY open tab in tab order (not just the ones currently hidden/collapsed
- * behind overflow) — selecting any item activates that tab via the same
- * onSelectTab handler the tab pills themselves use. The active row gets the
- * shared accent-12% tint.
+ * TabOverflowDropdown — pinned to the strip's right edge and ALWAYS rendered,
+ * even with no overflow. The menu lists every open tab in order, not just the
+ * hidden ones.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "lucide-react";

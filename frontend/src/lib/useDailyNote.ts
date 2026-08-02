@@ -1,23 +1,15 @@
 /**
- * useDailyNote — opens today's daily note in the editor.
+ * useDailyNote opens today's daily note, with a re-entrancy guard so rapid
+ * clicks no-op.
  *
- * Re-entrancy guard: concurrent rapid clicks no-op on the second call.
- * Calls broadcastRefresh() after success so the sidebar tree reflects any
- * newly-created daily note (an H1-rename can move a daily note to a new path,
- * and the next Today click must create a fresh one — the tree must update).
- * The refresh call sits outside the open-failure boundary and is best-effort
- * (non-fatal): once the note has opened, a refresh rejection never
- * retroactively reports the open itself as failed.
+ * The tree refresh is best-effort and OUTSIDE the open-failure boundary: once
+ * the note has opened, a refresh rejection must not retroactively report the
+ * open as failed.
  *
- * Folder expansion (pp9) happens AFTER broadcastRefresh() settles, not
- * before: a successful tree fetch prunes any expanded path absent from that
- * fetch, and the fetch can be a coalesced in-flight response that resolves
- * against a tree snapshot taken before the note's folder existed — so
- * expanding first is genuinely droppable. It happens on both refresh
- * outcomes (success or swallowed rejection) since the expansion is
- * client-side view intent, independent of tree-data freshness.
- *
- * Returns { openToday, isLoading } for SidebarToolbar's Today button.
+ * Folder expansion happens AFTER that refresh settles. A coalesced in-flight
+ * response can resolve against a snapshot taken before the folder existed, and
+ * a successful fetch prunes expanded paths it does not contain — so expanding
+ * first drops the expansion.
  */
 
 import { useCallback } from "react";

@@ -48,24 +48,18 @@ export interface UseSessionSyncOptions {
 }
 
 /**
- * WebSocket session-sync hook. Mount once at App root. Owns the WS connection,
- * the connection-status state machine, the reconnect loop, and inbound-event routing.
+ * WebSocket session sync. Mount once at App root.
  *
- * Reconnect sequence: setStatus("reconnecting") → await an explicit tree
- * invalidation on open → resume processing inbound events →
- * setStatus("connected"). A reconnect is a "we may have missed events"
- * signal, so it invalidates rather than publishes — the same reasoning
- * that governs every other resource, applied at the transport layer.
+ * A reconnect INVALIDATES rather than publishes: it means "we may have missed
+ * events", so nothing it could publish can be trusted.
  *
- * Security: inbound `origin_session_id` is treated as opaque — never rendered
- * to the DOM. Used only for equality compare against own session_id to suppress
- * self-originated events.
+ * All listeners attach SYNCHRONOUSLY before any await after `new WebSocket`, or
+ * a slow CPU drops inbound messages between construction and setup.
  *
- * All listeners are attached SYNCHRONOUSLY before any await after `new WebSocket(...)`,
- * so no inbound message is lost on a slow CPU between construction and listener setup.
+ * An empty origin_session_id is the protocol signal for server-originated
+ * events; those bypass the origin filter and reach every tab.
  *
- * Empty origin_session_id ("") is the protocol signal for server-originated events
- * (reindex:*, migration:status) — these bypass the origin filter and reach every tab.
+ * Security: inbound origin_session_id is opaque — compared, never rendered.
  */
 export function useSessionSync(
   handlers: SessionSyncHandlers,

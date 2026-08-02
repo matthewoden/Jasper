@@ -1,15 +1,6 @@
 /**
- * Bookmarks empty state (BOOK-05).
- *
- * Rendered by BookmarksPanel ONLY when the bookmarks slice is empty.
- * Near-verbatim structural copy of TreeEmptyState.tsx (left-aligned, 24px/16px
- * padding, same two-line Body/Label typography), swapping the copy + glyph
- * and glyph: the inline "Press [+]" icon becomes
- * an inline lucide Star standing in for the ★ glyph.
- *
- * Locked copy (verbatim):
- *   "No bookmarks yet."
- *   "Click the star ★ in a note's header to bookmark it."
+ * Bookmarks empty state (BOOK-05). Structural copy of TreeEmptyState with its
+ * own copy and an inline Star standing in for the ★ glyph.
  */
 import { Star } from "lucide-react";
 

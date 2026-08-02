@@ -1,23 +1,8 @@
 /**
- * TabContextMenu — Radix ContextMenu wrapping a tab pill trigger.
+ * TabContextMenu — nine items in a LOCKED order mapping Obsidian's menu onto
+ * Jasper's item set, with separators after items 4, 6 and 7.
  *
- * 9 items in the locked order (CTX-01 — an Obsidian-literal mapping onto
- * Jasper's item set), with separators after items 4, 6, and 7:
- *   1. Close
- *   2. Close others
- *   3. Close to the right
- *   4. Close all
- *   ── sep ──
- *   5. Open in split
- *   6. New note to the right
- *   ── sep ──
- *   7. Pin tab (Unpin tab, if already pinned)
- *   ── sep ──
- *   8. Rename
- *   9. Show in file manager
- *
- * Styling tokens mirror TreeRowMenu; item font size is 12px — reused
- * verbatim for every new item, do not resize.
+ * Styling tokens mirror TreeRowMenu and are reused verbatim for every new item.
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { CSSProperties, ReactNode } from "react";

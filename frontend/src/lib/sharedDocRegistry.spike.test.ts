@@ -1,27 +1,12 @@
 /**
- * SPIKE OUTCOME: history resets on reconfigure — callers MUST
- * keep the closing primary's EditorView alive off-DOM (detached, not destroyed)
- * to retain history until the note fully closes.
+ * SPIKE: undo history does NOT survive Compartment.reconfigure.
  *
- * `Compartment.reconfigure` swaps in a brand-new `history()` extension instance;
- * CM6's `history()` stores its undo/redo stacks in its own private `StateField`,
- * which is (re)initialized empty the moment the field is added to the state via
- * reconfigure — there is no prior stack for it to inherit, because as far as the
- * field is concerned it has never existed on this state before. This spike
- * proves that empirically: edits recorded on the secondary view BEFORE promotion
- * are NOT undoable after `historyCompartment.reconfigure(history())` runs.
+ * reconfigure swaps in a fresh history() whose private StateField initializes
+ * empty — as far as that field is concerned it has never existed on this state.
+ * Edits recorded before promotion are therefore not undoable after it.
  *
- * Consequence for promotion: do NOT rely on a bare
- * Compartment.reconfigure to hand off undo history when the primary view's pane
- * closes. Instead, keep the original primary EditorView alive but detached from
- * the DOM (not destroyed) so its history StateField (and thus its undo stack)
- * survives; only destroy it once the note is fully closed everywhere. The
- * surviving secondary view continues mirroring edits via syncDispatch as today;
- * Undo/Redo keys on ANY view for the note route to the (possibly off-DOM)
- * primary's own dispatch, not to the promoted view's freshly-emptied history.
- *
- * This is the documented fallback, now
- * confirmed as the actual required path rather than a defensive fallback.
+ * Consequence: a closing primary's EditorView must be kept alive off-DOM rather
+ * than promoted away, until the note fully closes.
  */
 import { describe, expect, it } from "vitest";
 import { history, undo } from "@codemirror/commands";

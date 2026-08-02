@@ -1,16 +1,9 @@
 /**
- * revealApi — typed wrapper around POST /api/v1/reveal.
- * All calls route through the typed openapi-fetch client.
+ * revealApi wraps POST /reveal. The backend dispatches per platform; on Linux
+ * xdg-open cannot pre-select a file, so the parent directory opens instead.
  *
- * Backend dispatches per host platform:
- *   - macOS  → `open -R <abs>`, 200 {platform: "darwin"}
- *   - WSL2   → `wslpath -w` + `explorer.exe /select,...`, 200 {platform: "wsl2"}
- *   - Linux  → `xdg-open <parent_dir>`, 200 {platform: "linux"} — xdg-open
- *              cannot pre-select a file, so the parent directory opens instead.
- *   - Other  → 4xx/5xx error envelope
- *
- * Preserves {ok, platform?, status, errorMessage?} so useReveal can pick the
- * correct toast without re-parsing the backend response.
+ * Returns {ok, platform?, status, errorMessage?} so useReveal can pick a toast
+ * without re-parsing the response.
  */
 
 import { client } from "../api/client";
@@ -27,16 +20,9 @@ export interface RevealResult {
 }
 
 /**
- * Open the host OS file manager focused on a vault-relative file or folder.
- *
- * The caller (useReveal) translates the result into a toast — this wrapper
- * intentionally does NOT throw, since every error path renders a friendly toast
- * rather than bubbling an exception. Distinguishing 501 from generic 5xx requires
- * the raw HTTP status, which openapi-fetch surfaces via the `response` object.
- *
- * @param path - Vault-relative path under notes/ (e.g. "projects/jasper/note.md")
- * @param scope - "note" (default) resolves `path` under the vault; "vaultRoot"
- *   ignores `path` server-side and reveals the vault's data directory.
+ * Deliberately does not throw: every error path renders a toast rather than
+ * bubbling. Distinguishing 501 from a generic 5xx needs the raw status, which
+ * openapi-fetch exposes on `response`.
  */
 export async function revealPath(
   path: string,

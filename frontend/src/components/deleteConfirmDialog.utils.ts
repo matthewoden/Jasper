@@ -1,14 +1,9 @@
 /**
- * DeleteConfirmDialog data shapes + copy builder.
+ * Every delete entry point renders the same dialog against buildDeleteCopy, so
+ * no call site duplicates the locked strings.
  *
- * Every delete entry point (tree menu single-target, tree bulk-selection,
- * the ⌫ keyboard shortcut, and Plan 09's note-options menu) renders the
- * SAME <DeleteConfirmDialog> against `buildDeleteCopy(target)` so no call
- * site duplicates the locked strings — the dialog derives title/body/
- * confirm-label from `target` internally.
- *
- * Extracted so the component file only exports React components, which
- * satisfies react-refresh/only-export-components and keeps Fast Refresh.
+ * Split out of the component file so it exports only React components, which is
+ * what keeps Fast Refresh working.
  */
 
 export type DeleteTarget =
@@ -30,16 +25,12 @@ export interface DeleteCopy {
 }
 
 /**
- * Locked copy: note/folder/bulk deletes move the target to Trash — the
- * soft-delete-to-`.trash/` behavior is unchanged underneath; this dialog
- * only gates the UI trigger (the ⌫ shortcut now opens this dialog instead
- * of deleting immediately).
+ * Locked copy. Note/folder/bulk deletes promise Trash, matching the backend's
+ * soft delete.
  *
- * `file` targets (vault attachments, e.g. images dropped into an
- * attachments/ folder) have no `.trash/` path on the backend — FileStore
- * hard-deletes them (`fsstore.Store.DeleteFile`, not `TrashFile`) — so that
- * variant keeps copy describing an immediate, non-restorable delete rather
- * than a Trash promise the backend can't keep for this kind.
+ * `file` targets do NOT: the backend hard-deletes attachments, so that variant
+ * must describe a non-restorable delete rather than a Trash promise it cannot
+ * keep.
  */
 export function buildDeleteCopy(target: DeleteTarget): DeleteCopy {
   switch (target.kind) {

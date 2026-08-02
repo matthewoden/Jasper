@@ -1,13 +1,8 @@
 /**
- * ThemeSection — Appearance step for the first-run wizard.
+ * ThemeSection — the wizard's appearance step. Dark-only, so no theme toggle;
+ * the accent and reading-font choices preview live.
  *
- * Dark-only: no theme toggle offered. Shows the accent swatch picker
- * and the reading-font toggle (Sans / Serif). Live preview applies on each
- * selection so the wizard restyles as the user picks.
- *
- * aria-label values on swatch buttons match the Copywriting Contract ("Purple",
- * "Sky", "Green", "Orange") — Playwright selectors in phase17-uat.spec.ts
- * depend on these exact strings.
+ * The swatch aria-labels are locked — Playwright selectors depend on them.
  */
 
 import { applyAccent, applyReadingFont } from "../../lib/useAccent";

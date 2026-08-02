@@ -1,25 +1,12 @@
 /**
- * tagClickPlugin — CM6 ViewPlugin that decorates tag string values inside
- * the YAML `tags: [...]` frontmatter array as clickable spans.
+ * tagClickPlugin makes tag values inside the YAML `tags: [...]` array clickable.
  *
- * Tag strings are clickable with a plain click (no Cmd/Ctrl) because tag
- * values in frontmatter are not regular editing targets — clicking is an
- * explicit browse gesture, unlike wikilinks which require Cmd-click.
+ * A PLAIN click, unlike wikilinks' Cmd-click: frontmatter tag values are not
+ * ordinary editing targets, so clicking one is unambiguously a browse gesture.
  *
- * lezer-yaml node chain: Frontmatter > Stream > Document > BlockMapping >
- *   Pair > FlowSequence > Item > Literal
- *   - `Literal`      — the tag-value leaf (e.g. "alpha", "beta-tag")
- *   - `FlowSequence` — the [...] array wrapper
- *   - `Pair`         — key-value mapping entry
- *
- * `isInsideTagsPair` walks ancestors from `Literal` upward:
- *   1. Find a `FlowSequence` ancestor (confirms we're inside an array)
- *   2. Find a `Pair` ancestor above it
- *   3. The Pair's first child (key) text must equal "tags"
- *
- * IME gate: u.view.composing → map existing decorations through u.changes
- * instead of rebuilding (same pattern as livePreviewPlugin).
- * CSS class: `cm-tag-clickable` — styled in themeBridge.ts.
+ * isInsideTagsPair walks up from the Literal to a FlowSequence, then to a Pair,
+ * and requires that Pair's key to be exactly "tags" — otherwise any flow
+ * sequence in frontmatter would decorate.
  */
 import {
   Decoration,

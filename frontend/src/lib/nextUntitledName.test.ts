@@ -1,20 +1,7 @@
 /**
- * Tests for nextUntitledName — pure helper that returns the lowest
- * non-colliding name in the form `${base}` or `${base} ${N}` (N ≥ 1).
- *
- * Closes Gap 5 from 03-HUMAN-UAT.md: clicking the toolbar `+` (or right-
- * click → New note) twice in succession in the same folder produces a 409
- * because the frontend always uses the literal name `untitled` (which
- * becomes `untitled.md` for notes). Auto-increment per directory:
- *   first  → "untitled"
- *   second → "untitled 1"
- *   third  → "untitled 2"
- *
- * Comparison MUST be case-insensitive — matches the server's canonical-
- * collision rule (NFC + lowercase per fsstore.Canonicalize).
- *
- * Sparse gaps ARE filled — given ["untitled", "untitled 2"], result is
- * "untitled 1" (first hole). Matches Finder / VS Code conventions.
+ * Auto-increment must be case-insensitive, matching the server's canonical
+ * collision rule, and must FILL sparse gaps — ["untitled", "untitled 2"] yields
+ * "untitled 1", as Finder and VS Code do.
  */
 import { describe, expect, it } from "vitest";
 

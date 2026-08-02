@@ -1,23 +1,12 @@
 /**
- * URL classification helpers — shared by livePreviewPlugin (visual
- * styling + ↗ icon decision) and linkClickHandler (whether to
- * intercept a modifier-click and where to open it).
+ * URL classification shared by livePreviewPlugin (styling) and linkClickHandler
+ * (whether to intercept a click).
  *
- * "External-like" covers two cases:
- *   1. Explicit protocol: http(s)://
- *   2. Bare domain with TLD: "example.com", "a.b.org/path",
- *      "subdomain.deep.example.io"
+ * "External-like" means an explicit http(s) protocol OR a bare domain with a
+ * TLD, which is upgraded to https at open time so the browser navigates.
  *
- * Bare domains are upgraded to https:// at open time so the browser
- * navigates correctly. The bar for "is this a URL" is intentionally
- * loose — markdown link bodies that don't match are treated as
- * relative paths or wiki refs.
- *
- * Anti-patterns this gate explicitly EXCLUDES:
- *   - Anchors:        "#section"
- *   - Relative paths: "./foo", "/foo", "foo/bar.md"
- *   - mailto/tel:     these have their own protocols; not opened by
- *                     this handler (extend later if needed)
+ * The bar is deliberately loose: anything that fails it is treated as a relative
+ * path or wiki ref. Anchors, relative paths and mailto/tel are excluded.
  */
 
 const PROTOCOL_RE = /^https?:\/\//i;

@@ -1,15 +1,11 @@
 /**
- * outlineExtract — extracts H1-H6 headings from the LIVE CM6 document via
- * the lezer syntax tree (not the saved file, not a regex line-scanner).
+ * outlineExtract pulls headings from the LIVE CM6 tree, not the saved file.
  *
- * Reuses the heading node-name table and the FencedCode-ancestor guard from
- * livePreviewPlugin.ts so headings inside fenced code blocks are excluded
- * for free, and Setext (underline-style) headings are recognized alongside
- * ATX (`#`-prefixed) headings.
+ * Reuses livePreviewPlugin's node table and FencedCode guard, so headings inside
+ * code blocks are excluded and Setext headings are recognized for free.
  *
- * Unlike livePreviewPlugin's decoration walk, this walks the WHOLE document
- * (no visibleRanges restriction) since the outline needs every heading, not
- * just the ones currently on screen.
+ * Walks the WHOLE document, not just visibleRanges — the outline needs every
+ * heading, not the on-screen ones.
  */
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
@@ -82,18 +78,11 @@ function headingLineStart(state: EditorState, node: SyntaxNodeRef): { line: numb
  */
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
-  // Unlike livePreviewPlugin's viewport-scoped decorations (which only need
-  // whatever CM6's incremental background parser has already covered near the
-  // visible range), the outline needs the WHOLE document — including content
-  // far outside the initial viewport. A bare `syntaxTree(state)` can silently
-  // return a tree that only covers the parser's initial budget (e.g. content
-  // loaded via a single large docChanged transaction, such as the initial
-  // GET-load or a note swap, may only be partially parsed at the moment this
-  // runs), which either drops headings beyond that point or resolves their
-  // `from` position off a still-incomplete tree. `ensureSyntaxTree` forces a
-  // synchronous parse up to the full document length (bounded by the timeout
-  // so a pathologically huge note can't freeze typing); falling back to the
-  // best-effort `syntaxTree(state)` only if that budget is exceeded.
+  // A bare syntaxTree() can return a tree covering only the parser's initial
+  // budget — likely here, since content arrives in one large docChanged — which
+  // drops headings past that point or resolves them off an incomplete tree.
+  // ensureSyntaxTree forces a full parse, bounded so a huge note cannot freeze
+  // typing, falling back to best-effort if that budget is exceeded.
   const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
 
   tree.iterate({

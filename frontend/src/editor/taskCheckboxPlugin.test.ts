@@ -1,24 +1,7 @@
 /**
- * taskCheckboxPlugin.test.ts — TDD suite for the checkbox toggle core.
- *
- * TC-1: toggle-unchecked: dispatch effect at unchecked TaskMarker.from -> doc becomes "[x]"
- * TC-2: toggle-checked: dispatch effect at checked TaskMarker.from -> doc becomes "[ ]"
- * TC-3: case-normalize: "[X]" reads as checked -> unchecks to "[ ]" (writes lowercase)
- * TC-4: nested: child task toggled independently; parent unaffected
- * TC-5: ordered: ordered-list task toggles correctly
- * TC-6: position-stable: widget data-pos equals new absolute TaskMarker.from after line insert above
- * TC-7: (in livePreviewPlugin.test.ts) bullet-on-task-line (reversed: livePreviewPlugin now renders bullet)
- * TC-8: DELETED — asserted always-widget behavior superseded by reveal model
- * TC-9: annotation-present: char-flip transaction carries CheckboxToggleAnnotation
- * TC-10: no-widget-on-active-line (reveal): cursor on task line → no widget emitted (U2)
- * TC-11: widget-on-off-cursor-line (reveal): cursor NOT on task line → widget emitted (U2)
- * TC-12: widget replace range starts at TaskMarker.from (2), NOT ListMark.from (0)
- * TC-13: no-native-input: widget DOM is a <span> with SVG, no <input type=checkbox>
- *
- * Note on async tests (TC-1..TC-5):
- *   CM6 does not allow view.dispatch() from inside ViewPlugin.update(). The char-flip
- *   is deferred one microtask (Promise.resolve().then()) in the ViewPlugin. Tests must
- *   await flushMicrotasks() after dispatching ToggleCheckboxEffect to see the result.
+ * TDD suite for the checkbox toggle core: dispatching a toggle effect at a
+ * TaskMarker position flips the character, case-normalizing "[X]" to lowercase,
+ * and the widget's data-pos stays correct after edits above it.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";

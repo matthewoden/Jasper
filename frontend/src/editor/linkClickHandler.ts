@@ -1,22 +1,12 @@
 /**
- * linkClickHandler — Obsidian-style cmd/ctrl-click on markdown links.
+ * Cmd/Ctrl-click navigates a markdown link; a plain click just positions the
+ * cursor, which is what an editable surface must keep doing.
  *
- * In an editable markdown surface, plain click positions the cursor (CM6
- * default). Cmd-click (Mac) or Ctrl-click (Windows/Linux) navigates:
- *   - External URL → window.open with noopener,noreferrer
- *   - [[Title]] resolved → setActiveNoteId(targetId)
- *   - [[Title]] pending → createNoteFromPendingLink then navigate
+ * External URLs open with noopener,noreferrer. A pending [[Title]] is created
+ * first, then navigated to.
  *
- * "External" means http(s):// or a bare domain-with-TLD; bare domains are
- * upgraded to https:// at open time.
- *
- * Plain click on a wiki-link is inert. The `data-cmd-held` attribute on
- * `.cm-editor` is toggled by document-level keydown/keyup in MarkdownEditor
- * to drive the pointer-cursor CSS.
- *
- * Module-level snapshot: setWikilinkHandlerCallbacks() must be called from
- * MarkdownEditor's useEffect to wire React-layer callbacks into this CM6
- * extension without going through React. Mirrors the wikilinkResolver pattern.
+ * setWikilinkHandlerCallbacks must be wired from MarkdownEditor — this module
+ * cannot reach React state itself.
  */
 import { syntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";

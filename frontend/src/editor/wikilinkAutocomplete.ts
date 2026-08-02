@@ -1,20 +1,14 @@
 /**
- * wikilinkAutocomplete — `[[` CompletionSource for wiki-link autocomplete.
+ * wikilinkAutocomplete — the `[[` completion source, suppressed inside code and
+ * frontmatter.
  *
- * Triggers on `[[`, ranks by server (recency + proximity). Always shows
- * "Create '{typed}'" as the last row. Suppressed inside fenced code, inline
- * code, or frontmatter.
+ * `from` points AFTER the `[[` so accepting a completion does not double up the
+ * brackets the user already typed.
  *
- * CompletionResult.from points AFTER the `[[` (trigger.from + 2) so that
- * accepting a completion does not double up the `[[` the user already typed.
+ * Uses `override`, which disables lang-markdown's built-in sources — an accepted
+ * trade-off, since none of them apply inside a wiki-link.
  *
- * Module-level callbacks: MarkdownEditor calls setWikilinkAutocompleteCallbacks()
- * in useEffect to wire React-layer navigation + source-folder callbacks without
- * importing React here. Mirrors the wikilinkResolver / tagClickPlugin pattern.
- *
- * Autocomplete strategy: override: [wikilinkCompletionSource, tagCompletionSource].
- * Trade-off: `override` disables lang-markdown's built-in completions (emoji
- * shortcodes). Acceptable for v1; switch to language-data registration if needed.
+ * Callbacks are wired from MarkdownEditor so this file imports no React.
  */
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";

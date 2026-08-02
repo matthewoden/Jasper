@@ -1,29 +1,11 @@
 /**
- * firstH1HidePlugin.test.ts — vitest suite for the first-H1 hide plugin.
+ * Regression coverage for the two constraints the plugin's header documents:
+ * the replace range must include the trailing newline, and it must not use a
+ * widget.
  *
- * Regression coverage for two real UAT bugs (see
- * firstH1HidePlugin.ts's header comment for the full investigation):
- *
- * 1. "ArrowUp from the top of the body doesn't reach the title" (round 2) —
- *    a partial-line replace (excluding the H1's own trailing newline) left a
- *    normal-height phantom row behind, breaking the ArrowUp body->title
- *    handoff. Fixed by extending the replace range through the newline.
- * 2. "tree label / TitleElement never live-updates while typing a new H1"
- *    (this file's regression) — a WidgetType-based replace decoration
- *    (mirroring frontmatterHidePlugin's own pattern) corrupted CM6's
- *    DOM/state reconciliation while the user actively typed into the H1
- *    line, silently desyncing the rendered DOM from `view.state.doc`. Fixed
- *    by using a bare (widget-less) `Decoration.replace({block: true})`
- *    instead — CM6 supplies its own placeholder DOM node, with no
- *    WidgetType instance to trigger the corruption.
- *
- * Because the fix intentionally has NO widget, there is no dedicated DOM
- * node left to attach a CSS class to for introspection (the widget-less
- * block replace consumes the entire line, including what would have been
- * its `.cm-line` element) — so these tests assert against DOM STRUCTURE
- * (no separate `.cm-line` renders for the hidden H1; no phantom row; the
- * H1's raw text never appears as a normal, unhidden line) and against the
- * state-level decoration range (`findFirstH1HideRange`) rather than a class.
+ * jsdom cannot measure layout, so these pin the model-level contract
+ * (state.doc, decoration ranges); the rendered-height and caret behavior are
+ * proven in E2E.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { EditorView, keymap } from "@codemirror/view";

@@ -1,15 +1,9 @@
 /**
- * SidebarTabRow — icon-only Notes / Search / Bookmarks tab row + collapse
- * control, rendered inside the Sidebar's 40px header (NAV-01/NAV-03,
- * replaces the old vault-name label + SidebarToolbar header content).
+ * SidebarTabRow — the Notes / Search / Bookmarks tabs plus the collapse control,
+ * inside the Sidebar's 40px header (NAV-01/NAV-03).
  *
- * Reuses ActivityRibbon's RibbonButton hover/active color-mix formula
- * verbatim: active tab = accent icon + accent-14%-tint
- * background; inactive = muted icon; hover = fg-8%-tint background.
- *
- * Clicking a tab both switches the panel AND reopens the sidebar
- * (setNotesSidebarVisible(true)) — a tab click while collapsed must never
- * no-op, since the collapse control lives in this same row.
+ * A tab click must ALSO reopen the sidebar: the collapse control lives in this
+ * same row, so a click while collapsed can never be a no-op.
  */
 import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";

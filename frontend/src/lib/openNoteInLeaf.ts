@@ -1,22 +1,10 @@
 /**
- * openNoteInLeaf — opens noteId as a tab in a given leaf (not necessarily the
- * active pane) — a leaf-targeted sibling of usePaneStore's own
- * openInActivePane, needed by App.tsx's per-leaf "open to the right" / "new
- * tab" context actions (the same dedup rules apply, just scoped to an
- * explicit leafId).
+ * openNoteInLeaf targets an explicit leaf rather than the active pane, for the
+ * per-leaf "open to the right" and "new tab" actions. Same dedup rules.
  *
- * `afterTabId`, when given, inserts the new (always-unpinned) tab
- * immediately after that tab's position instead of appending at the end —
- * used by "New note to the right" (App.tsx's openRightInLeaf). Per
- * the pinned-tab contract, the insertion index is clamped to the pinned/unpinned
- * boundary so a new unpinned tab can never land inside a leaf's pinned
- * group, even when `afterTabId` itself is pinned (with more pinned tabs
- * after it).
- *
- * Extracted to its own module (not left inline in App.tsx, and not folded
- * into usePaneStore.ts's own action set) so it stays independently testable
- * without pulling in App.tsx's component tree — App.tsx's own exports must
- * stay component-only for react-refresh/only-export-components.
+ * `afterTabId` inserts after that position, clamped to the pinned/unpinned
+ * boundary so a new unpinned tab can never land inside the pinned group — even
+ * when afterTabId is itself pinned.
  */
 import { _findLeaf, _updLeaf, newTabId } from "./paneTree";
 import { clampIndexToPinnedBoundary } from "./tabOverflow";

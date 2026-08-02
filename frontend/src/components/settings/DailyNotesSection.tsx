@@ -1,14 +1,11 @@
 /**
- * DailyNotesSection — the Daily notes pane. Carries the template control
- * over verbatim; the mock's template picker/preview/"New note from
- * template" affordances belong to Templates, which does not exist yet. Its
- * folder-picking control was retired (UAT test 6, 2026-07-29): the config
- * field it wrote had zero functional consumers — daily-note creation
- * hardcodes "daily/".
+ * DailyNotesSection — the template control only.
  *
- * The inline "Reset to default" link was dropped (owner, 2026-07-30):
- * once the pane held a single control it duplicated the pane-header Reset,
- * which writes the identical patch via buildResetPatch's dailyNotes case.
+ * No folder picker: the config field it wrote had zero consumers, since
+ * daily-note creation hardcodes "daily/".
+ *
+ * No inline Reset either — with one control it duplicated the pane-header
+ * Reset, which writes the identical patch.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Eyebrow } from "./shared";

@@ -1,29 +1,16 @@
 /**
- * firstH1HidePlugin — visually hides the document's FIRST ATX H1, which
- * TitleElement renders above the editor instead (READ-01).
+ * firstH1HidePlugin hides the document's first ATX H1; TitleElement renders it
+ * above the editor instead (READ-01).
  *
- * ATX only. Setext ("underline") H1s are deliberately not matched: TitleElement,
- * onH1Change and h1Extract all detect ATX only, so hiding one they cannot
- * read or write would strand the user with an invisible, uneditable heading.
+ * ATX only — hiding a Setext H1 that TitleElement cannot read or write would
+ * strand the user with an invisible, uneditable heading.
  *
- * Block decorations must come from a StateField, not a ViewPlugin — a CM6
- * constraint.
+ * Two things look removable and are not: the replace range must extend THROUGH
+ * the trailing newline (CM6 only zero-heights a complete line), and it must stay
+ * WIDGET-LESS (a second WidgetType block-replace desyncs CM6's DOM from
+ * view.state.doc during live typing, so edits vanish and onH1Change never fires).
  *
- * Two things here are load-bearing and look removable:
- *
- * - The replace range extends THROUGH the trailing newline. CM6 only collapses
- *   a replaced range to zero height when it spans a complete line; stopping at
- *   the node's own `.to` leaves an empty-but-normal-height phantom row.
- * - It is a WIDGET-LESS block replace. Adding a widget (mirroring
- *   frontmatterHidePlugin's) collapses height correctly but corrupts live
- *   typing: a second WidgetType block-replace recomputed every keystroke
- *   desyncs CM6's DOM from `view.state.doc`, so the rendered heading updates
- *   while the document silently keeps its pre-edit content and onH1Change
- *   never fires.
- *
- * A widget-less replace renders no `.cm-line` at all, so there is no DOM node
- * to hang a class on — findFirstH1HideRange exposes the range for tests to
- * assert against the model instead.
+ * Block decorations must come from a StateField, not a ViewPlugin.
  */
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { EditorState, StateField, RangeSetBuilder } from "@codemirror/state";
@@ -143,15 +130,9 @@ function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
 }
 
 /**
- * firstH1BackspaceGuardKeymap — no-ops Backspace/Delete keystrokes that
- * would erase the hidden first H1 (see guardHiddenFirstH1Delete above);
- * otherwise falls through to defaultKeymap. Place in the SAME extensions-
- * array slot as frontmatterBackspaceGuardKeymap (before defaultKeymap) —
- * MarkdownEditor.tsx registers both; each guards its own boundary
- * independently and neither interferes with the other (they compose:
- * whichever boundary the caret is at or before triggers its own guard, and
- * a Delete/Backspace genuinely past BOTH boundaries falls through to normal
- * editing in either order).
+ * Place in the same extensions slot as frontmatterBackspaceGuardKeymap, before
+ * defaultKeymap. The two compose: each guards its own boundary, and a delete
+ * past both falls through in either order.
  */
 export const firstH1BackspaceGuardKeymap = keymap.of([
   {

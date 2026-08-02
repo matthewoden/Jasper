@@ -1,21 +1,10 @@
 /**
- * LeafPane + real EditorPane + real MarkdownEditor integration test
- * (260718-n6a Task 5 — investigation + fail-before/pass-after regression).
+ * The only unit-level suite mounting the REAL stack down to a genuine CM6 view,
+ * so it can observe actual search-match decorations.
  *
- * Unlike LeafPane.test.tsx (mocked EditorPane) and EditorPane.test.tsx
- * (mocked MarkdownEditor), this file mounts the REAL stack — LeafPane ->
- * EditorPane -> MarkdownEditor -> a genuine CM6 EditorView — so it is the
- * only unit-level suite that can observe actual `.cm-jasper-search-match`
- * decorations painted by jasperSearchHighlight. This is the faithful
- * reproduction environment for the "highlights persist after Find-bar
- * dismiss" bug: MarkdownEditor.test.tsx already proves clearSearch() clears
- * decorations when called DIRECTLY on the ref in isolation, so if this
- * suite reproduces the bug, the root cause lives in LeafPane's
- * orchestration layer (activeHandle resolution / close routing), not in
- * MarkdownEditor's clearSearch() itself.
- *
- * Mocking strategy mirrors EditorPane.test.tsx (notesApi + treeApi are the
- * only network seams) — MarkdownEditor is deliberately LEFT UNMOCKED.
+ * That makes it the faithful reproduction for "highlights persist after the Find
+ * bar is dismissed": MarkdownEditor's own tests already prove clearSearch works
+ * when called directly, so a failure here localizes the bug to LeafPane's wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

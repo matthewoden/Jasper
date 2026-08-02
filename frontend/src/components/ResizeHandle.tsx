@@ -1,19 +1,11 @@
 /**
- * Generic resize handle — cursor-only affordance (no visible band) used by
- * SidebarResizeHandle (the former InterPanelDivider consumer was removed
- * in the tab-row rework — the right rail no longer has
- * independently resizable sections).
+ * Generic resize handle — a cursor affordance with no visible band.
  *
- * Drag lifecycle:
- *   - pointerdown → mark draggingRef.current = true, attach document listeners
- *   - pointermove → compute delta since last position, call onDrag(delta)
- *   - pointerup → flip draggingRef off, detach both document listeners
- *   - useEffect cleanup → guard against listeners surviving a mid-drag unmount
+ * preventDefault on pointerdown stops the native text-selection drag, and the
+ * effect cleanup guards against listeners surviving a mid-drag unmount.
  *
- * e.preventDefault() on pointerdown prevents native text-selection drag.
- * SidebarResizeHandle keeps its own absolute-clientX clamp math because it
- * must bound against the viewport width — that logic can't be expressed as
- * a plain delta.
+ * SidebarResizeHandle keeps its own clamp math because it bounds against the
+ * viewport, which cannot be expressed as a delta.
  */
 import { useCallback, useEffect, useRef } from "react";
 import type React from "react";

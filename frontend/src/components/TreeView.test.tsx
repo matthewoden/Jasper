@@ -1,27 +1,10 @@
 /**
- * TreeView — onRootDrop unit tests (quick task 260719-jv1 follow-up:
- * bookmark drag-to-root).
+ * onRootDrop is OPT-IN — omitting it must install no listeners at all.
  *
- * onRootDrop is OPT-IN: when a caller passes it, TreeView installs a
- * window-level native-drag listener set (mirroring FileTree's own
- * empty-area root-drop workaround for Bug A — react-arborist's onMove
- * never fires for a drop below the last row) scoped to THIS tree
- * instance's own `[role="tree"]` element. When omitted, no extra
- * listeners are installed.
- *
- * react-arborist's own DnD backend (react-dnd's HTML5Backend) ALSO
- * registers window-level dragstart/dragover/drop/dragend listeners
- * unconditionally on mount — dispatching real bubbling DragEvents in
- * jsdom would trip react-dnd's internal "Cannot call hover while not
- * dragging" invariant (it isn't a real drag), which is noise unrelated
- * to what we're testing here. So these tests capture the actual handler
- * functions TreeView registers (via a window.addEventListener spy —
- * TreeView's own effect runs AFTER react-arborist's child effects, per
- * React's child-before-parent effect ordering, so TreeView's listeners
- * are always the LAST ones registered for each event type) and invoke
- * them directly with a constructed event object. The real drag *gesture*
- * is proven with a real mouse in the browser (per the "verify DnD with
- * real mouse" memory) — these tests exercise the wiring only.
+ * These capture the handler functions rather than dispatching real DragEvents:
+ * react-arborist's HTML5Backend registers its own window listeners on mount, and
+ * a synthetic bubbling drag trips its "Cannot call hover while not dragging"
+ * invariant — noise unrelated to what is under test.
  */
 import type { RefObject } from "react";
 import { describe, expect, it, vi } from "vitest";

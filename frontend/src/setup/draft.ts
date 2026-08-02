@@ -1,18 +1,10 @@
 /**
- * draft.ts — localStorage draft persistence for the first-run wizard.
+ * localStorage draft persistence for the first-run wizard, so a refresh
+ * mid-wizard rehydrates the form. SetupApp clears it after a successful submit,
+ * BEFORE redirecting, so the next first-run starts clean.
  *
- * Every field change on the /setup wizard writes to
- * localStorage[SETUP_DRAFT_KEY] so closing/refreshing mid-wizard rehydrates
- * the form. After a successful POST /api/v1/setup, SetupApp calls
- * clearDraft() BEFORE redirecting to "/" so a subsequent first-run starts
- * fresh.
- *
- * SETUP_DRAFT_KEY is distinct from THEME_BOOTSTRAP_KEY — the bootstrap cache
- * survives wizard runs; the draft is scoped to the in-flight first-run only.
- *
- * Failure mode: localStorage throws in private/incognito sessions (Safari);
- * every accessor swallows the throw and falls back to DEFAULT_DRAFT / no-op,
- * matching the pattern in useTheme.ts.
+ * localStorage throws in Safari private mode; every accessor swallows that and
+ * falls back to DEFAULT_DRAFT.
  */
 
 export const SETUP_DRAFT_KEY = "jasper.setup.draft";
@@ -27,15 +19,11 @@ export interface SetupDraft {
 }
 
 /**
- * DEFAULT_DRAFT — initial wizard state before any user input.
+ * dataDir is empty on purpose: the wizard shows the recommendation as a
+ * placeholder rather than committing a value that would bypass validation.
  *
- * dataDir is empty: the wizard pre-fills the input's placeholder so the
- * user sees the recommendation without committing a value that bypasses
- * directory validation. Default theme is "dark" (dark-first palette).
- *
- * dailyTemplate uses the `{{date}}` token — the backend substitutes the
- * actual date at write time. Using a literal date string was a regression
- * that produced "# YYYY-MM-DD" headers verbatim in users' daily notes.
+ * dailyTemplate must use the `{{date}}` token — a literal date string was a
+ * regression that wrote "# YYYY-MM-DD" verbatim into users' notes.
  */
 export const DEFAULT_DRAFT: SetupDraft = {
   dataDir: "",

@@ -1,16 +1,11 @@
 /**
- * SliderNumberPair — paired range + number input bound to one value
- * (SET3-07). Dragging the slider restyles live via a CSS
- * custom property but commits to the network exactly once, on pointer-up /
- * key-up. The number half enforces the real validator bounds
- * (numberMin/numberMax), which may be wider than the slider's comfortable
- * sub-range.
+ * SliderNumberPair — a range and a number input over one value (SET3-07).
+ * Dragging restyles live via a CSS custom property but commits ONCE, on
+ * pointer-up. The number half enforces the real validator bounds, which may be
+ * wider than the slider's comfortable range.
  *
- * Keyboard commits are debounced (KEY_COMMIT_DEBOUNCE_MS): arrow-key
- * auto-repeat would otherwise fire one PUT /config per key event — an
- * overwrite storm the drag path deliberately avoids. A single
- * discrete key press still commits shortly after release; a held/repeated
- * key coalesces into one commit once key activity settles.
+ * Keyboard commits are debounced because arrow-key auto-repeat would otherwise
+ * fire one PATCH per key event.
  */
 import { useEffect, useRef, useState } from "react";
 import { inputStyle } from "./shared";
@@ -75,17 +70,12 @@ export function SliderNumberPair({
     document.documentElement.style.setProperty(cssVar, formatCssValueRef.current(value));
   }, [value, cssVar]);
 
-  // Flush (not drop) a pending debounced keyboard commit on unmount:
-  // handleRangeChange already applied the value to document.documentElement
-  // as a whole-app restyle, so dropping the write leaves the app rendering a
-  // value the persisted config does not have until the next reload.
-  // Deliberately UNGUARDED by the value-unchanged check used elsewhere: the
-  // `[]` dep array means a `value` comparison here would read a first-render
-  // stale closure, and this path only fires while a debounced commit is
-  // genuinely pending. Worst case is one redundant PATCH when a user
-  // arrow-keys back to the original value and closes Settings within the
-  // debounce window -- a real correctness risk traded for
-  // a marginal saving is not worth it.
+  // FLUSH a pending commit on unmount, never drop it: the value is already
+  // applied to the document as a whole-app restyle, so dropping the write leaves
+  // the app rendering something the persisted config does not have.
+  //
+  // Deliberately unguarded by a value-unchanged check — the [] deps would make
+  // that read a stale first-render closure. Worst case is one redundant PATCH.
   useEffect(() => {
     return () => {
       if (keyCommitTimer.current) clearTimeout(keyCommitTimer.current);

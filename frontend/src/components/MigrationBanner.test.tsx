@@ -1,15 +1,6 @@
 /**
- * Tests for the Surface 1 Migration Error Banner.
- *
- * Validates the locked banner contract verbatim:
- *   - Renders nothing when state=ok (banner is server-state-driven)
- *   - Renders locked copy when state=rolled_back, with concrete filename + path
- *   - Logs-path button copies to clipboard + fires the locked toast
- *   - Reset-and-rebuild button calls the onResetConfirm prop
- *   - Dismiss hides the banner for this session (local state)
- *
- * useMigrationStatus and useToast are mocked — this test exercises the
- * banner's render/interaction surface only, NOT the hook.
+ * Migration banner render/interaction surface only — useMigrationStatus and
+ * useToast are mocked, so the hook itself is NOT exercised here.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

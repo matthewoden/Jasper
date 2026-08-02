@@ -1,16 +1,13 @@
 /**
- * Generic fetch-once-and-cache primitive, generalizing useFileTree.ts's
- * coalescer (leading-plus-trailing single-flight with a 100ms tail) to
- * every GET endpoint in the app.
+ * Fetch-once-and-cache primitive: single-flight with a short trailing window.
  *
- * The one property every caller must be able to rely on: a read() issued
- * while a fetch is in flight MAY join it — a
- * component just mounted and wants whatever is current. An invalidate()
- * issued at the same moment must NEVER join it — a WS event said data
- * changed at time T, so a request issued before T cannot be trusted to
- * reflect it. invalidate() always starts a fetch strictly after the
- * in-flight one resolves. Collapsing these two entry points into one is
- * exactly the regression this primitive exists to prevent.
+ * The property every caller relies on: a read() may JOIN an in-flight fetch — a
+ * component just mounted and wants whatever is current. An invalidate() must
+ * NEVER join one: a WS event said the data changed at time T, so a request
+ * issued before T cannot be trusted to reflect it, and invalidate always starts
+ * a fetch strictly after the in-flight one resolves.
+ *
+ * Collapsing those two entry points is exactly the regression this prevents.
  */
 import * as eventBus from "./eventBus";
 

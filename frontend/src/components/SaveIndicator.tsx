@@ -1,22 +1,13 @@
 /**
- * SaveIndicator — renders the current SaveState.
+ * SaveIndicator renders the current SaveState.
  *
- * Without onClick: absolute-positioned overlay in the top-right corner of the
- * host EditorPane (which must set `position: relative`). Returns null when
- * idle so no layout space is reserved.
+ * Overlay mode absolutely positions inside the host EditorPane, which must set
+ * `position: relative`, and returns null when idle so no space is reserved.
  *
- * With onClick: icon-only button. Click triggers manual incremental reindex.
- * The button is disabled while status === "saving" to prevent re-entrancy.
+ * Button mode triggers a manual reindex and disables while saving to prevent
+ * re-entrancy.
  *
- * Locked copy strings (overlay mode, do not paraphrase):
- *   saving → "Saving…"        title="Saving your note"
- *   saved  → "Saved"          title="Saved at HH:MM:SS"
- *   error  → "Save failed"    title="Save failed — your edit is still in the editor. Press ⌘S to retry."
- *
- * Button-mode tooltip: state copy + " — click to refresh", rendered through
- * the shared Tooltip system rather than a native `title` — matching every
- * other status-bar icon control. aria-label is kept for accessibility and
- * E2E stability.
+ * The status strings are locked copy — do not paraphrase.
  */
 
 import type { CSSProperties } from "react";

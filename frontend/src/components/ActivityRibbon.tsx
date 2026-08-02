@@ -1,20 +1,13 @@
 /**
- * ActivityRibbon — the 48px far-left activity bar. Top cluster (matching the
- * Vault.dc.html mock): vault badge, quick-switcher, daily-note, command
- * palette. Bottom (flex-pushed): a Settings gear that opens SettingsDialog.
+ * ActivityRibbon — the 48px far-left bar: vault badge, quick switcher,
+ * daily note, palette, and a flex-pushed Settings gear.
  *
- * NAV-02: the Files/Search toggles are gone — panel
- * selection now lives entirely in the sidebar's SidebarTabRow. The single
- * quick-switcher button here opens today's existing unmodified Cmd+O
- * switcher (mode="notes"); its restyle + create/split modifiers (QUICK-*)
- * are out of scope here.
+ * NAV-02 removed the Files/Search toggles; panel selection lives entirely in
+ * SidebarTabRow now.
  *
- * The vault badge + its margin already consume more
- * vertical space than SidebarTabRow's 40px header, so the first RibbonButton
- * (Quick switcher) can't land pixel-perfect on that row's icon center without
- * relocating the badge (out of scope). Tightened top padding + badge margin
- * bring it closer; exact axis match is deferred to UI-review per this
- * plan's own verification note.
+ * The first button cannot land pixel-perfect on SidebarTabRow's icon center —
+ * the vault badge above it consumes more vertical space than that 40px header,
+ * and relocating the badge is out of scope.
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
