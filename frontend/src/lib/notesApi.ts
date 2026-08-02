@@ -82,6 +82,22 @@ export function updateNote(id: string, content: string, ifMatch?: string) {
   });
 }
 
+/**
+ * Reads a PUT error as a 409 stale write, returning the server's current
+ * comparator — the value the conflict banner offers as "Save anyway".
+ *
+ * Null for every other failure, so callers can fall through to generic
+ * error handling.
+ */
+export function staleWriteComparator(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const e = error as { code?: unknown; current_updated_at?: unknown };
+  if (e.code !== "stale_write" || typeof e.current_updated_at !== "string") {
+    return null;
+  }
+  return e.current_updated_at;
+}
+
 /** Shape returned by GET /api/v1/notes/search-titles. */
 export interface NoteSearchResult {
   id: string;

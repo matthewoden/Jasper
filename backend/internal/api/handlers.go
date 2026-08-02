@@ -185,6 +185,7 @@ func (s *Server) GetNoteById(
 		Path:      note.Path,
 		Content:   note.Content,
 		UpdatedAt: note.UpdatedAt,
+		Etag:      notes.ETag(note.UpdatedAt),
 	}, nil
 }
 
@@ -235,9 +236,14 @@ func (s *Server) PutNoteById(
 		)
 		return PutNoteById500JSONResponse(newError("write_failed", "could not save note")), nil
 	}
+	// The frontmatter rewriteback inside Update re-stats after its second write,
+	// so this token is the note's post-write mtime — the value the NEXT If-Match
+	// is compared against. Deriving it from anything staler would 409 the first
+	// autosave after every load.
 	return PutNoteById200JSONResponse{
 		Id:        openapi_types.UUID(note.ID),
 		Path:      note.Path,
 		UpdatedAt: note.UpdatedAt,
+		Etag:      notes.ETag(note.UpdatedAt),
 	}, nil
 }

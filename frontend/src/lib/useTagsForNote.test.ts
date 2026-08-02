@@ -27,6 +27,7 @@ function mockNoteResponse(content: string) {
       path: "test/note.md",
       content,
       updated_at: "2026-01-01T00:00:00Z",
+      etag: "2026-01-01T00:00:00Z",
     },
     error: undefined,
     response: new Response(null, { status: 200 }),

@@ -11,7 +11,7 @@
  */
 
 import { extractH1FromContent, sanitizeH1ForFilename } from "./h1Extract";
-import { getNoteFresh, updateNote } from "./notesApi";
+import { getNoteFresh, staleWriteComparator, updateNote } from "./notesApi";
 import { postNoteMove } from "./treeApi";
 import { publish } from "./resources";
 import {
@@ -58,8 +58,18 @@ export interface NoteBufferController {
    * separate per-pane useFileTree() fetch. Returns "" before the first load.
    */
   getNotePath(): string;
-  /** Seeds content/path from the server load path (EditorPane's initial getNote). */
-  hydrate(serverContent: string, path: string): void;
+  /**
+   * The note's etag as of the last server response this controller saw — the
+   * If-Match every save sends. Null only before the first hydrate, which is the
+   * one window in which a save is permissive.
+   */
+  getETag(): string | null;
+  /**
+   * Seeds content/path/etag from a server load (EditorPane's initial getNote,
+   * or the conflict banner's Discard re-fetch). etag is required: a load that
+   * forgot it would silently leave the previous note's comparator in place.
+   */
+  hydrate(serverContent: string, path: string, etag: string): void;
   /** External-store style subscription — notified on any save-state transition. */
   subscribe(fn: (s: SaveState) => void): () => void;
   /**
@@ -121,6 +131,13 @@ export interface NoteBufferController {
    */
   reportSaveFailed(error: string): void;
   /**
+   * Adopts an etag obtained outside performSave — the "Save anyway" button's
+   * direct updateNote call. Without it the controller keeps sending the
+   * comparator that button just superseded, and every subsequent autosave
+   * 409s against the write the user explicitly authorized.
+   */
+  setETag(etag: string): void;
+  /**
    * Drives the connectionLost/connectionRestored save-state transitions from
    * the pane's WS connectionStatus watcher. The pre-25-05 EditorPane
    * dispatched connectionLost directly; the controller-bridging refactor
@@ -180,6 +197,16 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private isRenameInProgress = false;
   private lastH1Sent: string | null = null;
   private lastNotePath = "";
+  /**
+   * The comparator every save sends. Null before the first hydrate only.
+   *
+   * Conflict detection used to depend entirely on WebSocket delivery — the
+   * exact channel that fails in the conflict scenario. A tab whose socket
+   * dropped reconnects holding stale edits and flushes them before any event
+   * can arrive, and events during the gap are gone. This token is what makes
+   * the server reject that write instead of silently applying it.
+   */
+  private lastKnownETag: string | null = null;
   /** Multi-owner gate set — see setSaveGate's interface doc. */
   private readonly saveGates = new Set<() => boolean>();
 
@@ -215,9 +242,18 @@ class NoteBufferControllerImpl implements NoteBufferController {
     return this.lastNotePath;
   }
 
-  hydrate(serverContent: string, path: string): void {
+  getETag(): string | null {
+    return this.lastKnownETag;
+  }
+
+  setETag(etag: string): void {
+    this.lastKnownETag = etag;
+  }
+
+  hydrate(serverContent: string, path: string, etag: string): void {
     this.content = serverContent;
     this.lastNotePath = path;
+    this.lastKnownETag = etag;
     this.lastH1Sent = extractH1FromContent(serverContent);
     this.userHasEdited = false;
     this.conflict = null;
@@ -288,6 +324,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
             return;
           }
           this.content = data.content;
+          this.lastKnownETag = data.etag;
           // Re-seed the H1-rename comparator (and
           // the rename-comparator's path) from the JUST-adopted server
           // content. Without this, lastH1Sent/lastNotePath keep pointing at
@@ -430,6 +467,9 @@ class NoteBufferControllerImpl implements NoteBufferController {
                 this.setSaveState({ type: "saveFailed", error: msg });
                 return { ok: false };
               }
+              // The comparator deliberately survives the move: a rename is an
+              // os.Rename, which leaves mtime untouched, so the token this
+              // controller already holds is still the note's current version.
               if (moveResp.data) {
                 this.lastNotePath = moveResp.data.path;
                 for (const fn of Array.from(this.renameListeners)) {
@@ -448,13 +488,26 @@ class NoteBufferControllerImpl implements NoteBufferController {
         }
       }
 
-      const { data, error } = await updateNote(this.noteId, latestContent);
+      const { data, error } = await updateNote(
+        this.noteId,
+        latestContent,
+        this.lastKnownETag ?? undefined,
+      );
       if (error || !data) {
+        // The 409 path the optimistic-locking machinery was built for. Every
+        // piece of it already existed — the StaleWriteError schema, the banner,
+        // the server comparator — and none of it could fire while this call
+        // sent no If-Match.
+        const currentUpdatedAt = staleWriteComparator(error);
+        if (currentUpdatedAt !== null) {
+          this.setConflict({ visible: true, currentUpdatedAt });
+        }
         const msg =
           (error as { message?: string } | undefined)?.message ?? "save failed";
         this.setSaveState({ type: "saveFailed", error: msg });
         return { ok: false };
       }
+      this.lastKnownETag = data.etag;
       this.setSaveState({
         type: "saveSucceeded",
         updatedAt: new Date(data.updated_at),

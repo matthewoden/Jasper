@@ -25,6 +25,15 @@ type Note struct {
 	UpdatedAt time.Time // wall-clock UTC of the last successful write
 }
 
+// ETag renders a mtime as the opaque version token clients send back as
+// If-Match. Update's comparator is built with this same function, so a token
+// handed out by a read can never disagree with the one a write compares
+// against — the two-clocks failure mode that let index-backed second-precision
+// timestamps masquerade as comparators.
+func ETag(modTime time.Time) string {
+	return modTime.UTC().Format(time.RFC3339Nano)
+}
+
 // Sentinel errors. Callers gate behavior with errors.Is.
 var (
 	// ErrNotFound is returned when the requested UUID is not in the

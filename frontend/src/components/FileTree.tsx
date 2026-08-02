@@ -278,7 +278,11 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
               if (currentH1 !== null && currentH1 !== newValue) {
                 const newContent = rewriteH1(noteResp.data.content, newValue);
                 if (newContent !== noteResp.data.content) {
-                  const updResp = await updateNote(d.id, newContent);
+                  const updResp = await updateNote(
+                    d.id,
+                    newContent,
+                    noteResp.data.etag,
+                  );
                   if (updResp.error) {
                     toast({
                       title: "Renamed the file, but couldn't update the heading.",

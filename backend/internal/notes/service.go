@@ -36,6 +36,7 @@ type Service struct {
 	broadcaster Broadcaster
 	registry    *Registry
 	log         *slog.Logger
+	writeLocks  *keyedMutex
 }
 
 // NewService constructs the service. Passing nil for index substitutes a
@@ -57,6 +58,7 @@ func NewService(files FileStore, index Index, broadcaster Broadcaster, log *slog
 		broadcaster: broadcaster,
 		registry:    NewRegistry(),
 		log:         log,
+		writeLocks:  newKeyedMutex(),
 	}
 }
 
@@ -112,6 +114,10 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 // surface as a 500 over content already safely on disk. ErrCaseCollision is
 // returned — the API maps it to 409.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMatch string) (Note, error) {
+	// Held across compare AND write: releasing between them would let a second
+	// writer holding the same comparator slip in and lose one of the writes.
+	defer s.writeLocks.lock(id)()
+
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return Note{}, fmt.Errorf("notes.Update(%s): %w", id, ErrNotFound)
@@ -123,7 +129,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 			return Note{}, fmt.Errorf("notes.Update(%s): stat for if-match: %w", id, statErr)
 		}
 		currentMTimeUTC := currentMTime.UTC()
-		currentTag := currentMTimeUTC.Format(time.RFC3339Nano)
+		currentTag := ETag(currentMTimeUTC)
 		if ifMatch != currentTag {
 			return Note{}, fmt.Errorf("notes.Update(%s): %w (current=%s, if-match=%s)",
 				id, &StaleWriteInfo{Current: currentMTimeUTC}, currentTag, ifMatch)
@@ -391,6 +397,10 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 // reflects the current first-H1. A post-rename read failure is non-fatal —
 // filename fallback, and the reconciler heals.
 func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteSummary, error) {
+	// Serialized against Update: a save that resolved the old relPath before the
+	// rename would otherwise write to a path this call has already moved away.
+	defer s.writeLocks.lock(id)()
+
 	oldRelPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return NoteSummary{}, fmt.Errorf("notes.Move(%s): %w", id, ErrNotFound)
@@ -656,6 +666,41 @@ func uuidsToStrings(ids []uuid.UUID) []string {
 	return out
 }
 
+// dedupeAndLockForRewrite returns targets deduplicated and in UUID order, with
+// every one of their write locks held, plus the release.
+//
+// The three bulk passes below are read-all-then-write-all, so an Update landing
+// between a note's read and its write is silently reverted by a body that
+// predates it. Two details are load-bearing: the index emits one row per match,
+// so a note can appear twice and re-locking a UUID this goroutine already holds
+// would deadlock; and this is the only place holding more than one note lock at
+// once, so a shared acquisition order is what keeps two concurrent passes over
+// overlapping sets from waiting on each other.
+func (s *Service) dedupeAndLockForRewrite(targets []NoteSummary) ([]NoteSummary, func()) {
+	ordered := make([]NoteSummary, 0, len(targets))
+	seen := make(map[uuid.UUID]struct{}, len(targets))
+	for _, t := range targets {
+		if _, dup := seen[t.ID]; dup {
+			continue
+		}
+		seen[t.ID] = struct{}{}
+		ordered = append(ordered, t)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].ID.String() < ordered[j].ID.String()
+	})
+
+	unlocks := make([]func(), 0, len(ordered))
+	for _, t := range ordered {
+		unlocks = append(unlocks, s.writeLocks.lock(t.ID))
+	}
+	return ordered, func() {
+		for _, unlock := range unlocks {
+			unlock()
+		}
+	}
+}
+
 // RenameTagAcrossVault rewrites the tag in every carrier's frontmatter. FS pass
 // first, SQL pass second (non-fatal), broadcast third.
 //
@@ -672,6 +717,9 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 	if len(carriers) == 0 {
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrTagNotFound)
 	}
+
+	carriers, release := s.dedupeAndLockForRewrite(carriers)
+	defer release()
 
 	type fileState struct {
 		path    string
@@ -740,6 +788,9 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: %w", ErrTagNotFound)
 	}
 
+	carriers, release := s.dedupeAndLockForRewrite(carriers)
+	defer release()
+
 	type fileState struct {
 		path    string
 		before  []byte
@@ -804,6 +855,9 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 	if len(referrers) == 0 {
 		return []uuid.UUID{}, nil
 	}
+
+	referrers, release := s.dedupeAndLockForRewrite(referrers)
+	defer release()
 
 	type fileState struct {
 		id      uuid.UUID

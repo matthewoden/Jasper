@@ -76,7 +76,11 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Three-path migration resilience** — the migration runner's three outcomes: Path 1 applies migrations; Path 2 rolls back and restores the backup; Path 3 wipes and rebuilds from disk. Path 3 is safe *only* because of invariant 1.
 
-**If-Match / stale write** — optimistic locking on note updates, compared against the file's modification time. A mismatch is a 409 and surfaces as a save-conflict banner, not a silent overwrite.
+**If-Match / stale write** — optimistic locking on note updates, compared against the file's modification time. A mismatch is a 409 and surfaces as a save-conflict banner, not a silent overwrite. **Every save path sends it** — autosave, flush, the tab-close keepalive PUT, the tree-rename H1 rewrite. A save that omits it is a lost-write bug, because the client's other conflict signal is the WebSocket, which is exactly what has failed whenever a conflict is possible.
+
+**Note etag** — the token a client echoes back as If-Match, carried only by `Note` and `UpdateNoteResponse` (`notes.ETag`, RFC3339Nano). It exists because there are two clocks: those two responses `stat` the file, while every index-backed `updated_at` — `/tree`, note lists, tag lists, backlinks — is whole seconds out of SQLite and can therefore never match. Naming the valid token separately is what keeps a client from reaching for the nearest `updated_at`.
+
+**Per-note write lock** — `notes.Service` serializes writers per note UUID (`keyedMutex`). If-Match is a check-then-act, so without it two writers holding the same comparator both pass the compare and one write is destroyed; REST (6683) and MCP (6684) are independent listeners into one Service, so this needs no second browser tab. The three bulk rewrite passes (tag rename, tag delete, wiki-link rewrite) hold every target's lock across their read-all-then-write-all window, acquired in UUID order.
 
 ### Data fetching
 

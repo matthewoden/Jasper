@@ -513,6 +513,9 @@ type stubIndex struct {
 	lookupErr             error
 	movePathPrefixErr     error
 	deleteByPathPrefixErr error
+
+	// Nil means "no referrers"; set it to drive RenameRewriteWikilinks.
+	backlinkSources []NoteSummary
 }
 
 func newStubIndex() *stubIndex {
@@ -654,7 +657,12 @@ func (s *stubIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) 
 }
 
 func (s *stubIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSummary, error) {
-	return []NoteSummary{}, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.backlinkSources == nil {
+		return []NoteSummary{}, nil
+	}
+	return append([]NoteSummary(nil), s.backlinkSources...), nil
 }
 
 func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {

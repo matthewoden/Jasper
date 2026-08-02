@@ -64,7 +64,8 @@ vi.mock("../lib/useTreeMutations", async () => {
 });
 
 
-vi.mock("../lib/notesApi", () => ({
+vi.mock("../lib/notesApi", async (importActual) => ({
+  ...(await importActual<typeof import("../lib/notesApi")>()),
   ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
   getNote: vi.fn(),
   getNoteFresh: vi.fn(),
@@ -830,6 +831,9 @@ describe("<FileTree /> — Direction B (filename → H1)", () => {
   type GetReturn = Awaited<ReturnType<typeof getNoteFresh>>;
   type PutReturn = Awaited<ReturnType<typeof updateNote>>;
 
+  /** The comparator okGet hands out; the H1 rewrite must forward it as If-Match. */
+  const FIXTURE_ETAG = "2026-01-01T00:00:00Z";
+
   function okGet(content: string, path = "renamed.md"): GetReturn {
     return {
       data: {
@@ -837,6 +841,7 @@ describe("<FileTree /> — Direction B (filename → H1)", () => {
         path,
         content,
         updated_at: "2026-01-01T00:00:00Z",
+        etag: FIXTURE_ETAG,
       },
       error: undefined,
       response: new Response(),
@@ -849,6 +854,7 @@ describe("<FileTree /> — Direction B (filename → H1)", () => {
         id: "uuid-1",
         path: "renamed.md",
         updated_at: "2026-01-01T00:00:00Z",
+        etag: FIXTURE_ETAG,
       },
       error: undefined,
       response: new Response(),
@@ -917,6 +923,7 @@ describe("<FileTree /> — Direction B (filename → H1)", () => {
       expect(mockedUpdateNote).toHaveBeenCalledWith(
         "uuid-1",
         "# renamed\n\nbody",
+        FIXTURE_ETAG,
       );
     });
   });

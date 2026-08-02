@@ -33,7 +33,12 @@ import {
   computeChromeVisibility,
 } from "../lib/editorChromeResponsive";
 import { extractH1FromContent } from "../lib/h1Extract";
-import { getNote, getNoteFresh, updateNote } from "../lib/notesApi";
+import {
+  getNote,
+  getNoteFresh,
+  staleWriteComparator,
+  updateNote,
+} from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
 import { initialSaveState } from "../lib/saveStateMachine";
 import {
@@ -511,6 +516,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
         getOrCreateController(noteId, autosaveMsRef.current).hydrate(
           data.content,
           data.path,
+          data.etag,
         );
         editorRef.current?.applyServerUpdate(data.content);
       }
@@ -664,6 +670,25 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [flushRef, flush]);
 
   useEffect(() => {
+    // Carries the same If-Match the controller's own saves do. A closing tab
+    // holding stale edits is the sharpest form of the lost-write bug: nothing
+    // is watching, so an unconditional PUT destroys another session's work
+    // silently. On 409 the write is refused and these edits are lost instead —
+    // the correct trade, and the only one available to a page that is going
+    // away before it could show a banner.
+    const sendKeepaliveSave = (id: string) => {
+      const etag = controllerRef.current?.getETag();
+      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": generateOrLoadSessionId(),
+          ...(etag ? { "If-Match": etag } : {}),
+        },
+        body: JSON.stringify({ content: latestContentRef.current }),
+        keepalive: true,
+      });
+    };
     const onVisibilityChange = () => {
       if (document.visibilityState !== "hidden") {
         keepaliveSentRef.current = false;
@@ -681,15 +706,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       if (!userHasEdited.current) return;
       if (useTreeStore.getState().vaultSwitching.active) return;
       keepaliveSentRef.current = true;
-      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Session-ID": generateOrLoadSessionId(),
-        },
-        body: JSON.stringify({ content: latestContentRef.current }),
-        keepalive: true,
-      });
+      sendKeepaliveSave(id);
     };
     const onBeforeUnload = () => {
       if (keepaliveSentRef.current) return;
@@ -699,15 +716,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       if (!userHasEdited.current) return;
       if (useTreeStore.getState().vaultSwitching.active) return;
       keepaliveSentRef.current = true;
-      void fetch(`/api/v1/notes/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Session-ID": generateOrLoadSessionId(),
-        },
-        body: JSON.stringify({ content: latestContentRef.current }),
-        keepalive: true,
-      });
+      sendKeepaliveSave(id);
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -908,23 +917,15 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                   conflictBanner.currentUpdatedAt,
                 );
                 if (result.error) {
-                  const staleErr = result.error as {
-                    code?: string;
-                    message?: string;
-                    current_updated_at?: string;
-                  };
-                  if (
-                    staleErr.code === "stale_write" &&
-                    staleErr.current_updated_at
-                  ) {
+                  const currentUpdatedAt = staleWriteComparator(result.error);
+                  if (currentUpdatedAt !== null) {
                     controller.setH1RenameError(null);
-                    controller.setConflict({
-                      visible: true,
-                      currentUpdatedAt: staleErr.current_updated_at,
-                    });
+                    controller.setConflict({ visible: true, currentUpdatedAt });
                     return;
                   }
-                  const msg = staleErr.message ?? "save failed";
+                  const msg =
+                    (result.error as { message?: string }).message ??
+                    "save failed";
                   let recoveryHint =
                     "Save failed — try Discard or close the banner and retry on next sync.";
                   try {
@@ -946,6 +947,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                   controller.reportSaveFailed(msg);
                   return;
                 }
+                // Adopt the token this write just produced. Skipping it would
+                // leave the controller comparing against the version the user
+                // just chose to overwrite, so every later autosave would 409.
+                if (result.data) controller.setETag(result.data.etag);
                 controller.setH1RenameError(null);
                 controller.setConflict(null);
                 controller.discardPendingEdit();
@@ -970,7 +975,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                   controller.setH1RenameError(`Discard failed: ${msg}. Try again.`);
                   return;
                 }
-                controller.hydrate(data.content, data.path);
+                controller.hydrate(data.content, data.path, data.etag);
                 userHasEdited.current = false;
                 editorRef.current?.applyServerUpdate(data.content);
               })();

@@ -143,7 +143,7 @@ vi.mock("./MarkdownEditor", async () => {
 });
 
 
-vi.mock("../lib/notesApi", () => {
+vi.mock("../lib/notesApi", async (importActual) => {
     // getNote and getNoteFresh share one spy here: this file mocks the whole
     // notesApi module to test EditorPane's own behavior given whatever it
     // returns, not the read()-joins/invalidate()-never-joins distinction
@@ -153,6 +153,10 @@ vi.mock("../lib/notesApi", () => {
     // (initial load vs. conflict-resolution reread) actually fires.
     const sharedGetNote = vi.fn();
     return {
+        // staleWriteComparator is a pure reader over the error body, so the
+        // real one is kept — stubbing it would only let the mock disagree
+        // with the server about what a 409 looks like.
+        ...(await importActual<typeof import("../lib/notesApi")>()),
         ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
         getNote: sharedGetNote,
         getNoteFresh: sharedGetNote,
@@ -255,6 +259,13 @@ function okTree(notePath: string): GetTreeReturn {
 type GetReturn = Awaited<ReturnType<typeof getNote>>;
 type PutReturn = Awaited<ReturnType<typeof updateNote>>;
 
+/**
+ * The comparator these fixtures hand out, and therefore the If-Match every
+ * assertion below expects a save to carry. Load and save return the same value
+ * so a test that saves twice does not have to track which one it is on.
+ */
+const FIXTURE_ETAG = "2025-01-01T00:00:00Z";
+
 function okGet(content: string): GetReturn {
     return {
         data: {
@@ -262,6 +273,7 @@ function okGet(content: string): GetReturn {
             path: "scratchpad.md",
             content,
             updated_at: "2025-01-01T00:00:00Z",
+            etag: FIXTURE_ETAG,
         },
         error: undefined,
         response: new Response(),
@@ -274,6 +286,7 @@ function okPut(): PutReturn {
             id: ScratchpadUUID,
             path: "scratchpad.md",
             updated_at: "2025-01-01T00:00:00Z",
+            etag: FIXTURE_ETAG,
         },
         error: undefined,
         response: new Response(),
@@ -392,6 +405,7 @@ describe("<EditorPane />", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "hello world",
+            FIXTURE_ETAG,
         );
 
         await flushMicrotasks();
@@ -423,7 +437,7 @@ describe("<EditorPane />", () => {
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited");
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -541,6 +555,7 @@ describe("<EditorPane />", () => {
         expect(updateNoteMock).toHaveBeenLastCalledWith(
             ScratchpadUUID,
             "edit3",
+            FIXTURE_ETAG,
         );
 
         await act(async () => {
@@ -592,7 +607,7 @@ describe("<EditorPane />", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "x2");
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "x2", FIXTURE_ETAG);
     });
 
     it("ignores plain 's' and other non-save keys (verified via autosave non-trigger)", async () => {
@@ -821,6 +836,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# new title\n\nbody",
+            FIXTURE_ETAG,
         );
         expect(postNoteMoveMock.mock.invocationCallOrder[0]).toBeLessThan(
             updateNoteMock.mock.invocationCallOrder[0]!,
@@ -853,6 +869,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# Title\n\nbody changed",
+            FIXTURE_ETAG,
         );
     });
 
@@ -882,6 +899,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# my/note\n\nbody",
+            FIXTURE_ETAG,
         );
         expect(
             screen.getByText(/aren't allowed in filenames/i),
@@ -1017,6 +1035,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# MY PLAN\n\nbody",
+            FIXTURE_ETAG,
         );
         expect(
             screen.queryByText(/aren't allowed in filenames/i),
@@ -1096,6 +1115,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "# Title\n\nhello world",
+            FIXTURE_ETAG,
         );
         expect(useTreeStore.getState().saveState.status).toBe("saved");
 
@@ -1579,6 +1599,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "edited content",
+            FIXTURE_ETAG,
         );
 
         await act(async () => {
@@ -1627,6 +1648,12 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
                         body: JSON.stringify({ content: "tab-switch save" }),
                     }),
                 );
+                // A closing tab is the sharpest lost-write case: nothing is
+                // watching, so an unconditional PUT destroys another session's
+                // work in silence.
+                expect(
+                    (fetchMock.mock.calls[0][1] as RequestInit).headers,
+                ).toMatchObject({ "If-Match": FIXTURE_ETAG });
                 expect(updateNoteMock).not.toHaveBeenCalled();
             } finally {
                 if (originalDescriptor) {
@@ -1673,6 +1700,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
             );
             expect(init.method).toBe("PUT");
             expect(init.keepalive).toBe(true);
+            expect(init.headers).toMatchObject({ "If-Match": FIXTURE_ETAG });
             expect(init.body).toBe(
                 JSON.stringify({ content: "exit save" }),
             );
@@ -2292,6 +2320,7 @@ describe("connectionRestored flushes buffered edits", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "edits during disconnect",
+            FIXTURE_ETAG,
         );
     });
 
@@ -2374,6 +2403,7 @@ describe("connectionRestored flushes buffered edits", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "buffered while reconnecting",
+            FIXTURE_ETAG,
         );
     });
 
@@ -2496,7 +2526,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited content");
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited content", FIXTURE_ETAG);
     });
 });
 
@@ -2518,7 +2548,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [x] task");
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [x] task", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -2547,7 +2577,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         await flushMicrotasks();
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [ ] task edited");
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [ ] task edited", FIXTURE_ETAG);
     });
 
     it("CHK-01 multiple toggles in sequence each produce exactly one save", async () => {
@@ -2566,7 +2596,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [ ] task2");
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [ ] task2", FIXTURE_ETAG);
 
         await act(async () => {
             window.__jasperMockEditorToggle?.("- [x] task\n- [x] task2");
@@ -2574,7 +2604,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [x] task2");
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [x] task2", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -2752,6 +2782,7 @@ describe("<EditorPane /> — flush() ref method (TAB-13)", () => {
         expect(updateNoteMock).toHaveBeenCalledWith(
             ScratchpadUUID,
             "edited before close",
+            FIXTURE_ETAG,
         );
     });
 
@@ -3338,7 +3369,7 @@ describe("<EditorPane /> — autosaveMs prop updates after mount", () => {
         // Under the mount-only capture the ref stayed pinned to 2000ms and
         // nothing would have saved by 600ms.
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited");
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited", FIXTURE_ETAG);
     });
 });
 

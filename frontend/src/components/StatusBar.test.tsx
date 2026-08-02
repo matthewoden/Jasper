@@ -289,7 +289,7 @@ describe("StatusBar — focused-note word count", () => {
 
   it("SB-WC-2: renders the focused note's word count", () => {
     const noteId = "note-a";
-    getOrCreateController(noteId).hydrate("one two three", "note-a.md");
+    getOrCreateController(noteId).hydrate("one two three", "note-a.md", "2026-01-01T00:00:00Z");
     useTreeStore.setState({ activeNoteId: noteId });
 
     renderStatusBar();
@@ -300,7 +300,7 @@ describe("StatusBar — focused-note word count", () => {
   it("SB-WC-3: updates live as the focused pane's content changes", () => {
     const noteId = "note-a";
     const controller = getOrCreateController(noteId);
-    controller.hydrate("one two", "note-a.md");
+    controller.hydrate("one two", "note-a.md", "2026-01-01T00:00:00Z");
     useTreeStore.setState({ activeNoteId: noteId });
 
     renderStatusBar();
@@ -318,8 +318,8 @@ describe("StatusBar — focused-note word count", () => {
     const noteB = "note-b";
     const controllerA = getOrCreateController(noteA);
     const controllerB = getOrCreateController(noteB);
-    controllerA.hydrate("alpha beta", "note-a.md"); // 2 words
-    controllerB.hydrate("gamma delta epsilon four", "note-b.md"); // 4 words
+    controllerA.hydrate("alpha beta", "note-a.md", "2026-01-01T00:00:00Z"); // 2 words
+    controllerB.hydrate("gamma delta epsilon four", "note-b.md", "2026-01-01T00:00:00Z"); // 4 words
 
     // Pane A is focused first.
     useTreeStore.setState({ activeNoteId: noteA });

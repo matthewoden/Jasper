@@ -1199,6 +1199,7 @@ export interface components {
              * @description Wall-clock UTC time of the last successful write
              */
             updated_at: string;
+            etag: components["schemas"]["NoteETag"];
         };
         UpdateNoteRequest: {
             /** @description New raw markdown content; replaces the entire file */
@@ -1210,7 +1211,21 @@ export interface components {
             path: string;
             /** Format: date-time */
             updated_at: string;
+            etag: components["schemas"]["NoteETag"];
         };
+        /**
+         * @description Opaque version token for this note — what a client sends back as
+         *     If-Match on PUT /notes/{id}.
+         *
+         *     Carried only by the two stat-backed responses, `Note` and
+         *     `UpdateNoteResponse`. It is deliberately absent from `NoteSummary`
+         *     and every list-shaped payload, because those are index-backed and
+         *     their `updated_at` is truncated to whole seconds. Naming the token
+         *     separately is what stops a client reaching for the nearest
+         *     `updated_at` and getting a comparator that can never match.
+         * @example 2026-08-02T11:04:07.123456789Z
+         */
+        NoteETag: string;
         NoteSummary: {
             /** Format: uuid */
             id: string;
@@ -1226,7 +1241,9 @@ export interface components {
             title: string;
             /**
              * Format: date-time
-             * @description Wall-clock UTC of last filesystem mtime observed by the indexer
+             * @description Wall-clock UTC of last filesystem mtime observed by the indexer.
+             *     Index-backed and therefore truncated to whole seconds — never
+             *     usable as an If-Match comparator. Use `Note.etag` for that.
              */
             updated_at: string;
         };
@@ -2259,11 +2276,19 @@ export interface operations {
             query?: never;
             header?: {
                 /**
-                 * @description Optimistic concurrency comparator (SYNC-06). When present,
-                 *     the server compares this value against the file's current
-                 *     updated_at (RFC3339Nano UTC). On mismatch the server
-                 *     returns 409 with `code: stale_write` and
-                 *     `current_updated_at` in the body — the client surfaces
+                 * @description Optimistic concurrency comparator (SYNC-06), compared against
+                 *     the file's current mtime at RFC3339Nano precision.
+                 *
+                 *     Legal values are the ones the server derived from a `stat` of
+                 *     the file: `Note.etag` (GET /notes/{id}), the `etag` of a prior
+                 *     `UpdateNoteResponse`, and the `current_updated_at` a 409 hands
+                 *     back. **Never** an `updated_at` from an index-backed payload —
+                 *     /tree, note lists, tag lists and backlinks read whole-second
+                 *     timestamps out of SQLite, so a comparator built from one can
+                 *     never match and yields a guaranteed spurious `stale_write`.
+                 *
+                 *     On mismatch the server returns 409 with `code: stale_write`
+                 *     and `current_updated_at` in the body — the client surfaces
                  *     SYNC-05's Save-anyway / Discard banner. Permissive when
                  *     absent (curl / automation friendly). Server treats the
                  *     value as an opaque string round-trip; max length 256 chars.
