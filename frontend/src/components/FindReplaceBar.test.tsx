@@ -1,5 +1,5 @@
 /**
- * FindReplaceBar tests (P26, WS-09).
+ * FindReplaceBar tests (WS-09).
  *
  * Coverage: find-only vs replace mode, match-count pluralization, toggle
  * click emits onToggle with the correct kind and flips data-active, Esc

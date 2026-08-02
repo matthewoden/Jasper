@@ -312,7 +312,7 @@ describe("<MarkdownEditor />", () => {
     });
   });
 
-  describe("search commands (P26, WS-09)", () => {
+  describe("search commands (WS-09)", () => {
     it("matchInfo returns {0,0} before any search query is set", () => {
       const probeRef = { current: null as ProbeRef | null };
       renderWithToast(

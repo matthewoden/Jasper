@@ -137,7 +137,7 @@ test.describe("@phase19 BREAD-01/02: breadcrumb trail + live word count", () => 
     if (jasper) await jasper.kill();
   });
 
-  test("breadcrumb shows folder/title segments; live word count (UAT round 3: now in the bottom status bar) ticks up while typing", async ({
+  test("breadcrumb shows folder/title segments; live word count (in the bottom status bar) ticks up while typing", async ({
     page,
   }) => {
     const folderPath = await createFolder(jasper, "projects");
@@ -159,7 +159,7 @@ test.describe("@phase19 BREAD-01/02: breadcrumb trail + live word count", () => 
     ]);
 
     // Word count moved out of the breadcrumb bar entirely, into the bottom
-    // StatusBar (UAT round 3 #6) — it reflects the FOCUSED note.
+    // StatusBar — it reflects the FOCUSED note.
     const wordCount = page.getByTestId("status-bar-word-count");
     await expect(wordCount).toBeVisible();
     await expect(wordCount).toHaveText(/^[\d,]+ words?$/);

@@ -1,6 +1,6 @@
 /**
  * TabOverflowDropdown — Radix DropdownMenu pinned to the tab strip's right
- * edge, always rendered (UAT round 2, item 7 — the owner wants the tab-list
+ * edge, always rendered — the owner wants the tab-list
  * dropdown "always visible, pinned to the right"). The trigger no longer
  * gates on overflow: it renders even with zero or few tabs. The menu lists
  * EVERY open tab in tab order (not just the ones currently hidden/collapsed
@@ -50,7 +50,7 @@ const triggerButtonStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   borderRadius: 4,
-  // UAT round 2 (item 7): the trigger is now always rendered, so it must
+  // the trigger is now always rendered, so it must
   // never shrink away even when the visible-tabs flex child grows to fill
   // the strip — it stays pinned at the strip's right edge.
   flexShrink: 0,

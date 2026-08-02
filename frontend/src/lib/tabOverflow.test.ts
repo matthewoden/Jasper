@@ -79,7 +79,7 @@ describe("computeHiddenTabIds", () => {
     expect(hidden).toEqual(new Set(["c", "d"]));
   });
 
-  it("(e2) UAT round 2 (item 7): the trigger reservation is now UNCONDITIONAL — a width where the raw (unreserved) division would say 'fits' still overflows once the always-rendered trigger's width is subtracted", () => {
+  it("(e2) the trigger reservation is UNCONDITIONAL — a width where the raw (unreserved) division would say 'fits' still overflows once the always-rendered trigger's width is subtracted", () => {
     // Raw floor(365/120) = 3, which would (pre-item-7) have let all 3 tabs
     // fit with NO reservation applied (the trigger only rendered on overflow
     // back then). Now usableWidth = 365-28 = 337 → visibleCount=floor(337/120)=2,
@@ -138,7 +138,7 @@ describe("computeHiddenTabIds", () => {
 
   it("(g) drift guard: TabStrip's RESERVED matches its left-cluster arithmetic (260721-cjt: right-cluster toggle is conditional)", () => {
     // Left cluster: 28 + 8 + 1 = 37. Strip chrome: 8 (padding) + 32 (new-tab
-    // button — grew from 26 in UAT gap-closure group B item 6, when the
+    // button — grew from 26 in, when the
     // button's margin changed from "0 0 4px 2px" to "0 4px" for L/R padding +
     // vertical centering: 24 width + 8 margin = 32). RESERVED itself stays 77
     // and does NOT include the right cluster: the rail-reopen toggle is

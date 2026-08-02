@@ -328,7 +328,7 @@ describe("<TabPill />", () => {
     expect(pill.style.userSelect).toBe("none");
   });
 
-  it("UAT gap-closure group B (item 5): close-× is centered on the label, not bottom-pinned", () => {
+  it("close-× is centered on the label, not bottom-pinned", () => {
     render(
       <TabPill
         title="note.md"

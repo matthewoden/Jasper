@@ -3,7 +3,7 @@
  *
  * Mocks useFileTree + useTreeMutations to drive each state branch
  * deterministically. Wraps in <ToastProvider> for toast surfacing and
- * <TooltipProvider> (UAT gap-closure group B, item 8: note rows with
+ * <TooltipProvider>: note rows with
  * updated_at/created now conditionally mount the shared Tooltip, which
  * throws without a provider ancestor).
  *

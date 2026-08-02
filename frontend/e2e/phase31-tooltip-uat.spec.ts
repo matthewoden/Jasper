@@ -84,7 +84,7 @@ test.describe("@phase31 shared Tooltip system (ribbon)", () => {
     // First hover: pays the full show-delay (Radix delayDuration, ~400ms
     // per Tooltip.tsx) before the tooltip appears. Start on "Today" (the
     // middle ribbon button) — the ribbon's tooltips open to the RIGHT
-    // (UAT gap-closure group A: below would collide with the next ribbon
+    // (below would collide with the next ribbon
     // icon in the 48px-wide rail), so it pops beside itself, clear of
     // "Quick switcher" above and "Command palette" below.
     await today.hover();

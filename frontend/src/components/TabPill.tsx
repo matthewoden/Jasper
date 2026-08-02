@@ -97,7 +97,7 @@ const closeButtonStyle: CSSProperties = {
   color: "var(--color-muted)",
   borderRadius: 2,
   flexShrink: 0,
-  // UAT gap-closure (group B, item 5): the owner expects the close-× vertically
+  // (group B, item 5): the owner expects the close-× vertically
   // centered on the tab's LABEL text, not bottom-pinned. tabPillStyle's row
   // already uses alignItems:"center", so simply not overriding alignSelf here
   // lets the button share the label's vertical center (this REVERSES the prior

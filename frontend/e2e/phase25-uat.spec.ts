@@ -230,7 +230,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
 // fix, an inactive/freshly-split pane could render its note body while its
 // metadata bar was still absent (the reported bug).
 //
-// UAT round 3 (#6): word count moved OUT of the per-pane breadcrumb bar
+// Word count moved OUT of the per-pane breadcrumb bar
 // entirely and into the single, shared bottom StatusBar — it tracks the
 // FOCUSED pane's note (activeNoteId), not a per-pane value, so this test now
 // asserts the status bar's count follows whichever pane is active/focused

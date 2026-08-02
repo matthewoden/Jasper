@@ -4,7 +4,7 @@
  *
  * Composes the presentational pieces: each ordered tab renders a
  * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` always
- * pinned at the right edge (UAT round 2, item 7) listing EVERY open tab, not
+ * pinned at the right edge listing EVERY open tab, not
  * just the ones the strip's own overflow hid. Reorder uses pointer-event drag
  * (pointerdown on the wrapper → pointermove/pointerup on the strip) because
  * native HTML5 DnD does not deliver drop events reliably in this context.
@@ -54,7 +54,7 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   strip horizontal padding (8) + pinned new-tab button (32) + the tab-bar
 //   left cluster (37).
 //   Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37.
-//   New-tab button footprint grew 26→32 in UAT gap-closure group B (item 6):
+//   New-tab button footprint grew 26→32 in (item 6):
 //   newTabButtonStyle's margin went from "0 0 4px 2px" (2px total) to
 //   "0 4px" (8px total, L/R padding) when it was re-centered vertically
 //   instead of bottom-pinned — 24 (width) + 8 (margin) = 32.
@@ -64,7 +64,7 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   (RIGHT_CLUSTER, below) is subtracted dynamically inside the overflow
 //   measurement effect only when the toggle actually renders. The overflow
 //   dropdown trigger's width (OVERFLOW_BTN, below) is reserved separately —
-//   passed straight through to computeHiddenTabIds, which (as of UAT round 2,
+//   passed straight through to computeHiddenTabIds, which (as of,
 //   item 7) now subtracts it UNCONDITIONALLY, since the dropdown trigger
 //   itself is always rendered rather than only appearing on overflow.
 const LEFT_CLUSTER = 37;
@@ -185,7 +185,7 @@ function NewTabButton({ onNewTab }: { onNewTab: () => void }) {
   );
 }
 
-/** Empty-state new-tab button (UAT round 2, item 5): the prior tab-shaped
+/** Empty-state new-tab button: the prior tab-shaped
  *  silhouette (an 80px-wide bordered rectangle meant to read as a real tab)
  *  is what the owner called out as "huge, because of all the left/right
  *  padding" — it ballooned to fill the empty bar instead of reading as a
@@ -262,7 +262,7 @@ function RailReopenToggle({ onClick }: { onClick: () => void }) {
 // the editor column below" look that background is meant to convey.
 const tabStripStyle: CSSProperties = {
   position: "relative",
-  // UAT round 2 (item 6): "the bar needs to be full screen" — an explicit
+  // "the bar needs to be full screen" — an explicit
   // width:100% guarantees the strip spans its pane's full width regardless
   // of parent flex context, rather than relying on an implicit cross-axis
   // stretch that a future layout change could silently drop.
@@ -723,7 +723,7 @@ export function TabStrip({
         {isTopLeftLeaf && <PaneCornerReopenButton />}
         <EmptyStateNewTabButton onNewTab={onNewTab} />
         <div style={{ flex: "1 1 auto" }} />
-        {/* UAT round 2 (item 7): the tab-list dropdown is always rendered,
+        {/* (item 7): the tab-list dropdown is always rendered,
             pinned right, even with zero open tabs (its menu is simply empty). */}
         <TabOverflowDropdown tabs={[]} onSelectTab={onSelectTab} />
         {rightCluster}
@@ -958,7 +958,7 @@ export function TabStrip({
           );
         })}
       </div>
-      {/* UAT round 2 (item 7): always rendered (not gated on hiddenTabs.length),
+      {/* (item 7): always rendered (not gated on hiddenTabs.length),
           pinned right, and lists EVERY open tab — not just the ones
           overflow-hidden from the pill row above. */}
       <TabOverflowDropdown

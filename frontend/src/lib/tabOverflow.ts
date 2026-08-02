@@ -27,7 +27,7 @@ export interface OverflowInput {
   /** Minimum pill width; = MIN_TAB_WIDTH. */
   minTabWidth: number;
   /**
-   * Width reserved for the tab-list dropdown trigger. UAT round 2 (item 7)
+   * Width reserved for the tab-list dropdown trigger. (item 7)
    * made that trigger ALWAYS rendered (previously it only appeared once
    * overflow occurred) — so this is now subtracted unconditionally, not just
    * inside the overflow branch. A tab-fit budget that ignored this reserved
@@ -56,7 +56,7 @@ export function computeHiddenTabIds(input: OverflowInput): Set<string> {
 
   if (availableWidth <= 0) return new Set();
 
-  // The dropdown trigger is now ALWAYS rendered (UAT round 2, item 7), so its
+  // The dropdown trigger is now ALWAYS rendered, so its
   // width is a permanent reservation shared by both the "does everything
   // already fit" check and the overflow visible-count below — not a cost
   // paid only once overflow is already known to occur.

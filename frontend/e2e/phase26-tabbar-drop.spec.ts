@@ -1,6 +1,6 @@
 /**
  * polish UAT — Cross-pane tab-BAR positional insert (Obsidian
- * parity, P26 quick-task 260718-n6a).
+ * parity).
  *
  * Dragging a tab onto a FOREIGN pane's tab STRIP (not its body) shows an
  * insertion caret at the hovered pill boundary and, on drop, inserts the
@@ -147,7 +147,7 @@ async function splitRight(page: Page): Promise<void> {
   await splitRow.click();
 }
 
-test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian parity)", () => {
+test.describe("@drag cross-pane tab-BAR positional insert (Obsidian parity)", () => {
   let jasper: JasperHandle;
   let appHome: string;
 

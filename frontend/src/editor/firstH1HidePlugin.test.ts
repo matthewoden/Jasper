@@ -328,7 +328,7 @@ describe("firstH1HideExtension — outline/tree integrity is unaffected", () => 
   });
 });
 
-// UAT round 4: clicking the visual gap between the title and body then
+// clicking the visual gap between the title and body then
 // pressing Delete/Backspace did nothing — a click ABOVE the first rendered
 // line (posAtCoords) can resolve to a position strictly inside the hidden
 // H1's collapsed range, which firstH1AtomicRanges only guards for
@@ -506,7 +506,7 @@ function pressDelete(view: EditorView): boolean {
   return pressKey(view, "Delete", 46);
 }
 
-describe("firstH1BackspaceGuardKeymap — UAT round 4 boundary guard", () => {
+describe("firstH1BackspaceGuardKeymap — boundary guard", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {

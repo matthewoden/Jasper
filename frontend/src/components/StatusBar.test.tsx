@@ -280,7 +280,7 @@ describe("StatusBar — zen toggle button (ZEN-01)", () => {
 });
 
 
-describe("StatusBar — focused-note word count (UAT round 3 #6)", () => {
+describe("StatusBar — focused-note word count", () => {
   beforeEach(() => {
     useTreeStore.setState({ activeNoteId: null });
   });

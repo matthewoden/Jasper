@@ -10,7 +10,7 @@
  * postAdminReindex('incremental'). When paused (WebSocket offline), clicking
  * forces a WS reconnect instead.
  *
- * Word count (UAT round 3 #6): moved here from the editor's top-chrome
+ * Word count: moved here from the editor's top-chrome
  * cluster — reflects the currently FOCUSED pane's note, not a sum across
  * split panes. `activeNoteId` already mirrors the active pane's active tab
  * (App.tsx's usePaneStore -> useTreeStore sync), so reading it here
@@ -90,7 +90,7 @@ export function StatusBar() {
     setRefreshVaultCurrent(refresh);
   }, [refresh, setRefreshVaultCurrent]);
 
-  // Focused-note word count (UAT round 3 #6): getOrCreateController is
+  // Focused-note word count: getOrCreateController is
   // idempotent — by the time activeNoteId points at a note, that note's own
   // EditorPane has already created (and keeps alive) its controller, so this
   // call just returns the SAME singleton rather than creating a duplicate.
@@ -150,7 +150,7 @@ export function StatusBar() {
           </button>
         </Tooltip>
       )}
-      {/* Focused-note word count (UAT round 3 #6) — hidden entirely when no
+      {/* Focused-note word count — hidden entirely when no
           pane has a note focused (blank state), rather than a placeholder. */}
       {focusedWordCount !== null && (
         <span

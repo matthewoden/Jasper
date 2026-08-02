@@ -208,7 +208,7 @@ test.describe("@phase15 TAB-07: overflow dropdown", () => {
     const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
     await expect(overflowBtn).toBeVisible({ timeout: 10_000 });
 
-    // UAT round 2 (item 7): the dropdown is always visible and lists EVERY
+    // The dropdown is always visible and lists EVERY
     // open tab now, not just the ones hidden by overflow — so find one whose
     // title is NOT already shown as a pill to prove the click genuinely
     // exercises the dropdown-select path for a collapsed tab.

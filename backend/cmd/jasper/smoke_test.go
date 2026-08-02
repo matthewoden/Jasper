@@ -240,7 +240,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Errorf("admin/status state: got %q, want ok", statusOut.State)
 	}
 
-	putBody, _ := json.Marshal(map[string]string{"content": "# smoke"})
+	putBody, _ := json.Marshal(map[string]string{"content": "# smoke round-trip"})
 	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String(), putBody)
 	if status != 200 {
 		t.Fatalf("PUT scratchpad status: got %d; body=%s", status, body)
@@ -250,7 +250,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("re-GET scratchpad status: got %d; body=%s", status, body)
 	}
-	if !bytes.Contains(body, []byte("smoke")) {
+	if !bytes.Contains(body, []byte("# smoke round-trip")) {
 		t.Errorf("scratchpad body did not reflect update: %s", body)
 	}
 }
@@ -260,7 +260,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	addr := pickFreePort(t)
 
 	overrideDir := t.TempDir()
-	// Baseline mirrors the full shipped migration set (through 006_birthtime,
+	// Baseline mirrors the full shipped migration set (through 006_birthtime)
 	// so the post-rollback schema matches a real deployment's
 	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))

@@ -267,7 +267,7 @@ test.describe("@phase18 interleaved-hidden-tabs real-mouse drag does not swallow
       .toContain("wr03-a");
 
     // Confirm the dragged tab was never swallowed into the overflow dropdown.
-    // UAT round 2 (item 7): the dropdown now always lists EVERY open tab, not
+    // The dropdown always lists EVERY open tab, not
     // just the hidden ones, so diff its full list against the currently-
     // visible pill titles to find the collapsed ones and assert wr03-a isn't
     // among them.

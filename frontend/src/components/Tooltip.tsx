@@ -23,7 +23,7 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
     <TooltipPrimitive.Provider
       delayDuration={400}
       skipDelayDuration={300}
-      // UAT gap-closure (group A): moving the pointer off the trigger and
+      // moving the pointer off the trigger and
       // onto the floating tooltip must dismiss it immediately, not keep it
       // open — the tooltip is a hint, never an interactive surface.
       disableHoverableContent
@@ -35,7 +35,7 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 
 const contentStyle: CSSProperties = {
   background: "var(--color-surface)",
-  // UAT round 3 (bordered-caret fix): the border is back on the body (owner
+  // (bordered-caret fix): the border is back on the body (owner
   // feedback — round 2's borderless-body-plus-solid-caret combo read as an
   // outline-less blob). The caret now carries the SAME 1px border on its
   // own outer edges (see arrowStyle below) so the two pieces read as one
@@ -50,12 +50,12 @@ const contentStyle: CSSProperties = {
   alignItems: "baseline",
   gap: 6,
   zIndex: 50,
-  // UAT gap-closure (group A): the tooltip must never intercept clicks meant
+  // the tooltip must never intercept clicks meant
   // for the control (or anything else) beneath it.
   pointerEvents: "none",
 };
 
-// UAT round 3 (bordered-caret fix): Radix's Arrow renders a single SVG
+// (bordered-caret fix): Radix's Arrow renders a single SVG
 // <polygon> (viewBox "0 0 30 10", non-uniform x/y scale via
 // preserveAspectRatio="none") flush against the Content edge it's anchored
 // to — the polygon's flat edge touches/overlaps the Content border exactly,

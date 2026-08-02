@@ -17,7 +17,7 @@ import (
 
 // TestAtomicWrite_KillNineSubprocess is the strict-mode crash-during-write
 // durability gate + the success criterion enumerated in the
-// PLAN's must_haves: "kill -9 mid-write under the AtomicWrite test loop
+// The durability must-have: "kill -9 mid-write under the AtomicWrite test loop
 // NEVER produces a zero-byte target file."
 //
 // Implementation strategy (no external dependencies):

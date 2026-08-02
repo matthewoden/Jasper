@@ -766,7 +766,7 @@ test.describe("sidebar + editor shell polish", () => {
     const postCRUDCount = treeFetches.length;
     const sessionDelta = postCRUDCount - initialCount;
 
-    // Ceiling raised 6 -> 7 (.planning/debug/resolved/opennotefromtree-row-missing.md):
+    // Ceiling raised 6 -> 7:
     // coalescedGetTree() used to let a caller join an already-in-flight GET
     // /tree unconditionally, even if that in-flight request was issued
     // before a mutation the caller already knows happened — occasionally

@@ -46,7 +46,7 @@ func newTestApp(t *testing.T) (*App, string) {
 	return a, dir
 }
 
-// Test AP1 — GET /api/v1/notes/{ScratchpadUUID} returns 200 + JSON body
+// GET /api/v1/notes/{ScratchpadUUID} returns 200 + JSON body
 // containing the welcome content. Confirms the API handler runs, not
 // the SPA fallback.
 func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
@@ -133,7 +133,7 @@ func TestApp_RootDoesNotHitAPI(t *testing.T) {
 	}
 }
 
-// Test AP2 — SeedScratchpadIfMissing creates the file when absent
+// SeedScratchpadIfMissing creates the file when absent
 // and writes notes.ScratchpadWelcome bytes verbatim.
 func TestSeedScratchpadIfMissing_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
@@ -155,7 +155,7 @@ func TestSeedScratchpadIfMissing_CreatesFile(t *testing.T) {
 	}
 }
 
-// Test AP3 — SeedScratchpadIfMissing is idempotent: if the file
+// SeedScratchpadIfMissing is idempotent: if the file
 // already exists with custom content, it is NOT overwritten.
 func TestSeedScratchpadIfMissing_IdempotentOnExisting(t *testing.T) {
 	dir := t.TempDir()
@@ -182,7 +182,7 @@ func TestSeedScratchpadIfMissing_IdempotentOnExisting(t *testing.T) {
 	}
 }
 
-// Test AP4 — EnsureDataDir creates both notes/ and .jasper/.
+// EnsureDataDir creates both notes/ and .jasper/.
 func TestEnsureDataDir_CreatesNotesAndStorage(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "fresh")
@@ -201,7 +201,7 @@ func TestEnsureDataDir_CreatesNotesAndStorage(t *testing.T) {
 	}
 }
 
-// Test AP5 — Unknown UUID returns 404 from the chi router via the
+// Unknown UUID returns 404 from the chi router via the
 // registered API handler (not the SPA fallback). Body shape is the
 // api.Error envelope: {"code":"not_found","message":"..."}.
 func TestApp_UnknownUUIDReturns404(t *testing.T) {

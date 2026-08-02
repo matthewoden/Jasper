@@ -34,7 +34,7 @@ Body line one.
 Body line two.
 `;
 
-// UAT round-2 regression repro shape: H1 directly after the
+// Regression repro shape: H1 directly after the
 // frontmatter's closing "---" (no blank line — failure mode 2), followed by
 // a BLANK line before the first real paragraph (failure mode 1 — also the
 // exact default new-note scaffold shape, backend/internal/markdown/newnote.go's
@@ -456,7 +456,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     await expect(page.getByTestId("editor-title-element")).toBeFocused();
   });
 
-  test("UAT round-2 regression: ArrowUp from the genuine first visible line reaches the title even when the H1 is followed by a blank line", async ({
+  test("regression: ArrowUp from the genuine first visible line reaches the title even when the H1 is followed by a blank line", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -505,7 +505,7 @@ test.describe("@phase31 title <-> body traversal", () => {
       .toBe(NOTE_CONTENT_BLANK_AFTER_H1);
   });
 
-  test("UAT round-2 regression: exact default new-note scaffold (frontmatter + H1 + trailing blank line, no typed body yet) — ArrowUp from the body reaches the title", async ({
+  test("regression: exact default new-note scaffold (frontmatter + H1 + trailing blank line, no typed body yet) — ArrowUp from the body reaches the title", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -539,7 +539,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     ["H1 + body, no blank line, no frontmatter", NOTE_NO_FRONTMATTER_NO_BLANK],
     ["frontmatter + H1 + blank line + body", NOTE_FRONTMATTER_BLANK_AFTER_H1],
   ] as const) {
-    test(`UAT round 3 (#1): clicking the gap above the first body line then ArrowUp reaches the title — ${label}`, async ({
+    test(`clicking the gap above the first body line then ArrowUp reaches the title — ${label}`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 1512, height: 944 });
@@ -584,7 +584,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     });
   }
 
-  // UAT round 4: clicking the visual gap between the title and body, then
+  // Clicking the visual gap between the title and body, then
   // pressing Delete/Backspace, silently did nothing. Root cause: the click
   // resolves the caret to a position inside the hidden first-H1 region
   // (firstH1AtomicRanges only guards INCREMENTAL motion, not an absolute
@@ -598,7 +598,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     ["H1 + body, no blank line, no frontmatter", NOTE_NO_FRONTMATTER_NO_BLANK],
     ["frontmatter + H1 + blank line + body", NOTE_FRONTMATTER_BLANK_AFTER_H1],
   ] as const) {
-    test(`UAT round 4: clicking the gap then Delete removes the first body character — ${label}`, async ({
+    test(`clicking the gap then Delete removes the first body character — ${label}`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 1512, height: 944 });
@@ -637,7 +637,7 @@ test.describe("@phase31 title <-> body traversal", () => {
         .toBe(expected);
     });
 
-    test(`UAT round 4: clicking the gap then Backspace is a guarded no-op — title stays intact, focus stays in the body — ${label}`, async ({
+    test(`clicking the gap then Backspace is a guarded no-op — title stays intact, focus stays in the body — ${label}`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 1512, height: 944 });
@@ -677,7 +677,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     });
   }
 
-  test("UAT round-2 regression (superseded by round 3 #4): title/body column stays left-edge-aligned with itself in a wide pane", async ({
+  test("regression (superseded by the centered-breadcrumb change): title/body column stays left-edge-aligned with itself in a wide pane", async ({
     page,
   }) => {
     // Wide viewport so the 760px reading column is well short of the full
@@ -714,7 +714,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     expect(Math.abs(titleBox.x - paragraphBox.x)).toBeLessThanOrEqual(1);
   });
 
-  test("UAT round 3 (#4): breadcrumb centers in the FULL top-chrome bar, independent of the title/body column", async ({
+  test("breadcrumb centers in the FULL top-chrome bar, independent of the title/body column", async ({
     page,
   }) => {
     // Wide viewport so the 760px title/body column sits well left of the
@@ -758,7 +758,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     expect(contentBox.x + contentBox.width).toBeLessThanOrEqual(clusterBox.x);
   });
 
-  test("UAT round 3 (#5): the title's first GLYPH lines up with the body's first GLYPH, not just their container boxes", async ({
+  test("the title's first GLYPH lines up with the body's first GLYPH, not just their container boxes", async ({
     page,
   }) => {
     // Deliberately measures TEXT (Range.getClientRects()), not element
@@ -818,7 +818,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     ).toBeLessThanOrEqual(1);
   });
 
-  test("UAT round 3 (#3): responsive top-chrome cluster — star hides at narrow pane widths, the ⋯ note-options menu never hides; word count lives in the status bar and is NOT gated by the editor pane's width", async ({
+  test("responsive top-chrome cluster — star hides at narrow pane widths, the ⋯ note-options menu never hides; word count lives in the status bar and is NOT gated by the editor pane's width", async ({
     page,
   }) => {
     const noteId = await apiCreateNote(
@@ -830,7 +830,7 @@ test.describe("@phase31 title <-> body traversal", () => {
     );
 
     // Wide viewport: star + ⋯ both show. Word count no longer lives in this
-    // per-pane cluster at all (moved to the status bar, UAT round 3 #6).
+    // per-pane cluster at all (it moved to the status bar).
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(jasper.baseURL);
     await waitForConnected(page);

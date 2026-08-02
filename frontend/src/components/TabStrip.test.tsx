@@ -136,7 +136,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
-  it("UAT round 2 (item 5): empty-state new-tab button has the SAME compact 24x24 icon-button footprint as the normal add-tab button (not the old huge tab-shaped silhouette)", () => {
+  it("empty-state new-tab button has the SAME compact 24x24 icon-button footprint as the normal add-tab button (not the old huge tab-shaped silhouette)", () => {
     render(
       <TooltipProvider>
         <TabStrip
@@ -200,7 +200,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(screen.getByTestId("new-tab-button")).toBeInTheDocument();
   });
 
-  it("UAT gap-closure group B (item 6): new-tab button is vertically centered (alignSelf overrides the strip's flex-end) with L/R margin", () => {
+  it("new-tab button is vertically centered (alignSelf overrides the strip's flex-end) with L/R margin", () => {
     renderStrip();
     const btn = screen.getByTestId("new-tab-button");
     expect(btn.style.alignSelf).toBe("center");
@@ -250,7 +250,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
   it("TAB-17: jsdom escape hatch — clientWidth===0 hides nothing (all pills render)", () => {
     // jsdom reports clientWidth 0, so measure() bails and the pure overflow
     // function returns an empty set: every tab stays visible. The tab-list
-    // dropdown itself is ALWAYS present now (UAT round 2, item 7), so it's
+    // dropdown itself is ALWAYS present now, so it's
     // still in the document even with nothing overflow-hidden.
     renderStrip();
     expect(screen.getAllByRole("tab")).toHaveLength(3);
@@ -259,7 +259,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     ).toBeInTheDocument();
   });
 
-  it("UAT round 2 (item 7): the tab-list dropdown is always rendered and lists EVERY open tab, not just the ones overflow-hidden", async () => {
+  it("the tab-list dropdown is always rendered and lists EVERY open tab, not just the ones overflow-hidden", async () => {
     const user = userEvent.setup();
     const h = renderStrip({ forceHiddenTabIds: new Set(["c"]) });
     // Only 2 visible pills — but the dropdown itself is always present.
@@ -276,7 +276,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     await waitFor(() => expect(h.onSelectTab).toHaveBeenCalledWith("c"));
   });
 
-  it("UAT round 2 (item 7): the active tab is marked in the always-visible dropdown menu", async () => {
+  it("the active tab is marked in the always-visible dropdown menu", async () => {
     const user = userEvent.setup();
     renderStrip({ activeTabId: "a", forceHiddenTabIds: new Set(["c"]) });
     const trigger = screen.getByRole("button", { name: "Show all tabs" });
@@ -284,7 +284,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(await screen.findByRole("menuitem", { name: /Title a \(active\)/i })).toBeInTheDocument();
   });
 
-  it("UAT round 2 (item 7): the dropdown's menu is empty (but the trigger still renders) in the zero-tab empty state", async () => {
+  it("the dropdown's menu is empty (but the trigger still renders) in the zero-tab empty state", async () => {
     const user = userEvent.setup();
     render(
       <TooltipProvider>
@@ -313,7 +313,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
   });
 
-  it("UAT gap-closure group B (item 6): overflow trigger is vertically centered with L/R margin", () => {
+  it("overflow trigger is vertically centered with L/R margin", () => {
     renderStrip({ forceHiddenTabIds: new Set(["c"]) });
     const trigger = screen.getByRole("button", { name: "Show all tabs" });
     expect(trigger.style.alignSelf).toBe("center");
@@ -321,7 +321,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
     expect(trigger.style.marginRight).toBe("4px");
   });
 
-  it("UAT round 2 (item 6): the tab strip spans the full width of its container", () => {
+  it("the tab strip spans the full width of its container", () => {
     renderStrip();
     const strip = screen.getByRole("tablist");
     expect(strip.style.width).toBe("100%");

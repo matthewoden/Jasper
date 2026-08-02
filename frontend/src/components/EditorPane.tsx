@@ -247,7 +247,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const bookmarked = noteId !== null && isBookmarked(noteId);
   const showBookmarkStar = !hidden && noteId !== null;
 
-  // Responsive top-chrome (31 UAT round 2, word count moved out in round 3
+  // Responsive top-chrome: word count moved out to the status bar
   // #3/#6): the star hides first at narrow bar widths, the ⋯ menu never
   // hides. Widths are measured (not guessed from viewport) so split-pane
   // layouts respond to THEIR OWN pane width, not the window's.
@@ -857,7 +857,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             width: "100%",
             maxWidth: zen ? 700 : 760,
             margin: "0 auto",
-            // 22px top matches the live editor's own top padding (31-03, tightened UAT round 3 #7).
+            // 22px top matches the live editor's own top padding (31-03, tightened).
             padding: zen ? "64px 32px" : "22px 56px 200px",
             boxSizing: "border-box",
           }}
@@ -1037,7 +1037,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       {!zen && notePath && breadcrumbSegments(notePath).length > 0 && (
         // Full-pane-width top-chrome bar: this wrapper is the position:relative
         // anchor both the breadcrumb (absolutely centered in the FULL bar,
-        // UAT round 3 #4) and the right cluster (pinned to the bar's true
+        //) and the right cluster (pinned to the bar's true
         // right edge) position against — neither is constrained to the
         // 760px reading column anymore (that column framing was removed;
         // the title/body column below stays untouched and independent).
@@ -1052,7 +1052,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             style={{
               // Spans the full bar (inset:0) and centers its single child via
               // justify-content — this is the "relative container with the
-              // breadcrumb absolutely centered" shape called for by UAT round
+              // breadcrumb absolutely centered" shape the owner asked for
               // 3 #4, replacing the old maxWidth:760 + margin:auto column
               // framing (which centered the breadcrumb against the title/body
               // column, not the bar itself).
@@ -1075,7 +1075,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
                 boxSizing: "border-box",
                 fontSize: 12,
                 // Caps the centered block's width so it never grows into the
-                // right cluster (computeBreadcrumbMaxWidth, UAT round 3 #4) —
+                // right cluster (computeBreadcrumbMaxWidth) —
                 // undefined at jsdom's pre-layout escape hatch means no cap.
                 ...(breadcrumbMaxWidth !== undefined ? { maxWidth: breadcrumbMaxWidth } : {}),
               }}
@@ -1149,7 +1149,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               directly beneath the tab strip's +/⌄ buttons above it. The ⋯
               menu is NEVER hidden; the star hides first as the bar narrows
               (computeChromeVisibility). Word count moved out of this cluster
-              entirely — it now lives in the bottom StatusBar (UAT round 3 #6). */}
+              entirely — it now lives in the bottom StatusBar. */}
           <div
             ref={chromeClusterRef}
             data-testid="editor-top-chrome-cluster"

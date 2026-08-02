@@ -306,7 +306,7 @@ describe("moveTab (WS-02)", () => {
   });
 });
 
-describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {
+describe("moveTabToIndex (polish — positional cross-leaf insert)", () => {
   it("inserts at index 0 (before every existing tab)", () => {
     const existing = { id: newTabId(), noteId: "note-1" };
     const leaf = newLeaf("root", [existing], existing.id);
@@ -366,7 +366,7 @@ describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {
   });
 });
 
-describe("depthAtLeaf (P28 QUICK-03 max-depth guard)", () => {
+describe("depthAtLeaf (QUICK-03 max-depth guard)", () => {
   it("returns 0 for a root leaf", () => {
     const leaf = newLeaf("root");
     expect(depthAtLeaf(leaf, "root")).toBe(0);

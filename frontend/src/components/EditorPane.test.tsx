@@ -3186,13 +3186,13 @@ function mockBarWidth(width: number) {
     };
 }
 
-describe("<EditorPane /> responsive top-chrome cluster (31 UAT round 2)", () => {
+describe("<EditorPane /> responsive top-chrome cluster", () => {
     afterEach(() => {
         restoreClientWidth?.();
         restoreClientWidth = null;
     });
 
-    it("renders a right-pinned cluster containing star and the note-options menu, in order (UAT round 3: word count moved to StatusBar)", async () => {
+    it("renders a right-pinned cluster containing star and the note-options menu, in order", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 

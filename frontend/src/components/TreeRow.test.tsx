@@ -1401,7 +1401,7 @@ describe("<TreeRow />", () => {
   });
 });
 
-describe("UAT gap-closure group B, item 8: note-row created/modified hover tooltip", () => {
+describe("note-row created/modified hover tooltip", () => {
   it("shows Created + Modified in local time when both dates are present", () => {
     const created = "2026-01-05T12:00:00.000Z";
     const updatedAt = "2026-07-22T18:30:00.000Z";
@@ -1424,7 +1424,7 @@ describe("UAT gap-closure group B, item 8: note-row created/modified hover toolt
 
     fireEvent.focus(label);
 
-    // UAT round 2: "Created"/"Modified" labels and their date values now
+    // "Created"/"Modified" labels and their date values now
     // render as separate nested spans (muted label, --color-fg date) so
     // the date VALUES are no longer dim — assert both parts independently
     // rather than the old single combined-text match.
@@ -1435,7 +1435,7 @@ describe("UAT gap-closure group B, item 8: note-row created/modified hover toolt
     expect(screen.getByText("Modified")).toBeInTheDocument();
     expect(screen.getByText(expectedModified)).toBeInTheDocument();
 
-    // UAT round 2 regression guard: the date VALUES must render at
+    // regression guard: the date VALUES must render at
     // --color-fg (legible), while the labels stay muted for hierarchy.
     expect(screen.getByText(expectedCreated).style.color).toBe(
       "var(--color-fg)",

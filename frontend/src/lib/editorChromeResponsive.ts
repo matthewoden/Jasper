@@ -8,7 +8,7 @@
  * layout timing. EditorPane only feeds these functions a measured
  * `clientWidth`; everything else is pure.
  *
- * UAT round 3 (#3/#6): word count moved out of this cluster entirely (now
+ * (#3/#6): word count moved out of this cluster entirely (now
  * lives in the bottom StatusBar, focused-note aware) — the right cluster is
  * just [favorite, ⋯], so there is no more word-count breakpoint here.
  */
@@ -48,7 +48,7 @@ export interface BreadcrumbMaxWidthInput {
 
 /**
  * Maximum width (px) the FULLY-CENTERED breadcrumb content may occupy
- * without colliding with the right-pinned cluster (UAT round 3 #4 — the
+ * without colliding with the right-pinned cluster — the
  * breadcrumb centers in the bar's full width, not a fixed 760px column).
  *
  * Only the right side is physically obstructed by the cluster, but capping

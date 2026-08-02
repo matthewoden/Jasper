@@ -97,7 +97,7 @@ describe("usePaneStore — per-vault persistence (WS-08)", () => {
     usePaneStore.getState().initForVault(vault);
     usePaneStore.getState().openInActivePane("note-1");
     usePaneStore.getState().splitActivePane("row");
-    // Ratios persist now even though drag-resize ships in P26.
+    // Ratios persist now even though drag-resize ships in .
     const withRatio = setRatioOnRoot(usePaneStore.getState().tree, 0.35);
     usePaneStore.setState({ tree: withRatio });
     const secondLeafId = _leaves(usePaneStore.getState().tree)[1].id;
@@ -466,7 +466,7 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02)", () => {
   });
 });
 
-describe("usePaneStore — dropTabAtIndex (P26 polish — positional foreign-strip drop)", () => {
+describe("usePaneStore — dropTabAtIndex (polish — positional foreign-strip drop)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -575,7 +575,7 @@ describe("usePaneStore — setPaneRatio (WS-05)", () => {
   });
 });
 
-describe("usePaneStore — openNoteInNewSplit (P28 QUICK-03)", () => {
+describe("usePaneStore — openNoteInNewSplit (QUICK-03)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
