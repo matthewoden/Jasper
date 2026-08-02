@@ -211,3 +211,7 @@ Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-
 **Mark a requirement complete in the same change that ships it** — not at milestone close.
 
 *Two consecutive milestones closed with traceability tables contradicting what had actually shipped. Reconciling at close works but re-discovers the same drift every time; marking in-band is the durable fix and has held since.*
+
+**Extract a ticket's durable reasoning in the same change too** — an ADR, a `CONTEXT.md` fact, a comment on the code — not when the effort retires. The [retirement rule](./docs/agents/issue-tracker.md#retiring-a-finished-effort) says what goes where; this says *when*.
+
+*The per-vault logging fix shipped with its reasoning — including two rejected alternatives that are the first things a reader would reach for — living only in the ticket and a commit message. Tickets are deleted at retirement, and a commit message is findable only by someone who already knows to look, so that reasoning was on track to be destroyed by the very rule meant to preserve it. It became [ADR-0031](./docs/adr/0031-per-vault-logging.md) only because someone asked whether deleting tickets loses information. Retirement is the wrong moment to do this work: it happens once, at the end, across a directory of tickets nobody has read recently — which is precisely when the reasoning is hardest to reconstruct and easiest to wave through.*

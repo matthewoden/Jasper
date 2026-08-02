@@ -47,7 +47,12 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 **Delete the directory once the work ships.** Tickets and specs are a queue, not a
 record — they must never become the source of truth for a decision that was made.
 
-Before deleting, move anything durable to where it actually belongs:
+**Move durable content out as you close each ticket, not when the directory dies.**
+Retirement happens once, at the end, across tickets nobody has read recently — the
+worst possible moment to reconstruct why something was decided. By then the
+reasoning is a paragraph in a file you are about to delete, and waving it through
+costs nothing until someone needs it. `CONVENTIONS.md` carries this as a rule; the
+table below is where things go:
 
 | What | Where it goes |
 | --- | --- |
@@ -63,6 +68,32 @@ carries the reasoning. This is the same treatment `.planning/` and `review/` got
 
 The failure mode this avoids: a reader finding a stale ticket and treating it as
 current, or a decision surviving only in a file nobody thinks to read.
+
+### The retirement pass
+
+If extraction happened at close, this is a verification sweep rather than a
+salvage operation. Walk the directory once and confirm:
+
+- [ ] **Every shipped finding's reasoning has a home outside `.scratch/`** — or is
+      genuinely not durable. A rejected alternative almost always is: it is the
+      thing a future reader will try first.
+- [ ] **No open follow-up is recorded only here.** Move it to the effort that owns
+      it, or promote it to `backlog/`.
+- [ ] **Nothing outside `.scratch/` links into the directory** —
+      `grep -rn "<effort-slug>" --exclude-dir=.scratch --exclude-dir=.git .`
+      should come back empty. A dangling link in an ADR or a code comment is worse
+      than the ticket surviving.
+
+      Better still, don't create them: an ADR that cites a ticket path is a
+      permanent record depending on a disposable one. State the fact in the ADR
+      and let it stand alone — "the shipped teardown order is a known defect"
+      needs no ticket link to be true or actionable.
+- [ ] **Identifier schemes local to the effort have a provenance note** if they
+      appear in commit messages or git history, so old references stay decodable.
+      See `CONVENTIONS.md` § Ticket identity.
+
+Then delete it. A retirement that turns up several unextracted decisions is a
+signal the close discipline slipped, not a reason to keep the directory.
 
 ## Where the history went
 
