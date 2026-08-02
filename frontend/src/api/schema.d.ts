@@ -14,8 +14,8 @@ export interface paths {
         /**
          * List all indexed notes (metadata only)
          * @description List all indexed notes (metadata only — no content). Backed by the SQLite
-         *     derived index (DATA-09). Phase 2 has no query parameters; Phase 7 will add
-         *     `?q=` and `?tag=` for search and tag filtering.
+         *     derived index (DATA-09). No query parameters — search and tag filtering
+         *     live on their own endpoints.
          */
         get: operations["getNotes"];
         put?: never;
@@ -38,7 +38,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -66,7 +66,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -77,8 +77,8 @@ export interface paths {
          * Rename or move a note (TREE-05, TREE-07)
          * @description Rename and/or move a note in a single atomic transaction. new_path is a
          *     canonical relative path under notes/; the server NFC-lowercases it before
-         *     applying. Wiki-link rewrite (LINKS-07) is DEFERRED to Phase 6 — Phase 3 only
-         *     updates the file location and the SQLite index row. Returns the post-move
+         *     applying. Wiki-link references are rewritten vault-wide (LINKS-07) and the
+         *     SQLite index row is updated. Returns the post-move
          *     NoteSummary so the client can reconcile against any server-side path
          *     normalization.
          */
@@ -176,28 +176,28 @@ export interface paths {
         get: operations["getFile"];
         put?: never;
         /**
-         * Upload an OS file into the notes/ tree at the specified directory (UAT-3 N2 / Plan 07-34).
+         * Upload an OS file into the notes/ tree at the specified directory.
          * @description Multipart upload landing under <dataDir>/notes/<path>. Used by the
          *     sidebar tree's OS-file drop target — drop on a folder row → file lands
          *     inside that folder; drop on a note/file → file lands as sibling; drop
          *     on empty area → file lands at vault root.
          *
          *     path is passed as a query parameter (mirroring DELETE /folders and the
-         *     sibling GET /files endpoint, Plan 07-32a) because OpenAPI 3.1 has no
+         *     sibling GET /files endpoint) because OpenAPI 3.1 has no
          *     native multi-segment path-wildcard syntax and oapi-codegen does not
          *     emit chi `*` catch-all routes. Co-locating GET + POST at /files keeps
          *     the surface coherent: same wire shape for both verbs.
          *
          *     Refuses .md uploads (markdown bodies must be created via POST /notes).
-         *     Reuses generateUniqueFilename (Plan 07-06) for collision-safe naming.
-         *     Enforces the 100 MB upload cap (D-29). Same 5-rule path-traversal
-         *     pipeline as GET /files (Plan 07-32a) plus a Lstat that ensures the
+         *     Reuses generateUniqueFilename for collision-safe naming.
+         *     Enforces the 100 MB upload cap. Same 5-rule path-traversal
+         *     pipeline as GET /files plus a Lstat that ensures the
          *     target is a directory (NO auto-mkdir — the user creates folders via
          *     the existing tree UI before dropping).
          */
         post: operations["createFile"];
         /**
-         * Delete a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+         * Delete a non-markdown file under notes/.
          * @description Mirrors GetFile's path-traversal pipeline. Refuses .md (those are notes —
          *     use DELETE /notes/{id}). Refuses directories (use DELETE /folders). Single
          *     os.Remove call once the path resolves under notes/.
@@ -218,7 +218,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Rename / move a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+         * Rename / move a non-markdown file under notes/.
          * @description Mirrors POST /folders/move for non-markdown files. Both src_path and
          *     dst_path are relative under notes/; both run through the 5-rule
          *     path-traversal pipeline. Refuses .md (those go through POST /notes/{id}/move).
@@ -287,7 +287,7 @@ export interface paths {
          *     tagged union — TreeNode is either {kind:"folder", path, name, children[]}
          *     or {kind:"note", id, path, title, updated_at}. Sort order: alphabetical
          *     by name within each level, folders before notes. Used by the sidebar
-         *     FileTree (react-arborist) — Plan 03-06.
+         *     FileTree (react-arborist).
          */
         get: operations["getTree"];
         put?: never;
@@ -319,8 +319,8 @@ export interface paths {
          * Delete a folder (TREE-06) — non-empty requires recursive=true
          * @description Delete the folder at the given canonical path. By default (recursive=false)
          *     the server returns 409 folder_not_empty if the folder has any children.
-         *     The Phase 3 Delete-folder dialog (UI-SPEC §Surface 4) always sets
-         *     recursive=true after the user confirms the content-count copy. Path is
+         *     The client's Delete-folder dialog always sets recursive=true after the
+         *     user confirms the content-count copy. Path is
          *     passed as a query parameter so URL-encoding handles `/` separators
          *     cleanly — folders have no SQLite identity and so cannot be addressed by
          *     UUID.
@@ -365,9 +365,9 @@ export interface paths {
         /**
          * List all tags with note counts (TAGS-03)
          * @description Returns all tags present in the vault, sorted alphabetically by name.
-         *     Each entry includes the normalized tag name (D-22: lowercase [a-z0-9_-]+)
+         *     Each entry includes the normalized tag name (lowercase [a-z0-9_-]+)
          *     and the count of notes carrying that tag. Feeds the sidebar tag browser
-         *     (D-01..D-03) and the tag autocomplete source (D-07).
+         *     and the tag autocomplete source.
          *     Empty array on empty vault or when no notes have tags.
          */
         get: operations["getTags"];
@@ -385,7 +385,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
                  *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
                  */
                 name: components["parameters"]["TagName"];
@@ -394,24 +394,24 @@ export interface paths {
         };
         get?: never;
         /**
-         * Rename a tag across all notes (TAGS-06 / D-23)
+         * Rename a tag across all notes (TAGS-06)
          * @description Rename an existing tag in a single backend transaction. Rewrites the
          *     `tags:` frontmatter array in every note carrying the tag. Returns the
          *     list of affected note IDs so the client can refresh stale UI rows.
          *     Emits a `tags:rewritten` WebSocket batch event.
-         *     Returns 400 if new_name fails charset validation (D-22);
+         *     Returns 400 if new_name fails charset validation;
          *     404 if the old tag does not exist;
          *     409 if new_name collides with an existing tag.
          */
         put: operations["putTag"];
         post?: never;
         /**
-         * Remove a tag from all notes (TAGS-07 / D-24)
+         * Remove a tag from all notes (TAGS-07)
          * @description Remove an existing tag from the `tags:` frontmatter array in every note
          *     carrying it, in a single transaction. The tag row is deleted after all
          *     frontmatter rewrites commit. Returns the list of affected note IDs so
          *     the client can refresh stale UI rows. Emits a `tags:rewritten` WebSocket
-         *     batch event with new_name=null to indicate deletion (D-34).
+         *     batch event with new_name=null to indicate deletion.
          *     Returns 404 if the tag does not exist.
          */
         delete: operations["deleteTag"];
@@ -426,7 +426,7 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
                  *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
                  */
                 name: components["parameters"]["TagName"];
@@ -434,7 +434,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List notes carrying a specific tag (TAGS-04 / D-02)
+         * List notes carrying a specific tag (TAGS-04)
          * @description Returns a flat list of notes that carry the given normalized tag name.
          *     Results are sorted by note updated_at descending (most-recent first)
          *     consistent with the tree sidebar's default sort.
@@ -454,17 +454,17 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
         };
         /**
-         * List notes that link to this note (LINKS-08 / D-27)
+         * List notes that link to this note (LINKS-08)
          * @description Returns resolved backlinks — notes containing `[[Title]]` references
          *     that resolve to the note identified by `id`. Pending (unresolved) links
-         *     are not included (D-32). Rows are sorted by source note updated_at
-         *     descending (most-recently-edited source first, per D-28).
+         *     are not included. Rows are sorted by source note updated_at
+         *     descending (most-recently-edited source first).
          *     The `excerpt` field is server-built HTML safe for the DOMPurify
          *     allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
          */
@@ -485,11 +485,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
-         * @description Full-text prefix search over note titles for the `[[` autocomplete popup
-         *     (D-13). Empty `q` returns the most-recently-edited notes up to `limit`.
-         *     Results are ranked by recency (60%) + proximity (40%) per D-13.
-         *     `limit` is capped at 50 (T-06-02-05 DoS mitigation).
+         * Search note titles for wiki-link autocomplete (LINKS-06)
+         * @description Full-text prefix search over note titles for the `[[` autocomplete popup.
+         *     Empty `q` returns the most-recently-edited notes up to `limit`.
+         *     Results are ranked by recency (60%) + proximity (40%).
+         *     `limit` is capped at 50 as a DoS mitigation.
          */
         get: operations["getNotesSearchTitles"];
         put?: never;
@@ -509,10 +509,8 @@ export interface paths {
         };
         /**
          * Report the migration runner state
-         * @description Returns the migration runner state for the UX-03 banner. The frontend
-         *     `useMigrationStatus()` hook polls this on mount; Phase 4 will swap the
-         *     client to a `migration:status` WebSocket event without changing the
-         *     wire shape.
+         * @description Returns the migration runner state that backs the client's migration
+         *     banner. The frontend `useMigrationStatus()` hook polls this on mount.
          */
         get: operations["getAdminStatus"];
         put?: never;
@@ -532,17 +530,15 @@ export interface paths {
         };
         /**
          * Read user configuration
-         * @description Returns the current config.json contents (DESIGN.md §11).
-         *     Phase 5 wires only the `theme` field to UI; other fields
-         *     ship with sensible defaults but are not yet surfaced
-         *     (UX-V2-01 will surface them in v2).
+         * @description Returns the current config.json contents (DESIGN.md §11). Fields the
+         *     UI does not surface still ship with sensible defaults.
          */
         get: operations["getConfig"];
         /**
          * Replace user configuration (whole-document)
          * @description Writes config.json atomically via fsstore.AtomicWrite
          *     (DATA-13: temp + fsync + rename + fsync(parent)).
-         *     Strict (D-40): unknown fields → 400 invalid_request.
+         *     Strict decode: unknown fields → 400 invalid_request.
          *     Replaces the whole document — retained for whole-document writes
          *     (per-section Reset, first-run fixtures). For partial writes that
          *     should leave every other field untouched, use PATCH /config.
@@ -557,9 +553,9 @@ export interface paths {
          * @description Writes only the keys present in the request body via
          *     config.SaveMergedPartial; fields absent from the body are left
          *     untouched on disk (including unmanaged/hand-added keys). Writes
-         *     are serialised server-side (T-32.1-04) so concurrent PATCH/PUT
-         *     requests never lose an update. Strict (D-40): unknown fields →
-         *     400 invalid_request, same as PUT.
+         *     are serialised server-side so concurrent PATCH/PUT requests never
+         *     lose an update. Strict decode: unknown fields → 400 invalid_request,
+         *     same as PUT.
          */
         patch: operations["patchConfig"];
         trace?: never;
@@ -574,20 +570,20 @@ export interface paths {
         /**
          * WebSocket endpoint (HTTP/1.1 Upgrade)
          * @description Server-broadcast WebSocket. Client opens with
-         *     `?session_id=<uuid>` query parameter (Pitfall 1: client-as-
-         *     authoritative session_id). Server responds with a
+         *     `?session_id=<uuid>` query parameter — the client, not the server,
+         *     is authoritative for the session id. Server responds with a
          *     `session:assigned` envelope confirming the id, then streams
          *     events until disconnect.
          *
          *     oapi-codegen generates a stub handler for this route which is
-         *     unreachable: lifecycle.go (Plan 04-04) mounts `/ws` via
-         *     wshub.Hub.ServeHTTP BEFORE api.HandlerFromMux. The path exists
-         *     in the spec to satisfy API-01 ("every HTTP route in the spec").
+         *     unreachable: lifecycle.go mounts `/ws` via wshub.Hub.ServeHTTP
+         *     BEFORE api.HandlerFromMux. The path exists in the spec to satisfy
+         *     API-01 ("every HTTP route in the spec").
          *
-         *     Origin enforcement: the Accept call in wshub.Hub.ServeHTTP
-         *     (Plan 04-02) sets OriginPatterns: ["localhost:*", "127.0.0.1:*"].
-         *     The OpenAPI spec does NOT and CANNOT enforce origin — that is a
-         *     runtime control on the upgrade handshake (T-04-01).
+         *     Origin enforcement: the Accept call in wshub.Hub.ServeHTTP sets
+         *     OriginPatterns: ["localhost:*", "127.0.0.1:*"]. The OpenAPI spec
+         *     does NOT and CANNOT enforce origin — that is a runtime control on
+         *     the upgrade handshake.
          */
         get: operations["getApiV1Ws"];
         put?: never;
@@ -609,10 +605,9 @@ export interface paths {
         put?: never;
         /**
          * Trigger a full or incremental re-index
-         * @description Phase 2 backs DATA-10: drop the derived tables, re-run migrations on a
-         *     clean schema, and walk every `.md` file. Phase 2 runs synchronously and
-         *     returns 202 only after the rebuild finishes; Phase 4 will switch to async
-         *     execution streaming progress over WebSocket without a contract break.
+         * @description Backs DATA-10: drop the derived tables, re-run migrations on a clean
+         *     schema, and walk every `.md` file. Runs synchronously and returns 202
+         *     only after the rebuild finishes.
          */
         post: operations["postAdminReindex"];
         delete?: never;
@@ -632,11 +627,11 @@ export interface paths {
         put?: never;
         /**
          * Reveal a note path in the host OS file manager (SHARE-01)
-         * @description Phase 8 SHARE-01 / D-26 / D-27. Opens the host OS file manager
-         *     with the named path selected. macOS uses `open -R <path>`
-         *     (Finder reveal). WSL2 uses `explorer.exe /select,<windows-path>`
-         *     with the WSL path translated to a Windows UNC path.
-         *     Linux-native is not a v1 target (D-28) — handler returns 501.
+         * @description Opens the host OS file manager with the named path selected.
+         *     macOS uses `open -R <path>` (Finder reveal). WSL2 uses
+         *     `explorer.exe /select,<windows-path>` with the WSL path translated
+         *     to a Windows UNC path. Linux-native is not a v1 target — handler
+         *     returns 501.
          *
          *     The `path` field is the path under the vault, relative to
          *     notes/. The handler resolves it through the same
@@ -659,29 +654,28 @@ export interface paths {
         };
         /**
          * List all MCP write grants (MCP-01)
-         * @description Returns every row in the mcp_write_grants table (Phase 8 migration
-         *     004). The frontend tree menu reads this list to render
-         *     "MCP write" indicators per folder (D-17). Folders without a row
-         *     are deny-by-default; grants at an ancestor folder grant writes
-         *     recursively (D-18, resolved server-side at write time).
+         * @description Returns every row in the mcp_write_grants table (migration 004).
+         *     The frontend tree menu reads this list to render "MCP write"
+         *     indicators per folder. Folders without a row are deny-by-default;
+         *     grants at an ancestor folder grant writes recursively, resolved
+         *     server-side at write time.
          */
         get: operations["getMcpGrants"];
         put?: never;
         /**
-         * Grant (or upgrade) MCP write access for a folder (MCP-01, D-17)
+         * Grant (or upgrade) MCP write access for a folder (MCP-01)
          * @description Idempotent grant for `folder_path` at `level` (1 = create+update;
          *     2 = create+update+move+delete). If the folder already has a row,
          *     the level is updated to the requested value (upgrade or
          *     downgrade); `granted_at` is refreshed; `granted_via` updates to
          *     reflect the new entry point. Broadcasts `mcp:grant_changed` on
-         *     the WS hub so every connected tab refreshes its indicators
-         *     (D-57).
+         *     the WS hub so every connected tab refreshes its indicators.
          */
         post: operations["postMcpGrant"];
         /**
-         * Revoke MCP write access for a folder (D-17)
+         * Revoke MCP write access for a folder (MCP-01)
          * @description Deletes the grant row for `folder_path`. Does NOT recurse —
-         *     ancestor grants still apply per D-18. Broadcasts
+         *     ancestor grants still apply. Broadcasts
          *     `mcp:grant_changed` on success.
          */
         delete: operations["deleteMcpGrant"];
@@ -702,7 +696,7 @@ export interface paths {
          * @description Returns every bookmark folder and bookmark row persisted in
          *     <vault>/.jasper/bookmarks.json. Bookmarks whose noteId no longer
          *     resolves in the notes registry are silently dropped before this
-         *     response is built (D-04 prune-on-read, BOOK-04) — the frontend
+         *     response is built (prune-on-read, BOOK-04) — the frontend
          *     never sees a bookmark pointing at a deleted note.
          */
         get: operations["getBookmarks"];
@@ -710,8 +704,8 @@ export interface paths {
         /**
          * Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
          * @description Adds a new bookmark row for note_id. Rejects an unknown/forged
-         *     note_id with 404 (T-27-01 — validated against the notes registry,
-         *     not trusted client input). Rejects an unknown folder_id with 400.
+         *     note_id with 404 — validated against the notes registry, not
+         *     trusted client input. Rejects an unknown folder_id with 400.
          *     Broadcasts `bookmark:changed` on success.
          */
         post: operations["postBookmark"];
@@ -786,9 +780,9 @@ export interface paths {
          *     (folder_id null = top-level), assigns order = index for each and
          *     persists. ordered_ids must be EXACTLY the current membership of
          *     that folder scope — a missing id, an extra id, or a foreign id
-         *     is rejected wholesale with 404 and no partial write (T-JV1-01,
-         *     same forged-id posture as postBookmark's T-27-01). An unknown
-         *     folder_id is rejected with 400 (T-JV1-02). Broadcasts
+         *     is rejected wholesale with 404 and no partial write — the same
+         *     forged-id posture as postBookmark. An unknown folder_id is
+         *     rejected with 400. Broadcasts
          *     `bookmark:changed` on success.
          */
         post: operations["reorderBookmarks"];
@@ -830,12 +824,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * First-run wizard status (INSTALL-07, D-04)
+         * First-run wizard status (INSTALL-07)
          * @description Returns whether the first-run wizard still needs to run.
          *     `first_run = true` when no resolved `cfg.Server.DataDir` is
          *     present (the user has not yet completed the wizard). The
-         *     frontend redirects to /setup when this returns true (D-04
-         *     wizard mount).
+         *     frontend redirects to /setup when this returns true.
          */
         get: operations["getSetupStatus"];
         put?: never;
@@ -856,7 +849,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Debounced wizard-side validation of a proposed data directory (D-08)
+         * Debounced wizard-side validation of a proposed data directory
          * @description Called by the wizard as the user types a data-directory path.
          *     Validates: parent exists, path is not nested inside an existing
          *     vault, path is writable, path contains only ASCII characters.
@@ -880,7 +873,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit the first-run wizard (INSTALL-07, D-10)
+         * Submit the first-run wizard (INSTALL-07)
          * @description Persists the wizard payload: writes <vault>/.jasper/config.json
          *     with the wizard-supplied theme, MCP grants, and daily-notes
          *     template, then runs migrations against the new
@@ -978,7 +971,7 @@ export interface paths {
          * @description Creates a new Jasper vault inside the given folder: creates .jasper/ with
          *     0700 perms, writes a minimal per-vault config.json, runs migrations, and
          *     opens the vault. Refuses with 400 if the folder is already a vault, if the
-         *     path is inside an existing Jasper vault (nested-vault, D-08), or if path
+         *     path is inside an existing Jasper vault (nested-vault), or if path
          *     validation rules fail (abs, ASCII+NFC, parent must exist).
          *     Returns 409 when a vault switch is already in progress.
          */
@@ -1075,7 +1068,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get server-assembled vault facts for the Settings About pane (Phase 32 / SET3-04, D-22)
+         * Get server-assembled vault facts for the Settings About pane (SET3-04)
          * @description Assembles every About-pane fact server-side in one response: vault
          *     name, note count, folder count, on-disk path, app version, MCP port,
          *     and MCP write-grant count. Degrades individual fields to their zero
@@ -1130,7 +1123,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List subdirectories of an absolute path (UAT-2
+         * List subdirectories of an absolute path (folder picker)
          * @description Returns the subdirectories of the given absolute path, plus the
          *     canonical absolute path and the parent path (for breadcrumbs).
          *     Used exclusively by the vault picker's "Browse…" modal to let the
@@ -1168,8 +1161,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Lookup a note by its relative path (D-30 deep-link fallback)
-         * @description Phase 8 D-30 deep-link fallback. Used by the `?path=<rel>` URL
+         * Lookup a note by its relative path (deep-link fallback)
+         * @description Deep-link fallback. Used by the `?path=<rel>` URL
          *     parameter when the canonical `/notes/{id}` form is not available
          *     (e.g. someone shares a permalink across machines and the UUIDs
          *     differ but the path is stable). Server canonicalizes `path` via
@@ -1264,7 +1257,7 @@ export interface components {
              * @description Current migration runner state. Surfaces the three-path resilience
              *     model from DESIGN.md §4.4.
              *       - "ok"            — schema is current; no action required
-             *       - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+             *       - "rolled_back"   — Path 1 fired; previous schema active; migration banner shown
              *       - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
              *       - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
              * @enum {string}
@@ -1308,10 +1301,10 @@ export interface components {
         ReindexResponse: {
             /**
              * Format: date-time
-             * @description Wall-clock UTC when the reindex began (Phase 2 returns AFTER it finishes; this is still the start time)
+             * @description Wall-clock UTC when the reindex began (the response is sent AFTER it finishes; this is still the start time)
              */
             started_at: string;
-            /** @description Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS) */
+            /** @description Count of rows in the `notes` table after the reindex completed */
             notes_indexed?: number;
         };
         CreateNoteRequest: {
@@ -1402,7 +1395,7 @@ export interface components {
             updated_at: string;
             /**
              * Format: date-time
-             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04).
+             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01).
              */
             created?: string;
         };
@@ -1459,8 +1452,8 @@ export interface components {
                 lineHeight: number;
                 /**
                  * @description Autosave debounce interval in milliseconds. Replaces the
-                 *     hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
-                 *     Read at mount; requires reload to apply (D-07).
+                 *     hard-coded 2000ms constant in EditorPane.tsx.
+                 *     Read at mount; requires reload to apply.
                  * @default 2000
                  */
                 autosaveMs: number;
@@ -1572,7 +1565,7 @@ export interface components {
         /** @description A single tag entry with the number of notes carrying it. */
         TagWithCount: {
             /**
-             * @description Normalized tag name (D-22 charset; lowercase [a-z0-9_-]+)
+             * @description Normalized tag name (lowercase [a-z0-9_-]+)
              * @example project
              */
             name: string;
@@ -1588,9 +1581,9 @@ export interface components {
         };
         TagRenameRequest: {
             /**
-             * @description New tag name. Must match D-22 charset (lowercase letters, digits,
-             *     hyphens, underscores only). Server re-validates server-side (T-06-02-01
-             *     defense-in-depth).
+             * @description New tag name. Must match the tag charset (lowercase letters, digits,
+             *     hyphens, underscores only). Server re-validates server-side as
+             *     defense-in-depth.
              * @example work
              */
             new_name: string;
@@ -1614,7 +1607,7 @@ export interface components {
             filename: string;
             /** @description Path relative to the note's parent directory, e.g., 'attachments/image-1.png'. */
             path: string;
-            /** @description MIME type from http.DetectContentType (D-27). */
+            /** @description MIME type from http.DetectContentType. */
             content_type: string;
             /** @enum {string} */
             category: "image" | "pdf" | "video" | "audio" | "archive" | "other";
@@ -1626,7 +1619,7 @@ export interface components {
          * @description A single backlink entry: a note that contains one or more `[[...]]`
          *     references resolving to the target note. One card per source note,
          *     carrying one context-line excerpt per distinct `[[...]]` mention
-         *     line (D-16) — multiple references on the SAME line collapse into a
+         *     line — multiple references on the SAME line collapse into a
          *     single excerpt for that line, but references on separate lines each
          *     produce their own excerpt, rendered as stacked lines within the card.
          */
@@ -1646,7 +1639,7 @@ export interface components {
              *     allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
              *     Max 200 characters of visible text per excerpt. Client MUST
              *     sanitize EACH excerpt individually via sanitize.ts before
-             *     setting dangerouslySetInnerHTML (T-06-02-04) — never join the
+             *     setting dangerouslySetInnerHTML — never join the
              *     array before sanitizing.
              */
             excerpts: string[];
@@ -1654,7 +1647,7 @@ export interface components {
         BacklinksResponse: {
             /**
              * @description Resolved backlinks sorted by source note updated_at descending
-             *     (most-recently-edited source first, per D-28).
+             *     (most-recently-edited source first).
              */
             backlinks: components["schemas"]["BacklinkRow"][];
         };
@@ -1675,7 +1668,7 @@ export interface components {
             folder?: string | null;
             /**
              * @description 0.0–1.0 recency component of the ranking score (higher = more recent).
-             *     60% weight in the combined score per D-13.
+             *     60% weight in the combined score.
              */
             recency_score: number;
             /**
@@ -1690,9 +1683,9 @@ export interface components {
         };
         /**
          * @description Broadcast payload for `tags:rewritten` events. Emitted when a tag is
-         *     renamed (D-23 / TAGS-06) or deleted (D-24 / TAGS-07). When new_name is
-         *     null, the tag was deleted (D-34). Source tab suppresses its own broadcast
-         *     via the origin_session_id filter (D-35).
+         *     renamed (TAGS-06) or deleted (TAGS-07). When new_name is null, the tag
+         *     was deleted. Source tab suppresses its own broadcast via the
+         *     origin_session_id filter.
          */
         WSTagsRewrittenPayload: {
             /** @description The tag name before the rename/delete. */
@@ -1704,8 +1697,8 @@ export interface components {
         };
         /**
          * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
-         *     renamed and its wiki-link references are rewritten vault-wide (LINKS-07 /
-         *     D-33). Source tab suppresses its own broadcast via origin_session_id (D-35).
+         *     renamed and its wiki-link references are rewritten vault-wide (LINKS-07).
+         *     Source tab suppresses its own broadcast via origin_session_id.
          */
         WSLinksRewrittenPayload: {
             /** @description The note title before the rename. */
@@ -1798,7 +1791,7 @@ export interface components {
             id: string;
             title: string;
             path: string;
-            /** @description Server-sanitized HTML containing <mark> tags around matched terms (D-04). */
+            /** @description Server-sanitized HTML containing <mark> tags around matched terms. */
             excerpt_html: string;
             matching_tags: string[];
             /** @description bm25 + recency score; lower is better (negative floats). */
@@ -1807,7 +1800,7 @@ export interface components {
             modified_at: string;
             /**
              * Format: date-time
-             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04).
+             * @description COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01).
              */
             created?: string;
         };
@@ -1835,8 +1828,8 @@ export interface components {
              */
             path: string;
             /**
-             * @description Phase 32 / D-24. "note" (default) reveals `path` under the vault's
-             *     notes/ directory, same behavior as before this field existed.
+             * @description "note" (default) reveals `path` under the vault's notes/
+             *     directory, same behavior as before this field existed.
              *     "vaultRoot" ignores `path` and reveals the vault's data directory
              *     itself — resolved entirely server-side from configuration, never
              *     from client input.
@@ -1852,7 +1845,7 @@ export interface components {
              *     selected (`explorer.exe /select,<wslpath>`). `linux` (native, not
              *     WSL2) opens the parent directory in the default file manager via
              *     `xdg-open` — `xdg-open` cannot pre-select a target file, so the
-             *     best-effort UX is parent-directory navigation (D-26 / D-28).
+             *     best-effort UX is parent-directory navigation.
              * @enum {string}
              */
             platform: "darwin" | "wsl2" | "linux";
@@ -1861,13 +1854,13 @@ export interface components {
             /** @description Canonical NFC+lowercase rel path under notes/ (DATA-11). */
             folder_path: string;
             /**
-             * @description 1 = create+update (default); 2 = create+update+move+delete (D-13).
+             * @description 1 = create+update (default); 2 = create+update+move+delete.
              * @enum {integer}
              */
             level: 1 | 2;
             /** Format: date-time */
             granted_at: string;
-            /** @description Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu' (D-17 telemetry). */
+            /** @description Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu'. */
             granted_via: string;
         };
         /** @description Wizard payload form of an MCP grant (used inside SetupRequest.mcp_grants). */
@@ -1884,7 +1877,7 @@ export interface components {
             /** @enum {integer} */
             level: 1 | 2;
         };
-        /** @description A single pinned note (Phase 27 BOOK-01). Keyed by its own opaque id, not the note's UUID. */
+        /** @description A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID. */
         Bookmark: {
             /**
              * Format: uuid
@@ -1919,7 +1912,7 @@ export interface components {
          * @description Per-vault workspace preferences, persisted to
          *     <vault>/.jasper/workspace.json (SORT-01, SORT-02, SORT-03, TAGS-01).
          *     All fields are optional strings; an empty/absent value means "use
-         *     the default" (D-06) rather than an explicit user choice.
+         *     the default" rather than an explicit user choice.
          */
         Workspace: {
             /** @enum {string} */
@@ -1932,7 +1925,7 @@ export interface components {
         BookmarkCreateRequest: {
             /**
              * Format: uuid
-             * @description UUID of the note to bookmark. Validated against the notes registry server-side (T-27-01).
+             * @description UUID of the note to bookmark. Validated against the notes registry server-side.
              */
             note_id: string;
             /**
@@ -1958,7 +1951,7 @@ export interface components {
         /**
          * @description The FULL ordered list of bookmark ids for one folder scope.
          *     folder_id is a top-level field (not per-row) because order is
-         *     scoped per folder, not global (WR-02) — every id in ordered_ids
+         *     scoped per folder, not global — every id in ordered_ids
          *     must belong to that same scope.
          */
         BookmarkReorderRequest: {
@@ -1975,7 +1968,7 @@ export interface components {
             name: string;
         };
         SetupStatus: {
-            /** @description True when the first-run wizard has not yet been completed (D-04). */
+            /** @description True when the first-run wizard has not yet been completed. */
             first_run: boolean;
         };
         SetupValidateRequest: {
@@ -1984,7 +1977,7 @@ export interface components {
         SetupValidateResponse: {
             valid: boolean;
             /**
-             * @description Structured error code when valid=false (D-08).
+             * @description Structured error code when valid=false.
              * @enum {string}
              */
             code?: "parent_missing" | "nested_vault" | "unwritable" | "non_ascii" | "not_absolute";
@@ -2087,7 +2080,7 @@ export interface components {
             current_target: string;
         };
         /**
-         * @description Phase 32 / SET3-04 / D-22. Server-assembled facts for the Settings
+         * @description SET3-04. Server-assembled facts for the Settings
          *     About pane. All seven fields are required — a nil subsystem (index,
          *     mcpACL) degrades its field to zero rather than omitting it.
          */
@@ -2151,12 +2144,12 @@ export interface components {
     };
     responses: never;
     parameters: {
-        /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+        /** @description UUID of the note */
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
         /**
-         * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+         * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
          *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
          */
         TagName: string;
@@ -2234,7 +2227,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2278,7 +2271,7 @@ export interface operations {
                 "If-Match"?: string;
             };
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2341,7 +2334,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2380,7 +2373,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2474,7 +2467,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description File exceeds 100 MB cap (D-29). */
+            /** @description File exceeds the 100 MB upload cap. */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -2866,10 +2859,10 @@ export interface operations {
         parameters: {
             query: {
                 q: string;
-                /** @description AND-combine with one or more tag filters (D-05). May be repeated (?tag=a&tag=b) to require all listed tags; capped at 8 tags. */
+                /** @description AND-combine with one or more tag filters. May be repeated (?tag=a&tag=b) to require all listed tags; capped at 8 tags. */
                 tag?: string[];
                 limit?: number;
-                /** @description Result ordering (SORT-02). "relevance" (default) is the existing bm25 + recency blend; "modified"/"created" order the full match set by the respective timestamp DESC before the limit is applied (D-14 — not a client reshuffle of the relevance results). */
+                /** @description Result ordering (SORT-02). "relevance" (default) is the existing bm25 + recency blend; "modified"/"created" order the full match set by the respective timestamp DESC before the limit is applied — not a client reshuffle of the relevance results. */
                 sort?: "relevance" | "modified" | "created";
             };
             header?: never;
@@ -2976,9 +2969,8 @@ export interface operations {
                 path: string;
                 /**
                  * @description When false (default), the server returns 409 folder_not_empty if the
-                 *     folder has any children. The Phase 3 Delete-folder dialog (UI-SPEC
-                 *     §Surface 4) always sets recursive=true after the user confirms the
-                 *     content-count copy.
+                 *     folder has any children. The client's Delete-folder dialog always
+                 *     sets recursive=true after the user confirms the content-count copy.
                  */
                 recursive?: boolean;
             };
@@ -3119,7 +3111,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
                  *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
                  */
                 name: components["parameters"]["TagName"];
@@ -3141,7 +3133,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagRenameResponse"];
                 };
             };
-            /** @description new_name fails charset validation (D-22: ^[a-z0-9_-]+$) */
+            /** @description new_name fails charset validation (^[a-z0-9_-]+$) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3185,7 +3177,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
                  *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
                  */
                 name: components["parameters"]["TagName"];
@@ -3229,7 +3221,7 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+                 * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
                  *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
                  */
                 name: components["parameters"]["TagName"];
@@ -3263,7 +3255,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code) */
+                /** @description UUID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -3449,8 +3441,7 @@ export interface operations {
                  * @description Per-tab UUID generated by the client (sessionStorage).
                  *     Server adopts this as the connection's session_id; the
                  *     handshake message echoes it for confirmation. Treated as
-                 *     opaque; max length 128 chars enforced in middleware
-                 *     (T-04-03).
+                 *     opaque; max length 128 chars enforced in middleware.
                  */
                 session_id?: string;
             };
@@ -3489,7 +3480,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Re-index accepted; Phase 2 returns after completion */
+            /** @description Re-index accepted; the response is sent after completion */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -3558,7 +3549,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Not supported on this platform (e.g. Linux native — D-28) */
+            /** @description Not supported on this platform (e.g. Linux native) */
             501: {
                 headers: {
                     [name: string]: unknown;

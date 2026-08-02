@@ -3,10 +3,9 @@ info:
   title: Jasper API
   version: 0.2.0
   description: |
-    Jasper HTTP API. Phase 1 surface: a single hard-coded note keyed by UUID.
-    Phase 2 adds the canonical notes-list endpoint and two admin endpoints
-    (migration status, full re-index) backing UX-03 and DATA-10.
-    Phase 6 adds tags, backlinks, and wiki-link search-titles endpoints
+    Jasper HTTP API: notes CRUD keyed by UUID, the file-tree projection,
+    admin endpoints (migration status, full re-index) backing DATA-10, and
+    tags, backlinks and wiki-link search-titles
     (TAGS-03, TAGS-04, TAGS-06, TAGS-07, LINKS-06, LINKS-08).
 
     Source of truth: every route Jasper exposes lives in this file (API-01).
@@ -23,10 +22,10 @@ tags:
   - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
   - { name: tags, description: "Tag browser, rename, delete (TAGS-03, TAGS-04, TAGS-06, TAGS-07)" }
   - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
-  - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (Phase 8 SHARE-01, D-26)" }
-  - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (Phase 8 MCP-01, D-13, D-17)" }
-  - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by UUID, group into virtual folders (Phase 27 BOOK-01, BOOK-03, BOOK-04)" }
-  - { name: setup, description: "First-run wizard: status, data-dir validation, submit (Phase 8 INSTALL-07, D-04, D-08, D-10)" }
+  - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (SHARE-01)" }
+  - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (MCP-01)" }
+  - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by UUID, group into virtual folders (BOOK-01, BOOK-03, BOOK-04)" }
+  - { name: setup, description: "First-run wizard: status, data-dir validation, submit (INSTALL-07)" }
   - { name: vault, description: "Vault registry: current vault, recent vaults, open/create/forget (ADR-001, VAULT-01)" }
 paths:
   /notes:
@@ -36,8 +35,8 @@ paths:
       summary: List all indexed notes (metadata only)
       description: |
         List all indexed notes (metadata only — no content). Backed by the SQLite
-        derived index (DATA-09). Phase 2 has no query parameters; Phase 7 will add
-        `?q=` and `?tag=` for search and tag filtering.
+        derived index (DATA-09). No query parameters — search and tag filtering
+        live on their own endpoints.
       responses:
         "200":
           description: List of note metadata
@@ -190,8 +189,8 @@ paths:
       description: |
         Rename and/or move a note in a single atomic transaction. new_path is a
         canonical relative path under notes/; the server NFC-lowercases it before
-        applying. Wiki-link rewrite (LINKS-07) is DEFERRED to Phase 6 — Phase 3 only
-        updates the file location and the SQLite index row. Returns the post-move
+        applying. Wiki-link references are rewritten vault-wide (LINKS-07) and the
+        SQLite index row is updated. Returns the post-move
         NoteSummary so the client can reconcile against any server-side path
         normalization.
       requestBody:
@@ -264,7 +263,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "413":
-          description: File exceeds 100 MB cap (D-29).
+          description: File exceeds the 100 MB upload cap.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -306,7 +305,7 @@ paths:
     post:
       tags: [notes]
       operationId: createFile
-      summary: Upload an OS file into the notes/ tree at the specified directory (UAT-3 N2 / Plan 07-34).
+      summary: Upload an OS file into the notes/ tree at the specified directory.
       description: |
         Multipart upload landing under <dataDir>/notes/<path>. Used by the
         sidebar tree's OS-file drop target — drop on a folder row → file lands
@@ -314,15 +313,15 @@ paths:
         on empty area → file lands at vault root.
 
         path is passed as a query parameter (mirroring DELETE /folders and the
-        sibling GET /files endpoint, Plan 07-32a) because OpenAPI 3.1 has no
+        sibling GET /files endpoint) because OpenAPI 3.1 has no
         native multi-segment path-wildcard syntax and oapi-codegen does not
         emit chi `*` catch-all routes. Co-locating GET + POST at /files keeps
         the surface coherent: same wire shape for both verbs.
 
         Refuses .md uploads (markdown bodies must be created via POST /notes).
-        Reuses generateUniqueFilename (Plan 07-06) for collision-safe naming.
-        Enforces the 100 MB upload cap (D-29). Same 5-rule path-traversal
-        pipeline as GET /files (Plan 07-32a) plus a Lstat that ensures the
+        Reuses generateUniqueFilename for collision-safe naming.
+        Enforces the 100 MB upload cap. Same 5-rule path-traversal
+        pipeline as GET /files plus a Lstat that ensures the
         target is a directory (NO auto-mkdir — the user creates folders via
         the existing tree UI before dropping).
       parameters:
@@ -466,7 +465,7 @@ paths:
     delete:
       tags: [notes]
       operationId: deleteFile
-      summary: Delete a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+      summary: Delete a non-markdown file under notes/.
       description: |
         Mirrors GetFile's path-traversal pipeline. Refuses .md (those are notes —
         use DELETE /notes/{id}). Refuses directories (use DELETE /folders). Single
@@ -500,7 +499,7 @@ paths:
     post:
       tags: [notes]
       operationId: postFileMove
-      summary: Rename / move a non-markdown file under notes/ (UAT-4 R7b / Plan 07-38).
+      summary: Rename / move a non-markdown file under notes/.
       description: |
         Mirrors POST /folders/move for non-markdown files. Both src_path and
         dst_path are relative under notes/; both run through the 5-rule
@@ -638,7 +637,7 @@ paths:
           in: query
           required: false
           description: >-
-            AND-combine with one or more tag filters (D-05). May be repeated
+            AND-combine with one or more tag filters. May be repeated
             (?tag=a&tag=b) to require all listed tags; capped at 8 tags.
           schema: { type: array, items: { type: string } }
         - name: limit
@@ -652,7 +651,7 @@ paths:
             Result ordering (SORT-02). "relevance" (default) is the existing
             bm25 + recency blend; "modified"/"created" order the full match
             set by the respective timestamp DESC before the limit is applied
-            (D-14 — not a client reshuffle of the relevance results).
+            — not a client reshuffle of the relevance results.
           schema:
             type: string
             enum: [relevance, modified, created]
@@ -678,7 +677,7 @@ paths:
         tagged union — TreeNode is either {kind:"folder", path, name, children[]}
         or {kind:"note", id, path, title, updated_at}. Sort order: alphabetical
         by name within each level, folders before notes. Used by the sidebar
-        FileTree (react-arborist) — Plan 03-06.
+        FileTree (react-arborist).
       responses:
         "200":
           description: Full tree
@@ -734,8 +733,8 @@ paths:
       description: |
         Delete the folder at the given canonical path. By default (recursive=false)
         the server returns 409 folder_not_empty if the folder has any children.
-        The Phase 3 Delete-folder dialog (UI-SPEC §Surface 4) always sets
-        recursive=true after the user confirms the content-count copy. Path is
+        The client's Delete-folder dialog always sets recursive=true after the
+        user confirms the content-count copy. Path is
         passed as a query parameter so URL-encoding handles `/` separators
         cleanly — folders have no SQLite identity and so cannot be addressed by
         UUID.
@@ -754,9 +753,8 @@ paths:
             default: false
           description: |
             When false (default), the server returns 409 folder_not_empty if the
-            folder has any children. The Phase 3 Delete-folder dialog (UI-SPEC
-            §Surface 4) always sets recursive=true after the user confirms the
-            content-count copy.
+            folder has any children. The client's Delete-folder dialog always
+            sets recursive=true after the user confirms the content-count copy.
       responses:
         "204":
           description: Deleted
@@ -839,9 +837,9 @@ paths:
       summary: List all tags with note counts (TAGS-03)
       description: |
         Returns all tags present in the vault, sorted alphabetically by name.
-        Each entry includes the normalized tag name (D-22: lowercase [a-z0-9_-]+)
+        Each entry includes the normalized tag name (lowercase [a-z0-9_-]+)
         and the count of notes carrying that tag. Feeds the sidebar tag browser
-        (D-01..D-03) and the tag autocomplete source (D-07).
+        and the tag autocomplete source.
         Empty array on empty vault or when no notes have tags.
       responses:
         "200":
@@ -856,13 +854,13 @@ paths:
     put:
       tags: [tags]
       operationId: putTag
-      summary: Rename a tag across all notes (TAGS-06 / D-23)
+      summary: Rename a tag across all notes (TAGS-06)
       description: |
         Rename an existing tag in a single backend transaction. Rewrites the
         `tags:` frontmatter array in every note carrying the tag. Returns the
         list of affected note IDs so the client can refresh stale UI rows.
         Emits a `tags:rewritten` WebSocket batch event.
-        Returns 400 if new_name fails charset validation (D-22);
+        Returns 400 if new_name fails charset validation;
         404 if the old tag does not exist;
         409 if new_name collides with an existing tag.
       requestBody:
@@ -879,7 +877,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TagRenameResponse"
         "400":
-          description: "new_name fails charset validation (D-22: ^[a-z0-9_-]+$)"
+          description: "new_name fails charset validation (^[a-z0-9_-]+$)"
           content:
             application/json:
               schema:
@@ -905,13 +903,13 @@ paths:
     delete:
       tags: [tags]
       operationId: deleteTag
-      summary: Remove a tag from all notes (TAGS-07 / D-24)
+      summary: Remove a tag from all notes (TAGS-07)
       description: |
         Remove an existing tag from the `tags:` frontmatter array in every note
         carrying it, in a single transaction. The tag row is deleted after all
         frontmatter rewrites commit. Returns the list of affected note IDs so
         the client can refresh stale UI rows. Emits a `tags:rewritten` WebSocket
-        batch event with new_name=null to indicate deletion (D-34).
+        batch event with new_name=null to indicate deletion.
         Returns 404 if the tag does not exist.
       responses:
         "200":
@@ -938,7 +936,7 @@ paths:
     get:
       tags: [tags]
       operationId: getTagNotes
-      summary: List notes carrying a specific tag (TAGS-04 / D-02)
+      summary: List notes carrying a specific tag (TAGS-04)
       description: |
         Returns a flat list of notes that carry the given normalized tag name.
         Results are sorted by note updated_at descending (most-recent first)
@@ -963,12 +961,12 @@ paths:
     get:
       tags: [backlinks]
       operationId: getNoteBacklinks
-      summary: List notes that link to this note (LINKS-08 / D-27)
+      summary: List notes that link to this note (LINKS-08)
       description: |
         Returns resolved backlinks — notes containing `[[Title]]` references
         that resolve to the note identified by `id`. Pending (unresolved) links
-        are not included (D-32). Rows are sorted by source note updated_at
-        descending (most-recently-edited source first, per D-28).
+        are not included. Rows are sorted by source note updated_at
+        descending (most-recently-edited source first).
         The `excerpt` field is server-built HTML safe for the DOMPurify
         allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
       responses:
@@ -988,12 +986,12 @@ paths:
     get:
       tags: [backlinks]
       operationId: getNotesSearchTitles
-      summary: Search note titles for wiki-link autocomplete (LINKS-06 / D-13)
+      summary: Search note titles for wiki-link autocomplete (LINKS-06)
       description: |
-        Full-text prefix search over note titles for the `[[` autocomplete popup
-        (D-13). Empty `q` returns the most-recently-edited notes up to `limit`.
-        Results are ranked by recency (60%) + proximity (40%) per D-13.
-        `limit` is capped at 50 (T-06-02-05 DoS mitigation).
+        Full-text prefix search over note titles for the `[[` autocomplete popup.
+        Empty `q` returns the most-recently-edited notes up to `limit`.
+        Results are ranked by recency (60%) + proximity (40%).
+        `limit` is capped at 50 as a DoS mitigation.
       parameters:
         - name: q
           in: query
@@ -1026,10 +1024,8 @@ paths:
       operationId: getAdminStatus
       summary: Report the migration runner state
       description: |
-        Returns the migration runner state for the UX-03 banner. The frontend
-        `useMigrationStatus()` hook polls this on mount; Phase 4 will swap the
-        client to a `migration:status` WebSocket event without changing the
-        wire shape.
+        Returns the migration runner state that backs the client's migration
+        banner. The frontend `useMigrationStatus()` hook polls this on mount.
       responses:
         "200":
           description: Current migration runner state
@@ -1043,10 +1039,8 @@ paths:
       operationId: getConfig
       summary: Read user configuration
       description: |
-        Returns the current config.json contents (DESIGN.md §11).
-        Phase 5 wires only the `theme` field to UI; other fields
-        ship with sensible defaults but are not yet surfaced
-        (UX-V2-01 will surface them in v2).
+        Returns the current config.json contents (DESIGN.md §11). Fields the
+        UI does not surface still ship with sensible defaults.
       responses:
         "200":
           description: Current config
@@ -1060,7 +1054,7 @@ paths:
       description: |
         Writes config.json atomically via fsstore.AtomicWrite
         (DATA-13: temp + fsync + rename + fsync(parent)).
-        Strict (D-40): unknown fields → 400 invalid_request.
+        Strict decode: unknown fields → 400 invalid_request.
         Replaces the whole document — retained for whole-document writes
         (per-section Reset, first-run fixtures). For partial writes that
         should leave every other field untouched, use PATCH /config.
@@ -1093,9 +1087,9 @@ paths:
         Writes only the keys present in the request body via
         config.SaveMergedPartial; fields absent from the body are left
         untouched on disk (including unmanaged/hand-added keys). Writes
-        are serialised server-side (T-32.1-04) so concurrent PATCH/PUT
-        requests never lose an update. Strict (D-40): unknown fields →
-        400 invalid_request, same as PUT.
+        are serialised server-side so concurrent PATCH/PUT requests never
+        lose an update. Strict decode: unknown fields → 400 invalid_request,
+        same as PUT.
       requestBody:
         required: true
         content:
@@ -1124,20 +1118,20 @@ paths:
       summary: WebSocket endpoint (HTTP/1.1 Upgrade)
       description: |
         Server-broadcast WebSocket. Client opens with
-        `?session_id=<uuid>` query parameter (Pitfall 1: client-as-
-        authoritative session_id). Server responds with a
+        `?session_id=<uuid>` query parameter — the client, not the server,
+        is authoritative for the session id. Server responds with a
         `session:assigned` envelope confirming the id, then streams
         events until disconnect.
 
         oapi-codegen generates a stub handler for this route which is
-        unreachable: lifecycle.go (Plan 04-04) mounts `/ws` via
-        wshub.Hub.ServeHTTP BEFORE api.HandlerFromMux. The path exists
-        in the spec to satisfy API-01 ("every HTTP route in the spec").
+        unreachable: lifecycle.go mounts `/ws` via wshub.Hub.ServeHTTP
+        BEFORE api.HandlerFromMux. The path exists in the spec to satisfy
+        API-01 ("every HTTP route in the spec").
 
-        Origin enforcement: the Accept call in wshub.Hub.ServeHTTP
-        (Plan 04-02) sets OriginPatterns: ["localhost:*", "127.0.0.1:*"].
-        The OpenAPI spec does NOT and CANNOT enforce origin — that is a
-        runtime control on the upgrade handshake (T-04-01).
+        Origin enforcement: the Accept call in wshub.Hub.ServeHTTP sets
+        OriginPatterns: ["localhost:*", "127.0.0.1:*"]. The OpenAPI spec
+        does NOT and CANNOT enforce origin — that is a runtime control on
+        the upgrade handshake.
       x-jasper-websocket: true
       parameters:
         - name: session_id
@@ -1147,8 +1141,7 @@ paths:
             Per-tab UUID generated by the client (sessionStorage).
             Server adopts this as the connection's session_id; the
             handshake message echoes it for confirmation. Treated as
-            opaque; max length 128 chars enforced in middleware
-            (T-04-03).
+            opaque; max length 128 chars enforced in middleware.
           schema:
             type: string
             format: uuid
@@ -1164,10 +1157,9 @@ paths:
       operationId: postAdminReindex
       summary: Trigger a full or incremental re-index
       description: |
-        Phase 2 backs DATA-10: drop the derived tables, re-run migrations on a
-        clean schema, and walk every `.md` file. Phase 2 runs synchronously and
-        returns 202 only after the rebuild finishes; Phase 4 will switch to async
-        execution streaming progress over WebSocket without a contract break.
+        Backs DATA-10: drop the derived tables, re-run migrations on a clean
+        schema, and walk every `.md` file. Runs synchronously and returns 202
+        only after the rebuild finishes.
       requestBody:
         required: false
         content:
@@ -1176,7 +1168,7 @@ paths:
               $ref: "#/components/schemas/ReindexRequest"
       responses:
         "202":
-          description: Re-index accepted; Phase 2 returns after completion
+          description: Re-index accepted; the response is sent after completion
           content:
             application/json:
               schema:
@@ -1199,11 +1191,11 @@ paths:
       operationId: postReveal
       summary: Reveal a note path in the host OS file manager (SHARE-01)
       description: |
-        Phase 8 SHARE-01 / D-26 / D-27. Opens the host OS file manager
-        with the named path selected. macOS uses `open -R <path>`
-        (Finder reveal). WSL2 uses `explorer.exe /select,<windows-path>`
-        with the WSL path translated to a Windows UNC path.
-        Linux-native is not a v1 target (D-28) — handler returns 501.
+        Opens the host OS file manager with the named path selected.
+        macOS uses `open -R <path>` (Finder reveal). WSL2 uses
+        `explorer.exe /select,<windows-path>` with the WSL path translated
+        to a Windows UNC path. Linux-native is not a v1 target — handler
+        returns 501.
 
         The `path` field is the path under the vault, relative to
         notes/. The handler resolves it through the same
@@ -1235,7 +1227,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "501":
-          description: Not supported on this platform (e.g. Linux native — D-28)
+          description: Not supported on this platform (e.g. Linux native)
           content:
             application/json:
               schema:
@@ -1246,11 +1238,11 @@ paths:
       operationId: getMcpGrants
       summary: List all MCP write grants (MCP-01)
       description: |
-        Returns every row in the mcp_write_grants table (Phase 8 migration
-        004). The frontend tree menu reads this list to render
-        "MCP write" indicators per folder (D-17). Folders without a row
-        are deny-by-default; grants at an ancestor folder grant writes
-        recursively (D-18, resolved server-side at write time).
+        Returns every row in the mcp_write_grants table (migration 004).
+        The frontend tree menu reads this list to render "MCP write"
+        indicators per folder. Folders without a row are deny-by-default;
+        grants at an ancestor folder grant writes recursively, resolved
+        server-side at write time.
       responses:
         "200":
           description: All MCP write grants
@@ -1261,15 +1253,14 @@ paths:
     post:
       tags: [mcp]
       operationId: postMcpGrant
-      summary: Grant (or upgrade) MCP write access for a folder (MCP-01, D-17)
+      summary: Grant (or upgrade) MCP write access for a folder (MCP-01)
       description: |
         Idempotent grant for `folder_path` at `level` (1 = create+update;
         2 = create+update+move+delete). If the folder already has a row,
         the level is updated to the requested value (upgrade or
         downgrade); `granted_at` is refreshed; `granted_via` updates to
         reflect the new entry point. Broadcasts `mcp:grant_changed` on
-        the WS hub so every connected tab refreshes its indicators
-        (D-57).
+        the WS hub so every connected tab refreshes its indicators.
       requestBody:
         required: true
         content:
@@ -1292,10 +1283,10 @@ paths:
     delete:
       tags: [mcp]
       operationId: deleteMcpGrant
-      summary: Revoke MCP write access for a folder (D-17)
+      summary: Revoke MCP write access for a folder (MCP-01)
       description: |
         Deletes the grant row for `folder_path`. Does NOT recurse —
-        ancestor grants still apply per D-18. Broadcasts
+        ancestor grants still apply. Broadcasts
         `mcp:grant_changed` on success.
       parameters:
         - name: path
@@ -1323,7 +1314,7 @@ paths:
         Returns every bookmark folder and bookmark row persisted in
         <vault>/.jasper/bookmarks.json. Bookmarks whose noteId no longer
         resolves in the notes registry are silently dropped before this
-        response is built (D-04 prune-on-read, BOOK-04) — the frontend
+        response is built (prune-on-read, BOOK-04) — the frontend
         never sees a bookmark pointing at a deleted note.
       responses:
         "200":
@@ -1338,8 +1329,8 @@ paths:
       summary: Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
       description: |
         Adds a new bookmark row for note_id. Rejects an unknown/forged
-        note_id with 404 (T-27-01 — validated against the notes registry,
-        not trusted client input). Rejects an unknown folder_id with 400.
+        note_id with 404 — validated against the notes registry, not
+        trusted client input. Rejects an unknown folder_id with 400.
         Broadcasts `bookmark:changed` on success.
       requestBody:
         required: true
@@ -1432,9 +1423,9 @@ paths:
         (folder_id null = top-level), assigns order = index for each and
         persists. ordered_ids must be EXACTLY the current membership of
         that folder scope — a missing id, an extra id, or a foreign id
-        is rejected wholesale with 404 and no partial write (T-JV1-01,
-        same forged-id posture as postBookmark's T-27-01). An unknown
-        folder_id is rejected with 400 (T-JV1-02). Broadcasts
+        is rejected wholesale with 404 and no partial write — the same
+        forged-id posture as postBookmark. An unknown folder_id is
+        rejected with 400. Broadcasts
         `bookmark:changed` on success.
       requestBody:
         required: true
@@ -1491,13 +1482,12 @@ paths:
     get:
       tags: [setup]
       operationId: getSetupStatus
-      summary: First-run wizard status (INSTALL-07, D-04)
+      summary: First-run wizard status (INSTALL-07)
       description: |
         Returns whether the first-run wizard still needs to run.
         `first_run = true` when no resolved `cfg.Server.DataDir` is
         present (the user has not yet completed the wizard). The
-        frontend redirects to /setup when this returns true (D-04
-        wizard mount).
+        frontend redirects to /setup when this returns true.
       responses:
         "200":
           description: Setup status
@@ -1509,7 +1499,7 @@ paths:
     post:
       tags: [setup]
       operationId: postSetupValidateDataDir
-      summary: Debounced wizard-side validation of a proposed data directory (D-08)
+      summary: Debounced wizard-side validation of a proposed data directory
       description: |
         Called by the wizard as the user types a data-directory path.
         Validates: parent exists, path is not nested inside an existing
@@ -1533,7 +1523,7 @@ paths:
     post:
       tags: [setup]
       operationId: postSetup
-      summary: Submit the first-run wizard (INSTALL-07, D-10)
+      summary: Submit the first-run wizard (INSTALL-07)
       description: |
         Persists the wizard payload: writes <vault>/.jasper/config.json
         with the wizard-supplied theme, MCP grants, and daily-notes
@@ -1644,7 +1634,7 @@ paths:
         Creates a new Jasper vault inside the given folder: creates .jasper/ with
         0700 perms, writes a minimal per-vault config.json, runs migrations, and
         opens the vault. Refuses with 400 if the folder is already a vault, if the
-        path is inside an existing Jasper vault (nested-vault, D-08), or if path
+        path is inside an existing Jasper vault (nested-vault), or if path
         validation rules fail (abs, ASCII+NFC, parent must exist).
         Returns 409 when a vault switch is already in progress.
       requestBody:
@@ -1777,7 +1767,7 @@ paths:
     get:
       tags: [vault]
       operationId: getVaultAbout
-      summary: Get server-assembled vault facts for the Settings About pane (Phase 32 / SET3-04, D-22)
+      summary: Get server-assembled vault facts for the Settings About pane (SET3-04)
       description: |
         Assembles every About-pane fact server-side in one response: vault
         name, note count, folder count, on-disk path, app version, MCP port,
@@ -1844,7 +1834,7 @@ paths:
     get:
       tags: [fs]
       operationId: getFsList
-      summary: List subdirectories of an absolute path (UAT-2 #1d folder picker)
+      summary: List subdirectories of an absolute path (folder picker)
       description: |
         Returns the subdirectories of the given absolute path, plus the
         canonical absolute path and the parent path (for breadcrumbs).
@@ -1895,9 +1885,9 @@ paths:
     get:
       tags: [notes]
       operationId: getNoteByPath
-      summary: Lookup a note by its relative path (D-30 deep-link fallback)
+      summary: Lookup a note by its relative path (deep-link fallback)
       description: |
-        Phase 8 D-30 deep-link fallback. Used by the `?path=<rel>` URL
+        Deep-link fallback. Used by the `?path=<rel>` URL
         parameter when the canonical `/notes/{id}` form is not available
         (e.g. someone shares a permalink across machines and the UUIDs
         differ but the path is stable). Server canonicalizes `path` via
@@ -1935,7 +1925,7 @@ components:
       name: id
       in: path
       required: true
-      description: UUID of the note (Phase 1 has exactly one — see scratchpad UUID in code)
+      description: UUID of the note
       schema:
         type: string
         format: uuid
@@ -1952,7 +1942,7 @@ components:
       in: path
       required: true
       description: |
-        Normalized tag name (D-22: lowercase letters, digits, hyphens, underscores only;
+        Normalized tag name (lowercase letters, digits, hyphens, underscores only;
         pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
       schema:
         type: string
@@ -2060,7 +2050,7 @@ components:
             Current migration runner state. Surfaces the three-path resilience
             model from DESIGN.md §4.4.
               - "ok"            — schema is current; no action required
-              - "rolled_back"   — Path 1 fired; previous schema active; banner shown (UX-03)
+              - "rolled_back"   — Path 1 fired; previous schema active; migration banner shown
               - "rebuilding"    — Path 2 in progress; UI shows ReindexProgress overlay
               - "unrecoverable" — Path 3 fired; static error page is served and the SPA cannot reach this endpoint (documented for future use)
           enum: [ok, rolled_back, rebuilding, unrecoverable]
@@ -2105,10 +2095,10 @@ components:
         started_at:
           type: string
           format: date-time
-          description: Wall-clock UTC when the reindex began (Phase 2 returns AFTER it finishes; this is still the start time)
+          description: Wall-clock UTC when the reindex began (the response is sent AFTER it finishes; this is still the start time)
         notes_indexed:
           type: integer
-          description: Count of rows in the `notes` table after the reindex completed (Phase 2 only — Phase 4 streams this via WS)
+          description: Count of rows in the `notes` table after the reindex completed
     CreateNoteRequest:
       type: object
       required: [parent_path, title]
@@ -2206,7 +2196,7 @@ components:
         created:
           type: string
           format: date-time
-          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04)."
+          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01)."
     FileNode:
       type: object
       description: |
@@ -2257,11 +2247,10 @@ components:
     Config:
       type: object
       required: [appName, dailyNotes, editor, theme]
-      additionalProperties: false   # D-40 strict — unknown keys → 400
-      # Phase 8 (D-50 / D-47) extends this schema with `server` and
-      # `mcp` blocks. They are NOT in `required` so existing config.json
-      # files on disk (written by Phases 5–7) continue to load; the Go
-      # side fills defaults in load.go when the blocks are absent.
+      additionalProperties: false   # strict decode — unknown keys → 400
+      # The `server` and `mcp` blocks are NOT in `required` so older
+      # config.json files on disk continue to load; the Go side fills
+      # defaults in load.go when the blocks are absent.
       # `additionalProperties: false` still holds — PUT /config payloads
       # carrying `server` or `mcp` round-trip cleanly. PUT bodies missing
       # them are accepted (strict validator pre-fills defaults).
@@ -2307,28 +2296,27 @@ components:
               default: 2000
               description: |
                 Autosave debounce interval in milliseconds. Replaces the
-                hard-coded 2000ms constant in EditorPane.tsx (Phase 11 D-08).
-                Read at mount; requires reload to apply (D-07).
+                hard-coded 2000ms constant in EditorPane.tsx.
+                Read at mount; requires reload to apply.
             showProperties:
-              # Phase 34 (PROPS UI) — toggles visibility of the properties
-              # table above the note body. Optional; defaults true.
+              # Toggles visibility of the properties table above the note
+              # body. Optional; defaults true.
               type: boolean
               default: true
             autoPair:
-              # Phase 37 (EDIT-01) — auto-close brackets/quotes in CM6.
+              # EDIT-01 — auto-close brackets/quotes in CM6.
               type: boolean
               default: true
             foldGutter:
-              # Phase 37 (EDIT-03) — heading/list code-folding gutter.
+              # EDIT-03 — heading/list code-folding gutter.
               type: boolean
               default: true
             lineNumbers:
-              # Phase 37 (EDIT-03) — CM6 line-number gutter.
+              # EDIT-03 — CM6 line-number gutter.
               type: boolean
               default: false
             lineWidth:
-              # Phase 37 / EDIT-04 — maximum width of the writing column,
-              # in CSS pixels.
+              # EDIT-04 — maximum width of the writing column, in CSS pixels.
               type: integer
               minimum: 400
               maximum: 2000
@@ -2352,13 +2340,12 @@ components:
             Optional — legacy configs without this key load with default "sans".
             Coerced to "sans" on load if the value is not "sans" or "serif".
         server:
-          # Phase 8 D-50 / D-40: HTTP listener port + resolved data
-          # directory. Port pinned at 6683 (T9 spelling of "NOTE");
-          # wizard does NOT expose a port override (config-file edit only).
-          # DataDir is set by the first-run wizard (08-02 / D-04) and
-          # re-read at every server boot.
-          # Phase 13 NET-01: bind field added — loopback default, 0.0.0.0
-          # for all interfaces. MCP always stays loopback regardless.
+          # HTTP listener port + resolved data directory. Port pinned at
+          # 6683 (T9 spelling of "NOTE"); the wizard does NOT expose a port
+          # override (config-file edit only). DataDir is set by the
+          # first-run wizard and re-read at every server boot.
+          # NET-01: bind defaults to loopback; 0.0.0.0 exposes all
+          # interfaces. MCP always stays loopback regardless.
           type: object
           required: [port, dataDir, bind]
           additionalProperties: false
@@ -2379,11 +2366,11 @@ components:
                 Set to "0.0.0.0" to expose on all network interfaces. Requires a
                 server restart. MCP always remains loopback regardless of this value.
         mcp:
-          # Phase 24 D-06: the MCP listener always starts on boot; there is
-          # no enable/disable toggle. AI write access is governed solely by
-          # per-folder write grants. Port pinned at 6684 (D-47). Bind is
+          # The MCP listener always starts on boot; there is no
+          # enable/disable toggle. AI write access is governed solely by
+          # per-folder write grants. Port pinned at 6684. Bind is
           # loopback-only (127.0.0.1), enforced at listener startup via
-          # netbind.RequireLoopbackBind (D-15).
+          # netbind.RequireLoopbackBind.
           type: object
           required: [port, bind]
           additionalProperties: false
@@ -2397,11 +2384,11 @@ components:
               type: string
               default: "127.0.0.1"
             auditLog:
-              # Phase 36 / MCP2-02 — tool-call audit-log toggle.
+              # MCP2-02 — tool-call audit-log toggle.
               type: boolean
               default: false
         templates:
-          # Phase 35 / TPL-01 — vault-relative folder holding templates.
+          # TPL-01 — vault-relative folder holding templates.
           type: object
           required: [folder]
           additionalProperties: false
@@ -2412,7 +2399,7 @@ components:
               default: "Templates"
     ConfigPatch:
       type: object
-      additionalProperties: false   # D-40 strict — unknown keys → 400
+      additionalProperties: false   # strict decode — unknown keys → 400
       description: |
         Sparse partial-update body for PATCH /config. Every property is
         optional at every nesting level (no `required` anywhere in this
@@ -2520,7 +2507,7 @@ components:
       properties:
         name:
           type: string
-          description: Normalized tag name (D-22 charset; lowercase [a-z0-9_-]+)
+          description: Normalized tag name (lowercase [a-z0-9_-]+)
           example: "project"
         count:
           type: integer
@@ -2546,9 +2533,9 @@ components:
           minLength: 1
           maxLength: 64
           description: |
-            New tag name. Must match D-22 charset (lowercase letters, digits,
-            hyphens, underscores only). Server re-validates server-side (T-06-02-01
-            defense-in-depth).
+            New tag name. Must match the tag charset (lowercase letters, digits,
+            hyphens, underscores only). Server re-validates server-side as
+            defense-in-depth.
           example: "work"
     TagRenameResponse:
       type: object
@@ -2585,7 +2572,7 @@ components:
       properties:
         filename:     { type: string, description: "Final stored filename (auto-renamed on collision per ATTACH-04)." }
         path:         { type: string, description: "Path relative to the note's parent directory, e.g., 'attachments/image-1.png'." }
-        content_type: { type: string, description: "MIME type from http.DetectContentType (D-27)." }
+        content_type: { type: string, description: "MIME type from http.DetectContentType." }
         category:     { type: string, enum: [image, pdf, video, audio, archive, other] }
         is_image:     { type: boolean }
         size_bytes:   { type: integer, format: int64 }
@@ -2596,7 +2583,7 @@ components:
         A single backlink entry: a note that contains one or more `[[...]]`
         references resolving to the target note. One card per source note,
         carrying one context-line excerpt per distinct `[[...]]` mention
-        line (D-16) — multiple references on the SAME line collapse into a
+        line — multiple references on the SAME line collapse into a
         single excerpt for that line, but references on separate lines each
         produce their own excerpt, rendered as stacked lines within the card.
       properties:
@@ -2620,7 +2607,7 @@ components:
             allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
             Max 200 characters of visible text per excerpt. Client MUST
             sanitize EACH excerpt individually via sanitize.ts before
-            setting dangerouslySetInnerHTML (T-06-02-04) — never join the
+            setting dangerouslySetInnerHTML — never join the
             array before sanitizing.
     BacklinksResponse:
       type: object
@@ -2632,7 +2619,7 @@ components:
             $ref: "#/components/schemas/BacklinkRow"
           description: |
             Resolved backlinks sorted by source note updated_at descending
-            (most-recently-edited source first, per D-28).
+            (most-recently-edited source first).
     NoteSearchResult:
       type: object
       required: [id, title, recency_score]
@@ -2656,7 +2643,7 @@ components:
           type: number
           description: |
             0.0–1.0 recency component of the ranking score (higher = more recent).
-            60% weight in the combined score per D-13.
+            60% weight in the combined score.
         proximity_score:
           type: number
           nullable: true
@@ -2677,9 +2664,9 @@ components:
       required: [old_name, touched_note_ids]
       description: |
         Broadcast payload for `tags:rewritten` events. Emitted when a tag is
-        renamed (D-23 / TAGS-06) or deleted (D-24 / TAGS-07). When new_name is
-        null, the tag was deleted (D-34). Source tab suppresses its own broadcast
-        via the origin_session_id filter (D-35).
+        renamed (TAGS-06) or deleted (TAGS-07). When new_name is null, the tag
+        was deleted. Source tab suppresses its own broadcast via the
+        origin_session_id filter.
       properties:
         old_name:
           type: string
@@ -2699,8 +2686,8 @@ components:
       required: [old_title, new_title, touched_note_ids]
       description: |
         Broadcast payload for `links:rewritten` events. Emitted when a note is
-        renamed and its wiki-link references are rewritten vault-wide (LINKS-07 /
-        D-33). Source tab suppresses its own broadcast via origin_session_id (D-35).
+        renamed and its wiki-link references are rewritten vault-wide (LINKS-07).
+        Source tab suppresses its own broadcast via origin_session_id.
       properties:
         old_title:
           type: string
@@ -2788,8 +2775,7 @@ components:
       # GET /tree to refresh the tree row label after a rename — the
       # broadcast carries the freshly-extracted H1 (or filename
       # fallback) directly. Service.Move re-extracts the title on
-      # every move (Plan 03-21); this field exposes it on the wire.
-      # WR-06.
+      # every move; this field exposes it on the wire.
       required: [id, old_path, new_path, updated_at, title]
       properties:
         id: { type: string, format: uuid }
@@ -2848,14 +2834,14 @@ components:
         id:            { type: string }
         title:         { type: string }
         path:          { type: string }
-        excerpt_html:  { type: string, description: "Server-sanitized HTML containing <mark> tags around matched terms (D-04)." }
+        excerpt_html:  { type: string, description: "Server-sanitized HTML containing <mark> tags around matched terms." }
         matching_tags: { type: array, items: { type: string } }
         rank:          { type: number, description: "bm25 + recency score; lower is better (negative floats)." }
         modified_at:   { type: string, format: date-time }
         created:
           type: string
           format: date-time
-          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01/D-04)."
+          description: "COALESCE(NULLIF(birthtime_unix,0), created_at) — true filesystem creation time when available (SORT-01)."
     SearchResults:
       type: object
       required: [results]
@@ -2880,7 +2866,7 @@ components:
         current_updated_at:
           type: string
           format: date-time
-    # ----- Phase 8 schemas (D-26, D-13, D-17, D-04, D-08, D-10, D-30) -----
+    # ----- Reveal, MCP grants, setup wizard and deep-link schemas -----
     RevealRequest:
       type: object
       required: [path]
@@ -2897,8 +2883,8 @@ components:
           enum: [note, vaultRoot]
           default: note
           description: |-
-            Phase 32 / D-24. "note" (default) reveals `path` under the vault's
-            notes/ directory, same behavior as before this field existed.
+            "note" (default) reveals `path` under the vault's notes/
+            directory, same behavior as before this field existed.
             "vaultRoot" ignores `path` and reveals the vault's data directory
             itself — resolved entirely server-side from configuration, never
             from client input.
@@ -2915,7 +2901,7 @@ components:
             selected (`explorer.exe /select,<wslpath>`). `linux` (native, not
             WSL2) opens the parent directory in the default file manager via
             `xdg-open` — `xdg-open` cannot pre-select a target file, so the
-            best-effort UX is parent-directory navigation (D-26 / D-28).
+            best-effort UX is parent-directory navigation.
     McpGrant:
       type: object
       required: [folder_path, level, granted_at, granted_via]
@@ -2927,13 +2913,13 @@ components:
         level:
           type: integer
           enum: [1, 2]
-          description: "1 = create+update (default); 2 = create+update+move+delete (D-13)."
+          description: "1 = create+update (default); 2 = create+update+move+delete."
         granted_at:
           type: string
           format: date-time
         granted_via:
           type: string
-          description: "Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu' (D-17 telemetry)."
+          description: "Entry point that created the grant: 'wizard' | 'tree-context-menu' | 'tree-dropdown-menu'."
     McpGrantSeed:
       type: object
       required: [folder, level]
@@ -2965,7 +2951,7 @@ components:
     Bookmark:
       type: object
       required: [id, note_id, folder_id, order]
-      description: A single pinned note (Phase 27 BOOK-01). Keyed by its own opaque id, not the note's UUID.
+      description: A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID.
       properties:
         id:
           type: string
@@ -3012,7 +2998,7 @@ components:
         Per-vault workspace preferences, persisted to
         <vault>/.jasper/workspace.json (SORT-01, SORT-02, SORT-03, TAGS-01).
         All fields are optional strings; an empty/absent value means "use
-        the default" (D-06) rather than an explicit user choice.
+        the default" rather than an explicit user choice.
       properties:
         notesSort:
           type: string
@@ -3045,7 +3031,7 @@ components:
         note_id:
           type: string
           format: uuid
-          description: UUID of the note to bookmark. Validated against the notes registry server-side (T-27-01).
+          description: UUID of the note to bookmark. Validated against the notes registry server-side.
         folder_id:
           type: string
           format: uuid
@@ -3078,7 +3064,7 @@ components:
       description: |
         The FULL ordered list of bookmark ids for one folder scope.
         folder_id is a top-level field (not per-row) because order is
-        scoped per folder, not global (WR-02) — every id in ordered_ids
+        scoped per folder, not global — every id in ordered_ids
         must belong to that same scope.
       properties:
         folder_id:
@@ -3106,7 +3092,7 @@ components:
       properties:
         first_run:
           type: boolean
-          description: True when the first-run wizard has not yet been completed (D-04).
+          description: True when the first-run wizard has not yet been completed.
     SetupValidateRequest:
       type: object
       required: [path]
@@ -3123,7 +3109,7 @@ components:
         code:
           type: string
           enum: [parent_missing, nested_vault, unwritable, non_ascii, not_absolute]
-          description: Structured error code when valid=false (D-08).
+          description: Structured error code when valid=false.
         message:
           type: string
           description: Human-readable error message when valid=false.
@@ -3272,7 +3258,7 @@ components:
       required:
         [vaultName, noteCount, folderCount, path, appVersion, mcpPort, mcpGrantCount]
       description: |
-        Phase 32 / SET3-04 / D-22. Server-assembled facts for the Settings
+        SET3-04. Server-assembled facts for the Settings
         About pane. All seven fields are required — a nil subsystem (index,
         mcpACL) degrades its field to zero rather than omitting it.
       properties:
