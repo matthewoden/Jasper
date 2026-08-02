@@ -1,18 +1,18 @@
--- 002_tags_backlinks.sql — Phase 6 tags, note_tags, and backlinks tables.
+-- 002_tags_backlinks.sql — tags, note_tags, and backlinks tables.
 -- Filesystem (notes/*.md frontmatter tags + [[wiki-link]] body refs) is the
 -- source of truth (DATA-01 + TAGS-01 + LINKS-01); every row in these
--- three tables is reconstructable by walking the filesystem (Plan 06-04
--- reconcile extension). Wiping this file alongside 001's tables is never
--- data loss — see DESIGN.md §4.4 / §7 / §8.
+-- three tables is reconstructable by walking the filesystem via reconcile.
+-- Wiping this file alongside 001's tables is never data loss — see
+-- DESIGN.md §4.4 / §7 / §8.
 
--- tags holds the normalized tag vocabulary (D-22: [a-z0-9_-]+ only).
+-- tags holds the normalized tag vocabulary ([a-z0-9_-]+ only).
 -- id is an auto-increment integer (not UUID) because tags are addressed
 -- by name in the API and UUIDs would be wasted entropy for a small
--- vocabulary. The name UNIQUE constraint enforces D-22 uniqueness at the
--- DB layer (defense-in-depth alongside server-side normalization).
+-- vocabulary. The name UNIQUE constraint enforces tag-name uniqueness at
+-- the DB layer (defense-in-depth alongside server-side normalization).
 CREATE TABLE tags (
     id   INTEGER PRIMARY KEY,
-    name TEXT    NOT NULL UNIQUE             -- D-22: normalized [a-z0-9_-]+
+    name TEXT    NOT NULL UNIQUE             -- normalized [a-z0-9_-]+
 ) STRICT;
 
 -- note_tags is the many-to-many join table between notes and tags.
@@ -20,7 +20,7 @@ CREATE TABLE tags (
 -- note from the index also removes its tag associations without an
 -- explicit sweep (DATA-01 derived-index rebuild safety).
 -- tag_id references tags(id) with CASCADE DELETE so that when a tag is
--- fully removed (TAGS-07 Plan 06-05), all join rows vanish automatically.
+-- fully removed (TAGS-07), all join rows vanish automatically.
 -- PRIMARY KEY (note_id, tag_id) is the covering key — deduplicate join
 -- rows at the DB layer. WITHOUT ROWID saves the implicit rowid overhead
 -- since this table is addressed only by the composite PK.
@@ -37,10 +37,10 @@ CREATE TABLE note_tags (
 --                rewriter (LINKS-07) and the pending-link list can find rows
 --                without re-reading the source file.
 -- excerpt      = server-built HTML (sanitized by DOMPurify on the client)
---                showing the line around the reference (D-27). 200-char cap.
+--                showing the line around the reference. 200-char cap.
 -- UNIQUE (source_id, target_title) collapses multiple [[Foo]] references
 -- from the same source note into one row — the count badge is computed
--- at extract time (D-29). If a source note has [[Foo]] multiple times,
+-- at extract time. If a source note has [[Foo]] multiple times,
 -- those collapse into one backlink row. The excerpt holds the FIRST match.
 CREATE TABLE backlinks (
     id           INTEGER PRIMARY KEY,

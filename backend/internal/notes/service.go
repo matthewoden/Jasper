@@ -546,7 +546,7 @@ func (s *Service) CreateFolder(ctx context.Context, parentPath, name string) (st
 func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive bool) error {
 	canon := canonicalRelPath(folderPath)
 
-	// Phase 14 (A4 soft-delete): TrashDir moves the whole subtree into .trash/
+	// Soft delete: TrashDir moves the whole subtree into .trash/
 	// regardless of the recursive flag, so both paths must purge the index and
 	// registry for every note under the folder — otherwise trashed notes linger
 	// in GET /notes, the tree, and search until the next reconcile (TRASH-03).

@@ -10,8 +10,8 @@ import (
 )
 
 // maxTrashSuffix is the upper bound on the collision-suffix loop to prevent
-// unbounded iteration (D-04 / T-14-04: single-user, local-only; pathological
-// counts are not a realistic threat).
+// unbounded iteration — single-user, local-only; pathological counts are
+// not a realistic threat.
 const maxTrashSuffix = 10_000
 
 // Sentinel errors for the CRUD primitives. Callers gate via errors.Is.
@@ -277,12 +277,12 @@ func isPathInside(child, parent string) bool {
 }
 
 // TrashFile moves a single note file from notes/<relPath> into <dataDir>/.trash/,
-// flattening the source folder path (D-02). If a same-named file already exists
+// flattening the source folder path. If a same-named file already exists
 // in .trash/ it appends a numeric suffix in Obsidian format (foo 1.md, foo 2.md)
 // — never overwrites (TRASH-04). Returns the trashName (basename only, e.g. "foo.md").
 //
 // All paths are routed through Canonicalize(dataDir, ...) so path-escape and
-// symlink attacks are rejected (T-14-01). relPath must be a non-empty relative
+// symlink attacks are rejected. relPath must be a non-empty relative
 // path (no leading slash, no ".." that escapes notes/).
 func TrashFile(dataDir, relPath string) (string, error) {
 	if err := validateTrashRelPath(relPath); err != nil {
@@ -307,7 +307,7 @@ func TrashFile(dataDir, relPath string) (string, error) {
 }
 
 // TrashDir moves a folder from notes/<relPath> into <dataDir>/.trash/ with the
-// full subtree intact (D-03). If a same-named folder already exists in .trash/
+// full subtree intact. If a same-named folder already exists in .trash/
 // it appends a numeric suffix (projects 1, projects 2). Returns the trashName
 // (e.g. "projects" or "projects 1").
 func TrashDir(dataDir, relPath string) (string, error) {
@@ -365,7 +365,7 @@ func moveWithinDataDir(dataDir, srcRel, dstRel string) error {
 		return fmt.Errorf("moveWithinDataDir(dst=%q): %w", dstRel, err)
 	}
 
-	// Authoritative no-overwrite guard (T-14-02): os.Rename on POSIX overwrites
+	// Authoritative no-overwrite guard: os.Rename on POSIX overwrites
 	// file targets silently; the pre-stat prevents silent data loss.
 	if _, statErr := os.Stat(dstAbs); statErr == nil {
 		return fmt.Errorf("moveWithinDataDir(%q→%q): %w", srcRel, dstRel, ErrCaseCollision)
@@ -404,7 +404,7 @@ func moveWithinDataDir(dataDir, srcRel, dstRel string) error {
 // it exists the loop produces "stem 1"+ext, "stem 2"+ext, … up to maxTrashSuffix.
 //
 // Existence is checked by resolving Canonicalize(dataDir, ".trash/<candidate>")
-// then os.Stat, so the comparison is NFC+lowercase-aware (T-14-03 / RESEARCH Q2).
+// then os.Stat, so the comparison is NFC+lowercase-aware.
 func destTrashName(dataDir, stem, ext string) (string, error) {
 	for i := 0; i <= maxTrashSuffix; i++ {
 		var candidate string

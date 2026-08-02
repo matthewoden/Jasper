@@ -42,7 +42,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get("Origin") == "" {
-		h.log.Warn("hub: rejecting upgrade with empty Origin header (WR-01)",
+		h.log.Warn("hub: rejecting upgrade with empty Origin header",
 			"remote_addr", r.RemoteAddr)
 		http.Error(w, "missing Origin header", http.StatusForbidden)
 		return

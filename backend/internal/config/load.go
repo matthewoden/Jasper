@@ -40,9 +40,10 @@ func configPath(dataDir string) string {
 // field simply keeps its default while every sibling field keeps decoding
 // independently.
 //
-// This is the per-field leniency primitive at the heart of SET3-06/D-13/
-// D-14: callers must NEVER decode a whole struct (Config or any nested
-// block) via a single json.Unmarshal/Decoder.Decode call — that fails the
+// This is the per-field leniency primitive at the heart of the lenient
+// read path (ADR-0020): callers must NEVER decode a whole struct (Config
+// or any nested block) via a single json.Unmarshal/Decoder.Decode call —
+// that fails the
 // ENTIRE struct the instant one field has the wrong JSON type, which is
 // exactly the data-loss bug this package exists to close. Decoding one
 // scalar field at a time via json.RawMessage is what makes the fallback
@@ -55,7 +56,7 @@ func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path
 	// A literal JSON null unmarshals into most Go destinations as a
 	// successful no-op (err == nil, target left untouched) rather than a
 	// type-mismatch error, so it must be checked explicitly — otherwise
-	// this exact fallback happens with zero D-15 warning.
+	// this exact fallback happens with no warning at all.
 	if string(v) == "null" {
 		log.Warn("config: field fell back to default",
 			"field", fieldPath, "reason", "null value", "path", path)
@@ -71,7 +72,8 @@ func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path
 // for a subsequent per-field pass, or returns nil if the key is absent or is
 // not itself a JSON object. A malformed section degrades to nil — every
 // field inside it keeps its Defaults() seed — rather than failing the whole
-// document; this is the D-13 guarantee applied one level deeper, matching
+// document; this is the per-field leniency guarantee applied one level
+// deeper, matching
 // the nested-object recursion the interfaces contract requires for
 // dailyNotes/editor/server/mcp/templates.
 func decodeSection(raw map[string]json.RawMessage, jsonKey, path string, log *slog.Logger) map[string]json.RawMessage {
@@ -81,8 +83,8 @@ func decodeSection(raw map[string]json.RawMessage, jsonKey, path string, log *sl
 	}
 	// A literal JSON null unmarshals into a nil map with err == nil (a
 	// successful no-op), not a type-mismatch error — check for it
-	// explicitly so every field in this section still gets its D-15
-	// fallback warning instead of silently keeping its Defaults() seed.
+	// explicitly so every field in this section still gets its fallback
+	// warning instead of silently keeping its Defaults() seed.
 	if string(v) == "null" {
 		log.Warn("config: section fell back to defaults",
 			"field", jsonKey, "reason", "null value", "path", path)
@@ -97,8 +99,8 @@ func decodeSection(raw map[string]json.RawMessage, jsonKey, path string, log *sl
 	return nested
 }
 
-// warnOutOfRange logs the D-15 fallback warning for a well-typed value that
-// fails its range/enum check. D-14 forbids clamping to the nearest bound —
+// warnOutOfRange logs the fallback warning for a well-typed value that
+// fails its range/enum check. Clamping to the nearest bound is forbidden —
 // the caller must revert the field to its own Defaults() value, never a
 // value the user did not type.
 func warnOutOfRange(log *slog.Logger, fieldPath, path string) {
@@ -224,8 +226,8 @@ func decodeTemplates(raw map[string]json.RawMessage, path string, log *slog.Logg
 	}
 }
 
-// Load reads the persisted config with per-field leniency (SET3-06/D-13/
-// D-14). Behavior on edge cases:
+// Load reads the persisted config with per-field leniency (ADR-0020).
+// Behavior on edge cases:
 //   - File missing: returns DefaultConfig() AND writes it to disk so
 //     subsequent reads succeed with the canonical shape.
 //   - File present but genuinely unparseable JSON: logs a WARN and returns
@@ -237,13 +239,13 @@ func decodeTemplates(raw map[string]json.RawMessage, path string, log *slog.Logg
 //   - File present with a known field of the wrong JSON type, or a
 //     well-typed value outside its documented range/enum: that field
 //     alone reverts to its own Defaults() value (never clamped to a
-//     bound — D-14) and a slog.Warn names the field and the reason; every
+//     bound) and a slog.Warn names the field and the reason; every
 //     sibling field, including siblings in the same nested section, keeps
-//     its on-disk value (D-13).
+//     its on-disk value.
 //
 // This read path is intentionally lenient; the write path
 // (ConfigStrictBodyMiddleware / strictConfigValidator, PUT /config) stays
-// strict (D-16) — a malformed or unknown field is rejected before it ever
+// strict — a malformed or unknown field is rejected before it ever
 // reaches disk, so leniency here only ever has to absorb a hand-edited or
 // cross-version file, never a fresh write from the current binary.
 //
@@ -282,7 +284,7 @@ func loadLocked(dataDir string, log *slog.Logger) (Config, error) {
 	// no strict-decoder option enabled here — that would only solve
 	// unknown-key leniency; see decodeField's doc comment for why a
 	// single-shot Decode/Unmarshal against the full Config struct cannot
-	// satisfy D-13 regardless of any decoder option.
+	// give per-field leniency regardless of any decoder option.
 	var topRaw map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &topRaw); err != nil {
 		// Genuinely unparseable JSON (not merely "wrong shape") — the
@@ -321,7 +323,7 @@ func loadLocked(dataDir string, log *slog.Logger) (Config, error) {
 		cfg.ReadingFont = "sans"
 	}
 
-	// D-02: runtime is always dark, unconditionally — a pin, not a
+	// Runtime theme is always dark, unconditionally — a pin, not a
 	// leniency fallback, so this is not gated on decode success and never
 	// warns. The "light" value stays in the OpenAPI enum for wire-compat.
 	cfg.Theme = "dark"

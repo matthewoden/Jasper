@@ -1,8 +1,8 @@
 // Package fsstore is the filesystem adapter for notes.FileStore. It is the
 // SINGLE GATE through which every read and write of a note flows. The two
 // load-bearing primitives are Canonicalize (NFC + lowercase + reject ..,
-// absolute paths, symlink escapes — Pitfall 2) and AtomicWrite (temp +
-// fsync(file) + rename + fsync(parent dir) — Pitfall 3 / DATA-13).
+// absolute paths, symlink escapes) and AtomicWrite (temp + fsync(file) +
+// rename + fsync(parent dir) — DATA-13).
 package fsstore
 
 import (
@@ -94,7 +94,7 @@ func ResolveContained(rootDir, relPath string) (string, os.FileInfo, error) {
 // the root after cleaning; symlinks that resolve outside the root.
 //
 // The returned path is suitable for direct use with os.Open / os.Stat /
-// AtomicWrite. Pitfall 2.
+// AtomicWrite.
 func Canonicalize(rootDir, relPath string) (string, error) {
 	if relPath == "" {
 		return "", ErrEmptyPath

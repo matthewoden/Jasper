@@ -22,7 +22,7 @@ type Service struct {
 	// mu serializes every setter's Load -> mutate -> Save cycle. Without
 	// it, two concurrent requests against the same shared workspace.json
 	// can both Load the same pre-mutation document and have one Save
-	// silently clobber the other's change (mirrors bookmarks WR-01).
+	// silently clobber the other's change (mirrors bookmarks.Service).
 	mu sync.Mutex
 }
 

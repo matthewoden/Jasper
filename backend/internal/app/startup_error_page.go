@@ -11,7 +11,7 @@ import (
 	errorpage "github.com/matthewoden/jasper/backend/internal/static/error"
 )
 
-// StartupErrorData feeds the startup-error.html template (UI-SPEC §Surface 7).
+// StartupErrorData feeds the startup-error.html template.
 //
 //   - PhaseName: human-friendly init-step name (e.g. "Migration",
 //     "Migration 004_mcp_grants.sql", "Index rebuild"). Auto-escaped.

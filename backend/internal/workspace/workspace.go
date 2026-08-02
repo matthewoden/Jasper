@@ -24,7 +24,7 @@ type Workspace struct {
 var ErrInvalidSort = errors.New("workspace: invalid sort value")
 
 // validNotesSort is the closed enum of accepted notesSort values. Empty
-// string is allowed and means "default" (D-06).
+// string is allowed and means "default".
 var validNotesSort = map[string]bool{
 	"":              true,
 	"name-asc":      true,
@@ -36,7 +36,7 @@ var validNotesSort = map[string]bool{
 }
 
 // validSearchSort is the closed enum of accepted searchSort values. Empty
-// string is allowed and means "default" (D-06).
+// string is allowed and means "default".
 var validSearchSort = map[string]bool{
 	"":          true,
 	"relevance": true,
@@ -45,8 +45,8 @@ var validSearchSort = map[string]bool{
 }
 
 // validRightPanel is the closed enum of accepted rightPanel values. Empty
-// string is allowed and means "default" (D-06; UI-SPEC §1 default is
-// "outline").
+// string is allowed and means "default", which the client renders as
+// "outline".
 var validRightPanel = map[string]bool{
 	"":          true,
 	"outline":   true,
@@ -56,7 +56,7 @@ var validRightPanel = map[string]bool{
 
 // IsValidNotesSort reports whether v is inside the closed notesSort enum.
 // Exposed so the API handler can validate ALL request fields up front and
-// reject atomically before any setter persists or broadcasts (WR-01); the
+// reject atomically before any setter persists or broadcasts; the
 // setters keep their own checks as defense-in-depth.
 func IsValidNotesSort(v string) bool { return validNotesSort[v] }
 

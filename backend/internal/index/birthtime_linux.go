@@ -9,7 +9,7 @@ import (
 )
 
 // birthtimeFromPath returns (unixSeconds, true) when the filesystem reports
-// a true creation time; (0, false) triggers the D-04 fallback to the
+// a true creation time; (0, false) triggers the fallback to the
 // index's created_at (first-seen-by-indexer).
 //
 // fs.FileInfo alone cannot report btime on Linux — the underlying
@@ -24,7 +24,7 @@ func birthtimeFromPath(absPath string, _ fs.FileInfo) (int64, bool) {
 	}
 	// The syscall can succeed without setting the BTIME bit — some
 	// filesystems/kernels report "no error" yet cannot supply birthtime.
-	// "No error" is NOT the same as "btime available" (Pitfall 2).
+	// "No error" is NOT the same as "btime available".
 	if stx.Mask&unix.STATX_BTIME == 0 {
 		return 0, false
 	}

@@ -23,7 +23,7 @@ type SearchHit struct {
 	MatchingTags []string
 	Rank         float64 // bm25 + recency blend; lower is better
 	ModifiedAt   time.Time
-	CreatedAt    time.Time // COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04
+	CreatedAt    time.Time // COALESCE(NULLIF(birthtime_unix,0), created_at)
 }
 
 // FileStore is the port over the filesystem adapter (internal/fsstore).
@@ -66,10 +66,10 @@ type FileStore interface {
 	//     the source itself or a descendant of it; ErrCaseCollision /
 	//     ErrParentNotFound otherwise.
 	//   - TrashFile moves a note into <dataDir>/.trash/, flattening
-	//     the path (D-02); returns the collision-safe base name written;
-	//     never overwrites (D-04); paths are canonicalized internally.
-	//   - TrashDir moves a folder + subtree into <dataDir>/.trash/ intact
-	//     (D-03); returns the collision-safe folder name written;
+	//     the path; returns the collision-safe base name written;
+	//     never overwrites; paths are canonicalized internally.
+	//   - TrashDir moves a folder + subtree into <dataDir>/.trash/ intact;
+	//     returns the collision-safe folder name written;
 	//     paths are canonicalized internally.
 	CreateFile(relPath string) error
 	DeleteFile(relPath string) error
@@ -213,7 +213,7 @@ type Index interface {
 // Matches the BacklinkRow component schema in api/openapi.yaml.
 //
 // Excerpts carries one context-line excerpt per distinct `[[...]]` mention
-// line in the source note (D-16); len(Excerpts) is the derived count of
+// line in the source note; len(Excerpts) is the derived count of
 // mention lines (multiple references on the same line collapse to one
 // excerpt for that line).
 type BacklinkRow struct {
@@ -258,7 +258,7 @@ type TagWithCount struct {
 //
 // BirthtimeUnix is the true filesystem creation time in UNIX seconds
 // (index/birthtimeFromPath), a SEPARATE concept from UpdatedAtUnix/
-// created_at's "first-seen-by-indexer" semantics — see Phase 29 D-03/D-04.
+// created_at's "first-seen-by-indexer" semantics.
 // 0 is the sentinel meaning "platform/filesystem cannot report birthtime".
 type NoteRecord struct {
 	ID            uuid.UUID
@@ -276,7 +276,7 @@ type NoteRecord struct {
 // NoteSummary is the projection returned by Index.List for the
 // file-tree / notes-list UI. UpdatedAt is the file's mtime (NOT the
 // index-touch time) so the UI shows file-relevant timestamps. CreatedAt
-// is COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04 — used by
+// is COALESCE(NULLIF(birthtime_unix,0), created_at), used by
 // the tree projection (BuildTree) to expose a "created" sort data point.
 //
 // The wire shape (api.Note in openapi.yaml) is a subset of this struct;

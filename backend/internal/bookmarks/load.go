@@ -30,7 +30,7 @@ import (
 //     in registry (or fails to parse as a UUID) is dropped
 //     (auto-prune-on-read). If any row was dropped, the pruned document is
 //     re-Saved to disk (best-effort) so the file stays clean.
-//   - registry == nil (WR-03: Server's documented graceful-degradation
+//   - registry == nil (Server's documented graceful-degradation
 //     contract when notesSvc is nil): auto-prune is skipped entirely — a
 //     nil registry cannot legitimately resolve anything, so pruning against
 //     it would wipe every valid row and re-Save that empty result, which

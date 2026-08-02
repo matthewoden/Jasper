@@ -1,9 +1,9 @@
--- 006_birthtime.sql — Phase 29 true filesystem creation-time capture
--- (SORT-01/SORT-02, D-03).
+-- 006_birthtime.sql — true filesystem creation-time capture
+-- (SORT-01/SORT-02).
 --
 -- notes.created_at means "first-seen-by-indexer" and MUST keep that
--- meaning (see CLAUDE.md's "Filesystem as source of truth" constraint and
--- 29-RESEARCH.md Pitfall 3) — it is NOT the same concept as the file's
+-- meaning (see CLAUDE.md's "Filesystem as source of truth" constraint)
+-- — it is NOT the same concept as the file's
 -- actual on-disk creation time (birthtime), which a moved file or a
 -- post-index-wipe rebuild would otherwise silently corrupt if reused.
 --

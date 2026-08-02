@@ -111,7 +111,7 @@ func (r *Runner) Status(ctx context.Context) Status {
 //     were pending).
 //   - (Status{State: rolled_back, FailedMigration: <name>}, nil) when
 //     Path 1 fired — the caller treats this as a successful start
-//     (the app runs on the prior schema; the UX-03 banner is shown).
+//     (the app runs on the prior schema; the migration banner is shown).
 //   - (Status{State: unrecoverable}, ErrUnrecoverable) when Path 3
 //     fires. The composition root refuses to start the HTTP listener.
 //   - (Status{State: unrecoverable}, ErrDiskFull-wrapped) when the

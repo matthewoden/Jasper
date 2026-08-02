@@ -25,7 +25,7 @@ var ErrSwitchInProgress = errors.New("vault switch already in progress")
 // that complete BEFORE the drain window are safely committed in the old vault.
 // Writers that are still in-flight when the 2s cap fires will hit a closed DB
 // and surface an error to their callers; this is logged as a Warn and is an
-// accepted trade-off (T-17d-06).
+// accepted trade-off.
 //
 // The ctx parameter governs the lifetime of the NEW vault's per-vault
 // subsystems (DB, indexer, MCP, etc.). Cancel it to shut down the new vault.

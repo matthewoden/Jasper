@@ -9,7 +9,7 @@ import (
 // AtomicWrite writes data to absPath durably and atomically, satisfying
 // DATA-13: never truncate before confirming write success; the parent
 // directory entry is fsynced so a crash after rename returns either the
-// old content or the new content but never zero-byte / partial. Pitfall 3.
+// old content or the new content but never zero-byte / partial.
 //
 // The temp file lives in the SAME directory as absPath (not /tmp) so
 // os.Rename is a true rename, never a cross-device fallback (EXDEV).

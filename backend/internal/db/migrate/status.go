@@ -16,7 +16,7 @@ const (
 	StateOK State = "ok"
 	// StateRolledBack — Path 1 fired (a migration failed; backup
 	// restored atomically). The app keeps running on the prior schema.
-	// UX-03 banner is rendered while in this state.
+	// The migration banner is rendered while in this state.
 	StateRolledBack State = "rolled_back"
 	// StateRebuilding — Path 2 in progress (admin/reindex triggered a
 	// drop-and-rebuild). UI shows the ReindexProgress overlay.

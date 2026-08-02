@@ -153,8 +153,8 @@ type App struct {
 // McpStatus reports whether the MCP listener is currently bound. Up is
 // false with a human-readable Reason (e.g. "port 6684 in use") when the
 // bind attempt failed; the HTTP server still boots and serves the editor
-// regardless (D-04) — this is purely informational for the admin/status
-// surface and the frontend's dismissible banner (D-05).
+// regardless — this is purely informational for the admin/status
+// surface and the frontend's dismissible banner.
 type McpStatus struct {
 	Up     bool
 	Reason string

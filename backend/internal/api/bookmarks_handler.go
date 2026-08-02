@@ -15,14 +15,14 @@ import (
 //
 // Reads the whole bookmarks document directly via bookmarks.Load (not
 // through s.bookmarks, which only exposes mutation methods) so the
-// auto-pruned (D-04) folders + bookmarks are always served fresh.
+// auto-pruned folders + bookmarks are always served fresh.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetBookmarks(
 	ctx context.Context,
 	_ GetBookmarksRequestObject,
 ) (GetBookmarksResponseObject, error) {
-	// WR-03: s.notes can be nil (Server's documented graceful-degradation
+	// s.notes can be nil (Server's documented graceful-degradation
 	// contract, exercised by NewServerWithIndex(nil, ...) in tests
 	// elsewhere in this package) — s.notes.Registry() would panic on a nil
 	// receiver reading a field. bookmarks.Load itself already treats a nil

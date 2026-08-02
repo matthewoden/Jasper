@@ -1,11 +1,11 @@
--- 001_initial.sql — Phase 2 initial schema for the SQLite derived index.
+-- 001_initial.sql — initial schema for the SQLite derived index.
 -- Filesystem (notes/*.md) is the source of truth (DATA-01); every row in
--- this database is reconstructable by walking the filesystem (Plan 02-04).
+-- this database is reconstructable by walking the filesystem.
 -- Wiping this file is never data loss — see DESIGN.md §4.4.
 
 -- schema_migrations tracks which embedded migration files have been
--- applied. Plan 02-03's runner reads/writes this table inside a
--- transaction per migration (BEGIN IMMEDIATE; apply; INSERT; COMMIT).
+-- applied. The runner reads/writes this table inside a transaction per
+-- migration (BEGIN IMMEDIATE; apply; INSERT; COMMIT).
 CREATE TABLE schema_migrations (
     version    TEXT    PRIMARY KEY,        -- e.g. '001_initial.sql' (filename, not parsed integer)
     applied_at INTEGER NOT NULL            -- UNIX seconds when applied
@@ -14,7 +14,7 @@ CREATE TABLE schema_migrations (
 -- notes is the derived index of every .md file under <data-dir>/notes/.
 -- id is a v4 UUID (text, lowercase 36-char hex with hyphens) generated
 -- at first-index-time by the indexer; it survives renames so [[wiki-link]]
--- targets remain stable when a file moves (Phase 6).
+-- targets remain stable when a file moves.
 -- path is the canonical relative path — NFC-normalized + lowercase per
 -- DATA-11 — used as a UNIQUE key so case-collisions (DATA-12) become
 -- a constraint violation at INSERT time.

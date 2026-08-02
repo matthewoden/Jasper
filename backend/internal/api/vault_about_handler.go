@@ -10,7 +10,7 @@ import (
 )
 
 // GetVaultAbout implements GET /api/v1/vault/about. Assembles every
-// About-pane fact server-side in one response (D-22): the client never
+// About-pane fact server-side in one response: the client never
 // walks the tree itself.
 //
 // Follows GetAdminStatus's shape: gate each subsystem-dependent field

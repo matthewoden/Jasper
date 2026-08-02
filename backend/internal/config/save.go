@@ -10,7 +10,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 )
 
-// mu serialises every exported read/write against config.json (T-32.1-04).
+// mu serialises every exported read/write against config.json.
 // A plain Mutex, not RWMutex: Load's first-run branch writes the default
 // config, so it must be able to reach the write path without releasing and
 // re-acquiring the lock. An RWMutex's RLock->Lock is neither reentrant nor

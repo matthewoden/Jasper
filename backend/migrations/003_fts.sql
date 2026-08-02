@@ -1,25 +1,25 @@
--- 003_fts.sql — Phase 7 FTS5 full-text search index (SEARCH-01, SEARCH-02).
+-- 003_fts.sql — FTS5 full-text search index (SEARCH-01, SEARCH-02).
 -- Filesystem (notes/*.md content + frontmatter tags) is the source of truth
 -- (DATA-01); the FTS5 index is doubly derived from the `notes` table. Wiping
 -- this file plus 001's tables is never data loss — the indexer rebuilds from
--- disk (Phase 2 §4.4 three-path resilience). See DESIGN.md §9.
+-- disk via the three-path resilience model. See DESIGN.md §4.4 and §9.
 --
 -- This migration:
 --   1. Recreates the `notes` table as a rowid table so FTS5's
---      content_rowid='rowid' works (Pitfall 1 — content_rowid requires INTEGER
+--      content_rowid='rowid' works — content_rowid requires an INTEGER
 --      rowid; the original table was declared STRICT,WITHOUT_ROWID_OPTIMIZATION
---      in 001_initial.sql which means no implicit rowid exists).
+--      in 001_initial.sql which means no implicit rowid exists.
 --   2. Adds two indexer-managed columns on `notes`: `body_fts` (note body with
---      frontmatter YAML stripped, D-37) and `tag_names_fts` (space-joined tag
+--      frontmatter YAML stripped) and `tag_names_fts` (space-joined tag
 --      names so tag-name matches surface the note).
---   3. Creates the `notes_fts` external-content FTS5 virtual table (D-35, D-36)
---      with the unicode61 tokenizer treating `_` and `-` as word chars (D-38).
+--   3. Creates the `notes_fts` external-content FTS5 virtual table with the
+--      unicode61 tokenizer treating `_` and `-` as word chars.
 --   4. Adds three triggers so any future direct SQL mutation on `notes` keeps
---      `notes_fts` consistent. The indexer (Plan 07-03) primarily mutates via
---      these columns, so the triggers do the bookkeeping.
+--      `notes_fts` consistent. The indexer primarily mutates via these
+--      columns, so the triggers do the bookkeeping.
 --
--- Plan 07-03 wires the indexer to populate body_fts/tag_names_fts on Upsert and
--- runs a startup row-count divergence check (D-36).
+-- The indexer populates body_fts/tag_names_fts on Upsert and runs a startup
+-- row-count divergence check.
 --
 -- ── Step 0: Defer foreign-key checks for the duration of this migration. ──
 -- The production DSN runs with `foreign_keys=ON` (db/sqlite/open.go) and
@@ -49,7 +49,7 @@ CREATE TABLE notes_new (
     checksum_sha256  TEXT    NOT NULL DEFAULT '',         -- empty unless checksum fallback used
     created_at       INTEGER NOT NULL,                    -- UNIX seconds, first-seen-by-indexer
     updated_at       INTEGER NOT NULL,                    -- UNIX seconds, last-index-touch
-    body_fts         TEXT    NOT NULL DEFAULT '',         -- body with frontmatter stripped (D-37)
+    body_fts         TEXT    NOT NULL DEFAULT '',         -- body with frontmatter stripped
     tag_names_fts    TEXT    NOT NULL DEFAULT ''          -- space-joined tag names for FTS match
 ) STRICT;
 
@@ -73,15 +73,15 @@ CREATE INDEX idx_notes_mtime_unix ON notes(mtime_unix);
 -- content_rowid='rowid' maps FTS5 internal rowids to the notes.rowid integer
 -- (now available because 001's table storage optimization has been removed).
 -- tokenize uses unicode61 with tokenchars so underscore and hyphen are treated
--- as word characters, matching identifiers like "my-tag" or "some_key" (D-38).
+-- as word characters, matching identifiers like "my-tag" or "some_key".
 --
 -- IMPORTANT: FTS5 external-content column names MUST match the content table's
 -- column names exactly. FTS5 generates "SELECT body_fts, tag_names_fts FROM
 -- notes WHERE rowid=?" for content retrieval (rebuild, snippet, highlight). If
 -- the FTS column names differed from the notes column names, all content-table
--- lookups would fail with "no such column". The plan spec's D-35..D-38 logical
--- names (body/tag_names) are realized here as body_fts/tag_names_fts to match
--- the actual notes schema.
+-- lookups would fail with "no such column". The logical names body/tag_names
+-- are therefore realized here as body_fts/tag_names_fts, matching the actual
+-- notes schema.
 CREATE VIRTUAL TABLE notes_fts USING fts5(
     body_fts,
     tag_names_fts,
@@ -114,5 +114,5 @@ END;
 -- Existing rows had body_fts='' and tag_names_fts='' from the INSERT...SELECT
 -- above; the AI trigger did NOT fire for them (INSERT INTO notes_new was not
 -- on the `notes` table, which didn't exist yet under that name). The FTS index
--- starts empty for pre-existing rows. Plan 07-03's startup divergence check
+-- starts empty for pre-existing rows. The indexer's startup divergence check
 -- detects the empty FTS and runs a full rebuild.

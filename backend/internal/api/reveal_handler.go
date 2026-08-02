@@ -111,7 +111,7 @@ func (s *Server) resolveRevealPath(relPath string) (string, PostRevealResponseOb
 // resolveVaultRootRevealPath resolves the target for a vaultRoot-scope
 // reveal. It takes no arguments — there is no client-derived value to
 // validate because the target is s.dataDir, server configuration set at
-// boot, not request input (T-32-05: nothing here is attacker-controlled).
+// boot, not request input — nothing here is attacker-controlled.
 // Mirrors resolveRevealPath's own existence + symlink checks so the two
 // code paths carry the same containment guarantees.
 func (s *Server) resolveVaultRootRevealPath() (string, PostRevealResponseObject) {

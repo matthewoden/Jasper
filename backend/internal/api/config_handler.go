@@ -58,7 +58,7 @@ func (s *Server) PutConfig(
 
 	// Sync display name to app.json so GET /vault/current reflects the new name.
 	// Best-effort: log on failure but do not fail the request (config.json is the primary store).
-	// D-05: config.Config.DisplayName is gone; the vault's name is its folder name.
+	// config.Config has no DisplayName; the vault's name is its folder name.
 	if appJSONPath, err := vault.AppJSONPath(); err == nil {
 		if state, err := vault.LoadAppJSON(appJSONPath); err == nil {
 			dn := filepath.Base(s.dataDir)
@@ -77,7 +77,7 @@ func (s *Server) PutConfig(
 
 	// Echo the PERSISTED document, not the request-derived struct, so PUT and
 	// PATCH return the same thing for the same on-disk state. Load normalises
-	// some values (D-02 pins Theme to "dark" while "light" is still in the
+	// some values (Theme is pinned to "dark" while "light" is still in the
 	// wire enum), and useConfig.replaceConfig stores this echo as the rebase
 	// base for later Resets and the rollback target for failed saves — echoing
 	// the request would let the client hold a config the server does not have.

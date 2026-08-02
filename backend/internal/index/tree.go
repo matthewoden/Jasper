@@ -28,7 +28,7 @@ type TreeFolder struct {
 // TreeNote is a leaf note node. UpdatedAt is derived from the index's
 // mtime_unix column (NOT the filesystem) so the tree projection is a
 // consistent snapshot from a single SELECT. Created is
-// COALESCE(NULLIF(birthtime_unix,0), created_at) — see D-04 — exposed so
+// COALESCE(NULLIF(birthtime_unix,0), created_at), exposed so
 // the client can offer a "Created" notes sort (SORT-01).
 type TreeNote struct {
 	ID        uuid.UUID

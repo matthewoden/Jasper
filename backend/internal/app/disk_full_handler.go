@@ -15,7 +15,7 @@ import (
 // DiskFullData carries the values rendered into disk-full.html when the
 // migration runner aborts the disk-space pre-flight (DATA-07). Field
 // names mirror the {{.RequiredMB}} / {{.AvailableMB}} / {{.DataDir}}
-// placeholders in the template (UI-SPEC §Surface 4).
+// placeholders in the template.
 type DiskFullData struct {
 	RequiredMB  int64
 	AvailableMB int64

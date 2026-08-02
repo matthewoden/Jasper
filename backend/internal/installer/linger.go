@@ -10,8 +10,7 @@ import (
 // EnableLingerLinux invokes `loginctl enable-linger $USER` so the
 // systemd user service runs even when no shell is logged in.
 // kardianos/service does NOT call enable-linger — verified by reading
-// service_systemd_linux.go.Install() against master on 2026-05-17
-// (RESEARCH.md Pitfall 4).
+// service_systemd_linux.go.Install() against master on 2026-05-17.
 //
 // Without linger, the user unit only runs while at least one shell is
 // logged in. On WSL2 that means closing the terminal stops Jasper;

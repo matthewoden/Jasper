@@ -97,13 +97,13 @@ func (s *Store) MoveDir(oldRelPath, newRelPath string) error {
 }
 
 // TrashFile moves a note file from notes/<relPath> into <dataDir>/.trash/,
-// flattening the source folder path (D-02). Returns the trashName assigned.
+// flattening the source folder path. Returns the trashName assigned.
 func (s *Store) TrashFile(relPath string) (string, error) {
 	return TrashFile(s.dataDir, relPath)
 }
 
 // TrashDir moves a folder from notes/<relPath> into <dataDir>/.trash/ with
-// the full subtree intact (D-03). Returns the trashName assigned.
+// the full subtree intact. Returns the trashName assigned.
 func (s *Store) TrashDir(relPath string) (string, error) {
 	return TrashDir(s.dataDir, relPath)
 }

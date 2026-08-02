@@ -76,8 +76,8 @@ const (
 
 	// EventBookmarkChanged is broadcast by the /bookmarks* CRUD handlers
 	// whenever a bookmark or bookmark folder is added, removed, moved, or
-	// created. Payload carries NO data (T-27-04 — no payload-trust
-	// surface); clients refetch GET /bookmarks on receipt. Unlike
+	// created. Payload carries NO data, so there is no payload-trust
+	// surface; clients refetch GET /bookmarks on receipt. Unlike
 	// EventMcpGrantChanged, this is a per-user content mutation like
 	// note:*/folder:*, so callers broadcast with the mutating session's
 	// own origin_session_id (SessionIDFromContext(ctx)), NOT the

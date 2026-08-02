@@ -1,4 +1,4 @@
--- 005_backlink_multi_excerpt.sql — Phase 20 per-mention excerpts (D-16).
+-- 005_backlink_multi_excerpt.sql — per-mention backlink excerpts.
 -- Filesystem (notes/*.md [[wiki-link]] body refs) is the source of truth
 -- (LINKS-01); every row in `backlinks` is reconstructable by walking the
 -- filesystem (internal/index/reconcile.go). Wiping this table is never
@@ -7,8 +7,8 @@
 --
 -- 002_tags_backlinks.sql collapsed every `[[Foo]]` reference from a source
 -- note into ONE row via `UNIQUE (source_id, target_title)`, with the excerpt
--- holding only the FIRST match. D-16 (this phase) requires one excerpt PER
--- `[[...]]` mention LINE instead, rendered as stacked lines within one card
+-- holding only the FIRST match. This migration switches to one excerpt PER
+-- `[[...]]` mention LINE, rendered as stacked lines within one card
 -- per linking note. Storing N rows per (source_id, target_title) needs the
 -- UNIQUE constraint removed; `GetBacklinks` groups rows back into one card
 -- per source_id at read time via `json_group_array` (internal/index/backlinks.go).

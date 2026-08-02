@@ -8,7 +8,7 @@ import (
 
 // Handler returns an http.Handler that serves the embedded SPA. SPA
 // routes (paths that don't match a real file) fall back to index.html.
-// MUST be mounted LAST in the chi router (Pitfall 13) — if mounted
+// MUST be mounted LAST in the chi router — if mounted
 // before the API the SPA fallback will swallow /api/v1/* requests and
 // return HTML, breaking the typed client.
 func Handler() http.Handler {

@@ -36,7 +36,7 @@ func StartMCPListener(_ context.Context, server *Server, bindAddr string, log Lo
 
 	// Bind synchronously so callers (lifecycle boot/swap) can distinguish
 	// a failed bind (e.g. port already in use) from a successful one and
-	// surface it via admin/status (D-05). Previously ListenAndServe() ran
+	// surface it via admin/status. Previously ListenAndServe() ran
 	// entirely inside the goroutine below, so a bind failure was only
 	// logged — never returned — and the caller believed MCP was up.
 	ln, err := net.Listen("tcp", bindAddr)

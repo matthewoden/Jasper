@@ -19,7 +19,7 @@ var (
 	// does not exist in the loaded document.
 	ErrNotFound = errors.New("bookmarks: not found")
 	// ErrNoteNotFound is returned by Add when noteID does not resolve in
-	// the notes.Registry (T-27-01: reject forged/unknown noteId).
+	// the notes.Registry — reject forged/unknown noteId.
 	ErrNoteNotFound = errors.New("bookmarks: note not found")
 	// ErrFolderNotFound is returned when a non-nil folderId does not exist
 	// in the loaded document's Folders.
@@ -39,7 +39,7 @@ type Service struct {
 	log         *slog.Logger
 
 	// mu serializes every mutation method's Load -> mutate -> Save cycle
-	// (WR-01). Without it, two concurrent requests against the same shared
+	// Without it, two concurrent requests against the same shared
 	// bookmarks.json — e.g. two browser tabs, an explicit multi-session
 	// Jasper feature — can both Load the same pre-mutation document and
 	// have one Save silently clobber the other's change.
@@ -70,10 +70,10 @@ func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 
 // Add appends a new Bookmark for noteID and persists it. Rejects a noteID
 // that does not resolve in the registry with ErrNoteNotFound (security
-// control T-27-01) WITHOUT persisting. Rejects a non-nil folderID that
+// control) WITHOUT persisting. Rejects a non-nil folderID that
 // does not exist in the loaded document with ErrFolderNotFound.
 func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (Bookmark, error) {
-	// WR-03: a nil registry means notesSvc was nil at construction (Server's
+	// A nil registry means notesSvc was nil at construction (Server's
 	// documented graceful-degradation contract) — nothing resolves, so
 	// treat it the same as "note not found" rather than panicking on
 	// registry.Lookup's nil receiver.
@@ -100,7 +100,7 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 		ID:       uuid.NewString(),
 		NoteID:   noteID.String(),
 		FolderID: folderID,
-		// Order is scoped per-folder (WR-02), matching the OpenAPI contract's
+		// Order is scoped per-folder, matching the OpenAPI contract's
 		// "display order among sibling bookmarks" — NOT a global counter,
 		// which would collide across unrelated folders and after removals.
 		Order: countInFolder(doc.Bookmarks, folderID),
@@ -134,7 +134,7 @@ func (s *Service) Remove(ctx context.Context, id string) error {
 
 	removedFolderID := doc.Bookmarks[idx].FolderID
 	doc.Bookmarks = append(doc.Bookmarks[:idx], doc.Bookmarks[idx+1:]...)
-	// WR-02: close the Order gap left in the removed row's folder so
+	// Close the Order gap left in the removed row's folder so
 	// remaining siblings stay contiguous (0..n-1) instead of colliding
 	// with the next Add's per-folder count.
 	renumberFolder(doc.Bookmarks, removedFolderID)
@@ -172,7 +172,7 @@ func (s *Service) MoveToFolder(ctx context.Context, id string, folderID *string)
 
 	oldFolderID := doc.Bookmarks[idx].FolderID
 	doc.Bookmarks[idx].FolderID = folderID
-	// WR-02: renumber the source folder to close the gap left behind, and
+	// Renumber the source folder to close the gap left behind, and
 	// (if the bookmark actually changed folders) the destination folder so
 	// the moved row gets a contiguous per-folder Order rather than a stale
 	// value carried over from its previous folder.
@@ -224,9 +224,9 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 // folderID (nil = top-level), and persists. orderedIDs must be EXACTLY
 // the current membership of that folder scope — a missing id, an extra
 // id, or a foreign id not currently in that scope is rejected wholesale
-// with ErrNotFound and no write (T-JV1-01: do not trust client-supplied
-// ids, same forged-id posture as T-27-01). A non-nil folderID that does
-// not exist in the document returns ErrFolderNotFound (T-JV1-02).
+// with ErrNotFound and no write — client-supplied ids are not trusted,
+// the same forged-id posture as Add. A non-nil folderID that does not
+// exist in the document returns ErrFolderNotFound.
 func (s *Service) Reorder(ctx context.Context, folderID *string, orderedIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -303,7 +303,7 @@ func folderKey(id *string) string {
 }
 
 // countInFolder returns how many bookmarks currently share folderID's
-// scope (WR-02: Order is per-folder, not a global counter).
+// scope. Order is per-folder, not a global counter.
 func countInFolder(bookmarks []Bookmark, folderID *string) int {
 	key := folderKey(folderID)
 	n := 0

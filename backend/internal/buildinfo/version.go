@@ -1,6 +1,6 @@
 // Package buildinfo exposes the running binary's version string to internal
 // packages that cannot import cmd/jasper — Go forbids importing a `main`
-// package, and the About pane (GET /vault/about, Phase 32) needs the version
+// package, and the About pane (GET /vault/about) needs the version
 // string server-side. cmd/jasper's `jasper version` subcommand reads these
 // same vars back so there is exactly one source of truth.
 //

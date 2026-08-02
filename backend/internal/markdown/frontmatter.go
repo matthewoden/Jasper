@@ -62,8 +62,7 @@ func HasFrontmatter(content []byte) bool {
 // unchanged when HasFrontmatter is true (idempotent — re-running the
 // one-time migration over an already-migrated file is a safe no-op).
 //
-// Scaffold format (matches UI-SPEC §Copywriting Contract > Frontmatter scaffold
-// and is byte-identical to NewNoteContent for empty input):
+// Scaffold format (byte-identical to NewNoteContent for empty input):
 //
 //	---
 //	tags: []

@@ -7,7 +7,7 @@ import "strings"
 // create, and daily notes — MUST call this function so the frontmatter
 // scaffold stays uniform across the app.
 //
-// Format (matches UI-SPEC §Copywriting Contract > Frontmatter scaffold):
+// Format:
 //
 //	---
 //	tags: []

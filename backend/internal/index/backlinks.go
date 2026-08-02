@@ -30,7 +30,7 @@ type BacklinkRow = notes.BacklinkRow
 // folder as the bias parameter. The first result (if any) becomes target_id.
 // If registry is nil, all links are treated as pending.
 //
-// Excerpt generation (D-16): buildExcerpts scans content for every LINE
+// Excerpt generation: buildExcerpts scans content for every LINE
 // containing [[target]] (case-insensitive) and returns one HTML excerpt per
 // matching line (see buildExcerpts godoc). One backlinks row is inserted per
 // excerpt line — the UNIQUE(source_id, target_title) collapse was removed in
@@ -123,7 +123,7 @@ func (x *Indexer) SyncBacklinks(
 // note recency (mtime_unix DESC). Pending rows (target_id IS NULL) are
 // excluded. Returns a non-nil empty slice when there are no backlinks.
 //
-// Rows are grouped one card per source_id via json_group_array (D-16). The
+// Rows are grouped one card per source_id via json_group_array. The
 // aggregate's own ORDER BY clause (SQLite >= 3.44) guarantees each card's
 // excerpts array preserves b.id insertion/document order — an ordered
 // subquery feeding an aggregate is NOT guaranteed to preserve order.
@@ -313,9 +313,9 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 
 // buildExcerpts scans content for every LINE containing a [[target]]
 // reference (case-insensitive) and returns one HTML excerpt per matching
-// line, in document order (D-16). Multiple occurrences of [[target]] on the
+// line, in document order. Multiple occurrences of [[target]] on the
 // SAME line collapse into a single excerpt for that line — the tie-break is
-// per LINE, not per raw occurrence (RESEARCH.md Assumption A1). Returns a
+// per LINE, not per raw occurrence. Returns a
 // nil slice when there is no matching line.
 func buildExcerpts(content []byte, target string) []string {
 	targetLower := strings.ToLower(target)

@@ -8,7 +8,7 @@ import (
 )
 
 // birthtimeFromPath returns (unixSeconds, true) when the filesystem reports
-// a true creation time; (0, false) triggers the D-04 fallback to the
+// a true creation time; (0, false) triggers the fallback to the
 // index's created_at (first-seen-by-indexer). On darwin, birthtime comes
 // directly from the fs.FileInfo already captured by the caller — absPath
 // is unused here (kept for signature symmetry with the linux variant,

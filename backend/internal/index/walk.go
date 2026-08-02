@@ -22,8 +22,8 @@ import (
 //     checksum fallback is not implemented).
 //   - BirthtimeUnix is the true filesystem creation time in UNIX seconds,
 //     captured via the platform-tagged birthtimeFromPath helper; 0 when
-//     the platform/filesystem cannot report it (D-04 sentinel — resolved
-//     to created_at at query time, not here).
+//     the platform/filesystem cannot report it (the 0 sentinel is
+//     resolved to created_at at query time, not here).
 type FileMeta struct {
 	CanonicalRelPath string
 	AbsPath          string

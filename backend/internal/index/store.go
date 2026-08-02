@@ -122,7 +122,7 @@ func (x *Indexer) Delete(ctx context.Context, id uuid.UUID) error {
 // the file's last-modified time, NOT the indexer's row-touch time.
 // The index-touch time is internal-only and never escapes the package.
 //
-// CreatedAt is COALESCE(NULLIF(birthtime_unix, 0), created_at) — see D-04 —
+// CreatedAt is COALESCE(NULLIF(birthtime_unix, 0), created_at) —
 // consumed by BuildTree to expose a "created" sort data point on tree nodes.
 func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
@@ -369,7 +369,7 @@ func prefixWrap(q string) string {
 }
 
 // maxTagFilters caps the number of ANDed tag EXISTS clauses SearchFTS and
-// searchTitlePathLike will build per query (T-19-03: defensive DoS guard).
+// searchTitlePathLike will build per query — a defensive DoS guard.
 const maxTagFilters = 8
 
 // buildTagClauses builds one bound `AND EXISTS (...)` clause per non-empty
@@ -406,7 +406,7 @@ func buildTagClauses(tags []string, startIdx int) (string, []any) {
 // searchOrderClause returns the hardcoded ORDER BY fragment for the given
 // sort value. The raw `sort` string is NEVER interpolated into SQL — only
 // one of these fixed literal fragments is ever spliced into a query
-// (T-29-06: same discipline as the MATCH ?1 positional-bind contract above).
+// — the same discipline as the MATCH ?1 positional-bind contract above.
 func searchOrderClause(sort string) string {
 	switch sort {
 	case "modified":
@@ -419,7 +419,7 @@ func searchOrderClause(sort string) string {
 }
 
 // SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
-// optional AND-combined tag filters. sort selects the ORDER BY (D-14: the
+// optional AND-combined tag filters. sort selects the ORDER BY (the
 // SQL-level order runs BEFORE the LIMIT, so "modified"/"created" reflect the
 // true full match set, not a client reshuffle of a relevance top-N):
 //   - "relevance" (default/""): bm25 + recency blend
@@ -442,7 +442,7 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 	}
 
 	// An empty (or whitespace-only) q cannot be passed to notes_fts MATCH —
-	// `notes_fts MATCH ''` is an FTS5 syntax error. D-24: a bare tag:name
+	// `notes_fts MATCH ''` is an FTS5 syntax error, but a bare tag:name
 	// query still needs to work, so route empty-q requests through a
 	// non-FTS tag-only lookup instead of the MATCH path below.
 	if strings.TrimSpace(q) == "" {
@@ -500,10 +500,10 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 		return nil, fmt.Errorf("searchfts iter: %w", err)
 	}
 
-	// Pitfall 4 (RESEARCH): the title-LIKE fallback appends rows in its own
-	// order, which would reshuffle the SQL-level modified/created ordering
-	// above. Skip it entirely for time sorts — D-14's "no reshuffle"
-	// contract only needs the relevance path to backfill via LIKE.
+	// The title-LIKE fallback appends rows in its own order, which would
+	// reshuffle the SQL-level modified/created ordering above. Skip it
+	// entirely for time sorts — the "no reshuffle" contract only needs the
+	// relevance path to backfill via LIKE.
 	trimmed := strings.TrimSpace(q)
 	isRelevanceSort := sort == "" || sort == "relevance"
 	if isRelevanceSort && trimmed != "" && !strings.ContainsAny(trimmed, `"():`) && !fts5OperatorKeywordRE.MatchString(trimmed) && len(hits) <= limit {
@@ -535,12 +535,12 @@ func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit 
 
 // searchTagsOnly serves a pure tag-filter query (empty or whitespace-only q)
 // by listing notes matching ALL given tags directly from the notes table,
-// bypassing FTS5 MATCH entirely (D-24). No snippet is available without a
+// bypassing FTS5 MATCH entirely. No snippet is available without a
 // MATCH, so ExcerptHTML stays empty on every hit. If tags yields zero
 // non-empty clauses, returns (nil, nil) — an unfiltered empty-q dump would be
-// an information-disclosure risk (T-SM6-03), so there is nothing to list.
-// sort follows the same closed set as SearchFTS (D-14 parity for the
-// empty-q branch); this path has no bm25 rank so "relevance" here falls
+// an information-disclosure risk, so there is nothing to list.
+// sort follows the same closed set as SearchFTS, for parity on the
+// empty-q branch; this path has no bm25 rank so "relevance" here falls
 // back to n.updated_at DESC (its prior behavior), same as "modified".
 func (x *Indexer) searchTagsOnly(ctx context.Context, tags []string, limit int, sort string) ([]notes.SearchHit, error) {
 	tagClauseSQL, tagArgs := buildTagClauses(tags, 1)

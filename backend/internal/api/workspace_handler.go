@@ -45,7 +45,7 @@ func (s *Server) PutVaultWorkspace(
 
 	// Validate every present field BEFORE invoking any setter — the setters
 	// persist+broadcast individually, so a late rejection would leave a
-	// partial mutation behind an error response (WR-01).
+	// partial mutation behind an error response.
 	if req.Body.NotesSort != nil && !workspace.IsValidNotesSort(string(*req.Body.NotesSort)) {
 		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid notesSort value")), nil
 	}

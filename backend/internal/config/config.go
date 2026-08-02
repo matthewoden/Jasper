@@ -6,7 +6,7 @@
 //
 // No filesystem watcher / hot-reload; restart picks up changes.
 //
-// Read/write asymmetry (D-16): Load is lenient — a hand-edited, older-, or
+// Read/write asymmetry: Load is lenient — a hand-edited, older-, or
 // newer-binary config.json degrades per-field (unrecognized keys are
 // dropped; a wrong-typed or out-of-range known field reverts to its own
 // default) instead of nuking the whole document. The write path
@@ -23,15 +23,15 @@ type Config struct {
 	AppName     string       `json:"appName"`
 	DailyNotes  DailyNotes   `json:"dailyNotes"`
 	Editor      Editor       `json:"editor"`
-	Theme       string       `json:"theme"`                 // "dark" | "light" (D-02: pinned to "dark" at load)
+	Theme       string       `json:"theme"`                 // "dark" | "light" (pinned to "dark" at load)
 	Accent      string       `json:"accent,omitempty"`      // "purple"|"sky"|"green"|"orange"; default "purple"
 	ReadingFont string       `json:"readingFont,omitempty"` // "sans"|"serif"; default "sans"
 	Server      ServerConfig `json:"server"`                // port (6683) + dataDir source of truth
 	MCP         MCPConfig    `json:"mcp"`                   // optional MCP listener
-	Templates   Templates    `json:"templates"`             // Phase 35 / TPL-01 templates folder
+	Templates   Templates    `json:"templates"`             // TPL-01 templates folder
 }
 
-// Templates — Phase 35 / TPL-01 templates block.
+// Templates — TPL-01 templates block.
 type Templates struct {
 	Folder string `json:"folder"`
 }
@@ -48,16 +48,16 @@ type Editor struct {
 	FontSize   int     `json:"fontSize"`
 	LineHeight float64 `json:"lineHeight"`
 	AutosaveMs int     `json:"autosaveMs"`
-	// ShowProperties toggles the properties table above the note body (Phase 34).
+	// ShowProperties toggles the properties table above the note body.
 	ShowProperties bool `json:"showProperties"`
-	// AutoPair auto-closes brackets/quotes in the CM6 editor (Phase 37 / EDIT-01).
+	// AutoPair auto-closes brackets/quotes in the CM6 editor (EDIT-01).
 	AutoPair bool `json:"autoPair"`
-	// FoldGutter shows the heading/list code-folding gutter (Phase 37 / EDIT-03).
+	// FoldGutter shows the heading/list code-folding gutter (EDIT-03).
 	FoldGutter bool `json:"foldGutter"`
-	// LineNumbers shows the CM6 line-number gutter (Phase 37 / EDIT-03).
+	// LineNumbers shows the CM6 line-number gutter (EDIT-03).
 	LineNumbers bool `json:"lineNumbers"`
 	// LineWidth is the maximum width of the writing column, in CSS pixels
-	// (Phase 37 / EDIT-04). Range 400-2000.
+	// (EDIT-04). Range 400-2000.
 	LineWidth int `json:"lineWidth"`
 }
 
@@ -77,8 +77,8 @@ type ServerConfig struct {
 }
 
 // MCPConfig controls the second HTTP listener that serves the MCP
-// StreamableHTTP endpoint. The listener always starts on boot (Phase 24
-// D-06); AI write access is governed solely by per-folder write grants.
+// StreamableHTTP endpoint. The listener always starts on boot; AI write
+// access is governed solely by per-folder write grants.
 //
 //   - Port defaults to 6684.
 //   - Bind defaults to "127.0.0.1" and is enforced loopback-only at
@@ -86,11 +86,10 @@ type ServerConfig struct {
 type MCPConfig struct {
 	Port int    `json:"port"`
 	Bind string `json:"bind"`
-	// AuditLog toggles the MCP tool-call audit log (Phase 36 / MCP2-02).
+	// AuditLog toggles the MCP tool-call audit log (MCP2-02).
 	AuditLog bool `json:"auditLog"`
-	// NOTE (Phase 32, closes RESEARCH.md Open Question 2): the old on/off
-	// toggle field is deleted here — its only justification was the strict
-	// decoder (DisallowUnknownFields), which Phase 32-03 removes. A legacy
-	// on-disk mcp.enabled key becomes an unknown nested key — dropped on
-	// lenient read, preserved on write.
+	// There is deliberately no on/off toggle field: its only justification
+	// was the strict decoder (DisallowUnknownFields), which the read path
+	// no longer uses. A legacy on-disk mcp.enabled key is just an unknown
+	// nested key — dropped on lenient read, preserved on write.
 }
