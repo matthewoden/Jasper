@@ -4,25 +4,17 @@
  * platform.IsWSL() returns true — closing the gap between mocked coverage and a
  * real WSL2 user's experience.
  *
- * Skipped by default behind an env gate. Run with `make test-wsl-e2e`, or against
- * an already-running container:
- *   JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=6684 npx playwright test phase8-wsl-vault.spec.ts
+ * Owned by playwright.wsl.config.ts, so the default run does not collect it.
+ * Run with `make test-wsl-e2e`, or against an already-running container:
+ *   npx playwright test -c playwright.wsl.config.ts
  */
 import { test, expect } from "@playwright/test";
 
-const HOST_PORT = process.env.JASPER_WSL_HOST_PORT ?? "6684";
-const BASE_URL = `http://127.0.0.1:${HOST_PORT}`;
-
 test.describe("vault picker — Docker fake-WSL parity", () => {
-  test.skip(
-    process.env.JASPER_WSL_E2E !== "1",
-    "Set JASPER_WSL_E2E=1 (or run `make test-wsl-e2e`) — requires compose/wsl-validation up",
-  );
-
   test("Browse… renders Windows-form breadcrumb against a real WSL-shaped backend", async ({
     page,
   }) => {
-    await page.goto(BASE_URL + "/");
+    await page.goto("/");
 
     await expect(page.getByRole("dialog", { name: /vault/i })).toBeVisible();
     await page
@@ -53,7 +45,7 @@ test.describe("vault picker — Docker fake-WSL parity", () => {
   test("Breadcrumb segment click navigates via the WSL click-target (not the displayed label)", async ({
     page,
   }) => {
-    await page.goto(BASE_URL + "/");
+    await page.goto("/");
     await page
       .getByTestId("vault-create-path-input")
       .fill("/mnt/c/Users/jasper-test/Documents");
@@ -82,7 +74,7 @@ test.describe("vault picker — Docker fake-WSL parity", () => {
   test("Non-/mnt path (e.g. /tmp) falls back to POSIX breadcrumb even on WSL", async ({
     page,
   }) => {
-    await page.goto(BASE_URL + "/");
+    await page.goto("/");
     await page
       .getByTestId("vault-create-path-input")
       .fill("/mnt/c/Users/jasper-test");

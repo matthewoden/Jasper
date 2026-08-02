@@ -77,8 +77,8 @@ test-wsl-e2e:
 	@# Wait flag above blocks until healthcheck passes; the spec then
 	@# connects to the published host port. Tear down on success OR failure.
 	@trap 'docker compose -f compose/wsl-validation/docker-compose.yml down -v --remove-orphans' EXIT; \
-	  cd frontend && JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=$${JASPER_WSL_HOST_PORT:-6684} \
-	    npx playwright test phase8-wsl-vault.spec.ts
+	  cd frontend && JASPER_WSL_HOST_PORT=$${JASPER_WSL_HOST_PORT:-6684} \
+	    npx playwright test -c playwright.wsl.config.ts
 
 # One-command harness for the systemd
 # install-validation suite (compose/install-validation/).

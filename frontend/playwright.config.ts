@@ -9,10 +9,15 @@ try {
   PORT = "6683";
 }
 
+// Owned by playwright.wsl.config.ts — it needs compose/wsl-validation up, so it
+// is excluded from the default run rather than reporting as skipped, where it
+// would be indistinguishable from a test.fixme'd gap.
+export const WSL_SPEC = "**/phase8-wsl-vault.spec.ts";
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
-  testIgnore: ["**/node_modules/**"],
+  testIgnore: ["**/node_modules/**", WSL_SPEC],
   // Each test self-isolates via per-test ephemeral port + mkdtemp data dir.
   // MCP port 6684 is serialized across worker processes via withMcpPortLock
   // in helpers/binary.ts — not via worker-count reduction.
