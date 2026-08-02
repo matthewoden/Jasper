@@ -5,11 +5,11 @@
  * (380px/20px) and copy (a single Title + single Description naming the
  * section only, never MCP write grants).
  *
- * KNOWN UNVERIFIED BEHAVIOR: this AlertDialog is designed to render while a
+ * KNOWN UNVERIFIED: this AlertDialog is designed to render while a
  * Settings Dialog.Root is still open. Radix documents nesting as supported,
  * but this codebase has no prior example and jsdom cannot assert focus-trap
  * handoff or Escape-key layering. Those two behaviors are owed to the
- * human-verify checkpoint in plan 32-11 — do not treat their absence here as
+ * human-verify checkpoint — do not treat their absence here as
  * a gap in this component's own test coverage.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";

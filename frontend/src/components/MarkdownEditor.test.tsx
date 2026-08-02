@@ -1,12 +1,8 @@
 /**
- * MarkdownEditor tests.
+ * The IME gate is verified by code presence only — jsdom does not dispatch
+ * compositionstart/end natively.
  *
- * Coverage: EDIT-01 cursor stability (parent re-render does not re-instantiate
- * the editor); ref API (setContent/getContent round-trip; applyServerUpdate does
- * NOT trigger onChange); focus(); IME gate (verified by code presence — jsdom
- * does not dispatch compositionstart/end natively).
- *
- * Test environment: jsdom (better CM6 compatibility than happy-dom).
+ * Environment is jsdom rather than happy-dom, which CM6 tolerates better.
  */
 import { forwardRef, useImperativeHandle, useRef, useState, type ReactElement } from "react";
 import { render, act, waitFor } from "@testing-library/react";

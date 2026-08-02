@@ -1,8 +1,7 @@
 /**
  * bookmarkTree.utils — pure helpers turning a bookmarks document into the
- * SAME ArboristNode shape FileTree feeds into TreeView (quick task
- * 260719-jv1, item 5). Mirrors fileTree.utils.ts's adaptTree/adaptToArborist
- * role for the Notes tree.
+ * SAME ArboristNode shape FileTree feeds into TreeView. Mirrors
+ * fileTree.utils.ts's adaptTree/adaptToArborist role for the Notes tree.
  *
  * Two-level shape (bookmarks have no nesting, BOOK-03): each
  * BookmarkFolder becomes a `bookmark-folder` ArboristNode containing its
@@ -114,8 +113,7 @@ export function buildBookmarkMenu(
 /** Discriminated dispatch decision for a bookmark drag-drop, computed by
  *  computeBookmarkMoveDispatch — mirrors fileTree.utils.ts's
  *  computeMoveTarget role (a pure, directly-testable core so the real drag
- *  gesture itself only needs proving once, in a real browser — Task 7 /
- *  the "verify DnD with real mouse" memory). */
+ *  gesture itself only needs proving once, in a real browser). */
 export type BookmarkMoveDispatch =
   | { action: "noop" }
   | { action: "moveToFolder"; bookmarkIds: string[]; folderId: string | null }

@@ -193,7 +193,6 @@ describe("TC-9: annotation-present", () => {
 describe("TC-10: no-widget-on-active-line (reveal / U2)", () => {
   it("no widget decoration emitted when cursor is on the task line (pos 2 inside TaskMarker)", () => {
     // reveal model: caret ON the task line → raw text visible, no widget.
-    // This test is RED until plan 02 lands (taskCheckboxPlugin gains the cursor-line guard).
     const view = makeView(UNCHECKED_TASK_DOC, 2);
     const decos = collectCheckboxDecos(view);
     const widgetDecos = decos.filter(d => d.hasWidget);
@@ -207,7 +206,6 @@ describe("TC-11: widget-on-off-cursor-line (reveal / U2)", () => {
     // "- [ ] parent" is 12 chars + '\n' = 13 chars offset to line 2.
     // Place the cursor on the child line (pos 14 = first char of "  - [ ] child")
     // so the parent task line (line 1) is off-cursor and should emit a widget.
-    // This test is RED until plan 02 lands.
     const view = makeView(NESTED_TASK_DOC, 14);
     const decos = collectCheckboxDecos(view);
     const widgetDecos = decos.filter(d => d.hasWidget);

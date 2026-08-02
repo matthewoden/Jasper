@@ -34,7 +34,7 @@ vi.mock("./sessionId", () => ({
 }));
 
 // treeResource is rebuilt fresh here with the REAL createResource (mirrors
-// plan 07's useBacklinks.test.ts pattern) so ws.onopen's explicit
+// useBacklinks.test.ts's pattern) so ws.onopen's explicit
 // treeResource.invalidate() call and every mutation-event publish() below
 // exercise the real invalidation wiring end to end — only the network-facing
 // fetch (mockGetTree) is faked.

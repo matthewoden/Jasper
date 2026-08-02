@@ -90,7 +90,7 @@ export interface TreeViewProps<T extends TreeViewNode> {
    * it with a target-folder-only highlight (rendered per-row via
    * NodeApi.willReceiveDrop in TreeRow). Omit to keep the default
    * insertion-line behavior — BookmarksPanel relies on it for in-folder
-   * reordering (quick task 260719-jv1) and does not pass this prop.
+   * reordering and does not pass this prop.
    */
   renderCursor?: ElementType<CursorProps>;
   renderRow: (props: TreeViewRenderRowProps<T>) => ReactNode;

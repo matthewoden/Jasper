@@ -93,7 +93,7 @@ beforeEach(() => {
   Element.prototype.releasePointerCapture = vi.fn();
 });
 
-describe("<TabStrip /> rendering (Task 1)", () => {
+describe("<TabStrip /> rendering", () => {
   it("renders one TabPill per tab and a tablist", () => {
     renderStrip();
     expect(screen.getByRole("tablist", { name: "Open tabs" })).toBeInTheDocument();
@@ -322,7 +322,7 @@ describe("<TabStrip /> rendering (Task 1)", () => {
   });
 });
 
-describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
+describe("<TabStrip /> keyboard shortcuts", () => {
   it("TAB-11: Alt+] calls onCycleTab(1)", () => {
     const h = renderStrip();
     // macOS Option-key composition remaps Alt+] to key:"'" — dispatch the real
@@ -403,7 +403,7 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
   });
 });
 
-describe("<TabStrip /> active-pane gating (25-06 Task 1)", () => {
+describe("<TabStrip /> active-pane gating", () => {
   it("Alt+W in a leaf that is NOT the active pane is a no-op", () => {
     usePaneStore.setState({ activePaneId: "some-other-leaf" });
     const h = renderStrip({ activeTabId: "b" });

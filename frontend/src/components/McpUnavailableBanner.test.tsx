@@ -1,13 +1,3 @@
-/**
- * Tests for the MCP Unavailable Banner.
- *
- * Validates:
- *   - Renders nothing when mcp is undefined (older/empty admin/status response)
- *   - Renders nothing when mcp.up === true
- *   - Renders "AI tools unavailable" + reason copy when mcp.up === false
- *   - Falls back to generic port-6684 copy when reason is absent
- *   - Dismiss hides the banner for this session (local state)
- */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

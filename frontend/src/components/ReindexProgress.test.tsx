@@ -1,12 +1,6 @@
 /**
- * Tests for the Surface 3 ReindexProgress overlay.
- *
- * Component is purely presentational under the W-4 contract — parent owns
- * the phase enum. These tests pass `phase` directly as a prop and assert:
- *   - idle renders nothing
- *   - starting + running render the same headline
- *   - completing fires onClose after the success transient (1500ms)
- *   - error renders try-again + close affordances; both are wired
+ * Purely presentational — the parent owns the phase enum, so these tests pass
+ * `phase` directly as a prop rather than driving a state machine.
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

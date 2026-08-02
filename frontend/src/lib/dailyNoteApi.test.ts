@@ -1,14 +1,7 @@
 /**
- * Tests for dailyNoteApi — typed GET /daily-notes/{date} wrapper, backed by
- * a pass-through keyed resource (never cached, still coalesced).
- *
- * The client module is mocked so tests can spy on .GET calls without
- * a real network connection. Coverage:
- *   - Happy path: returns NoteDetail on 200/201
- *   - Error path: throws on client error
- *   - Empty response: throws on missing data
- *   - Correct path key + params passed through
- *   - Concurrent same-date calls coalesce into one client.GET
+ * The client module is mocked so .GET can be spied without a network connection.
+ * The resource behind the wrapper is pass-through — never cached, still coalesced,
+ * which the concurrent same-date case pins.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

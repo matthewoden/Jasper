@@ -2,7 +2,7 @@
  * ResetConfirmDialog tests. The nesting smoke test proves the confirm renders
  * without unmounting the outer Dialog.Content under jsdom — it does NOT (and
  * cannot, under jsdom) prove focus-trap handoff or Escape-key scoping. Those
- * remain owed to the human-verify checkpoint in plan 32-11 (see file header).
+ * remain owed to human verification (see file header).
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { fireEvent, render, screen } from "@testing-library/react";

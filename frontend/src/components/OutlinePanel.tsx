@@ -1,14 +1,9 @@
 /**
- * OutlinePanel — indented, collapsible heading list for the active note's
- * live CM6 document (RSIDE-01).
+ * Body-only component: no section header, since the RightRail's SectionHeader
+ * wraps it. Reads outlineHeadings + scrollToHeading from useOutlineStore, written
+ * by the active MarkdownEditor instance.
  *
- * Body-only component: no section header (SectionHeader wraps this in
- * plan 04's RightRail rework). Reads outlineHeadings + scrollToHeading from
- * useOutlineStore (written by the active MarkdownEditor instance).
- *
- * Fold state is session-level (component useState, not persisted) per
- * CONTEXT.md's explicit discretion grant — collapsing a parent hides
- * every row until the next heading at an equal-or-shallower level.
+ * Fold state is session-level (component useState, not persisted).
  */
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";

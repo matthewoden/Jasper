@@ -162,7 +162,7 @@ vi.mock("../lib/notesApi", () => {
 
 
 // treeResource is rebuilt fresh here with the REAL createResource (mirrors
-// plan 07's useBacklinks.test.ts pattern) so useFileTree's real
+// useBacklinks.test.ts's pattern) so useFileTree's real
 // useResource(treeResource) wiring is exercised — only the network-facing
 // fetch (mockGetTree) is faked. "mock"-prefixed identifiers are the
 // exception Vitest's vi.mock hoisting allows to be referenced inside the

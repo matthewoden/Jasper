@@ -621,7 +621,6 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
     // a .cm-marker decoration on the ListMark range so the raw '-' is muted-but-visible.
     // taskCheckboxPlugin emits nothing on-cursor (per TC-10), so livePreviewPlugin owns
     // the on-cursor ListMark styling.
-    // This test is RED until plan 02 lands (livePreviewPlugin TC-7 guard adjustment).
     const doc = "- [ ] task\nanother line";
     const view = makeGFMView(doc, 2); // cursor on task line (pos 2 inside TaskMarker)
     const plugin = view.plugin(livePreviewPlugin);

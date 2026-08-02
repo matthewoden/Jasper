@@ -1,5 +1,5 @@
 /**
- * openNoteInLeaf tests (30-02 Task 2): "New note to the right" must clamp
+ * "New note to the right" must clamp
  * its insertion index to the pinned/unpinned boundary — a freshly
  * created (always-unpinned) tab can never land inside a leaf's pinned group,
  * even when invoked on a pinned tab with more pinned tabs after it.

@@ -75,7 +75,7 @@ export interface LeafPaneProps {
   deletedTabIds: Set<string>;
   /** Derived from useFileTree by note UUID (TAB-12 live rename) — shared across every leaf. */
   titleForTab: (noteId: string) => string;
-  /** Flush-aware close (leafId-scoped; the caller owns the flush+confirm orchestration, mirrors Plan 05's App.tsx contract). */
+  /** Flush-aware close (leafId-scoped; the caller owns the flush+confirm orchestration). */
   onRequestClose: (leafId: string, tabId: string) => void;
   onCloseOthers: (leafId: string, tabId: string) => void;
   onCloseToRight: (leafId: string, tabId: string) => void;
@@ -116,9 +116,8 @@ export function LeafPane({
   isRightmostLeaf,
   style,
 }: LeafPaneProps) {
-  // Per-tab ref bookkeeping, scoped to THIS leaf's own open tabs (mirrors the
-  // pre-Phase-25 App.tsx-level pattern, now one instance per leaf instead of
-  // one for the whole workspace).
+  // Per-tab ref bookkeeping, scoped to THIS leaf's own open tabs — one
+  // instance per leaf rather than one for the whole workspace.
   const handlerRefs = useRef<Record<string, MutableRefObject<EditorPaneHandlers | null>>>({});
   const flushRefs = useRef<
     Record<string, MutableRefObject<{ flush: () => Promise<void> } | null>>

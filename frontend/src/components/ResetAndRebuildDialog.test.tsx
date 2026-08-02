@@ -1,5 +1,5 @@
 /**
- * Tests for the Surface 2 Reset-and-Rebuild Confirmation dialog.
+ * Tests for the Reset-and-Rebuild confirmation dialog.
  *
  * Covers the locked copy and interaction contract.
  * Radix AlertDialog manages focus trap + ESC + outside-click; we assert

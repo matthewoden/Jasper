@@ -1,12 +1,6 @@
 /**
- * Tests for the admin API wrappers. Mirrors notesApi.test.ts's mocking
- * pattern: spy on client.GET / client.POST so we never hit the network.
- *
- * Validates:
- *   - getAdminStatus calls client.GET with the locked path key
- *   - postAdminReindex defaults to mode="full"
- *   - postAdminReindex("incremental") sends the alternate mode verbatim
- *   - error responses are propagated unmodified (not thrown)
+ * Mirrors notesApi.test.ts's mocking pattern: spy on client.GET / client.POST so
+ * the network is never hit. Error responses are asserted as propagated, not thrown.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

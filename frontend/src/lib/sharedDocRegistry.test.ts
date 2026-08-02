@@ -1,14 +1,10 @@
 /**
- * sharedDocRegistry tests.
+ * Pins two things that are easy to regress: the syncAnnotation guard that stops
+ * re-broadcast loops between N mirrored views, and the single undo-history owner
+ * with promotion on primary unregister.
  *
- * Coverage (Task 1 — WS-10): N-view live mirroring via syncDispatch, with each
- * view keeping its own independent selection, and the syncAnnotation guard
- * that prevents re-broadcast loops.
- *
- * Coverage: single undo-history owner + promotion on
- * primary unregister, following the spike's documented outcome
- * (history does NOT survive Compartment.reconfigure — keep the closing
- * primary's EditorView alive off-DOM instead of destroying it).
+ * History does NOT survive Compartment.reconfigure, which is why the closing
+ * primary's EditorView is kept alive off-DOM instead of destroyed.
  */
 import { describe, expect, it, vi } from "vitest";
 import { redo, undo } from "@codemirror/commands";
@@ -36,7 +32,7 @@ function makeView(noteId: string, doc: string, isPrimary: boolean): EditorView {
   return view;
 }
 
-/** Builds a view wired through syncDispatch AND historyExtensionFor (Task 2). */
+/** Builds a view wired through syncDispatch AND historyExtensionFor. */
 function makeHistoryView(noteId: string, doc: string, isPrimary: boolean): EditorView {
   const ref: { view?: EditorView } = {};
   const view = new EditorView({
@@ -51,7 +47,7 @@ function makeHistoryView(noteId: string, doc: string, isPrimary: boolean): Edito
   return view;
 }
 
-describe("sharedDocRegistry — Task 1: registry + syncDispatch (N-view live mirroring)", () => {
+describe("sharedDocRegistry — registry + syncDispatch (N-view live mirroring)", () => {
   it("mirrors an insert from view A to view B while B's selection stays put", () => {
     const noteId = "note-1";
     const viewA = makeView(noteId, "hello", true);
@@ -138,7 +134,7 @@ describe("sharedDocRegistry — Task 1: registry + syncDispatch (N-view live mir
   });
 });
 
-describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on-unregister", () => {
+describe("sharedDocRegistry — single undo-history owner + promotion-on-unregister", () => {
   it("only the primary records history; undo/redo invoked via the primary affects the shared doc", () => {
     const noteId = "note-5";
     const viewA = makeHistoryView(noteId, "hello", true); // primary

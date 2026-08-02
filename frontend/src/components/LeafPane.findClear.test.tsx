@@ -16,7 +16,7 @@ vi.mock("../lib/notesApi", () => ({
 }));
 
 // treeResource is rebuilt fresh here with the REAL createResource (mirrors
-// plan 07's useBacklinks.test.ts pattern) so useFileTree's real
+// useBacklinks.test.ts's pattern) so useFileTree's real
 // useResource(treeResource) wiring is exercised — only the network-facing
 // fetch (mockGetTree) is faked. "mock"-prefixed identifiers are the
 // exception Vitest's vi.mock hoisting allows to be referenced inside the
@@ -141,7 +141,7 @@ function pressFindShortcut(cmContent: Element) {
   fireEvent.keyDown(cmContent, { key: "f", code: "KeyF", ctrlKey: true });
 }
 
-describe("LeafPane + real EditorPane/MarkdownEditor — Find highlight clears on dismiss (260718-n6a Task 5)", () => {
+describe("LeafPane + real EditorPane/MarkdownEditor — Find highlight clears on dismiss", () => {
   it("Escape (bar's own keydown) clears .cm-jasper-search-match to zero", async () => {
     const { container } = renderLeaf();
     await flushMicrotasks();

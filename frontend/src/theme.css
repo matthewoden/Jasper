@@ -54,8 +54,7 @@
      of accent selection, matching tip/warning/danger. */
   --color-callout-info: #7dd3fc; /* sky-300 — note + info callouts only */
 
-  /* RESERVED for migration banner
-     vertical padding (Surface 1) and toast vertical padding (Surface 5).
+  /* RESERVED for the migration banner's and toast's vertical padding.
      No other use site. */
   --spacing-md-tight: 12px;
 

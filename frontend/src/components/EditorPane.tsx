@@ -166,7 +166,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     autosaveMsRef.current = autosaveMs ?? AUTOSAVE_DEBOUNCE_MS;
   }, [autosaveMs]);
 
-  // Per-note controller (Plan 04): a stable singleton per noteId, shared by
+  // Per-note controller: a stable singleton per noteId, shared by
   // every pane showing that note. Safe to derive during render — the
   // underlying map is idempotent, so a duplicate render (StrictMode) never
   // creates a second instance.

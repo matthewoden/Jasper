@@ -1626,7 +1626,7 @@ describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs", () => {
 });
 
 
-// Test (30-02 Task 2): "New note to the right" pinned-boundary clamp
+// "New note to the right" pinned-boundary clamp
 // now lives in frontend/src/lib/openNoteInLeaf.test.ts — openNoteInLeaf was
 // extracted out of App.tsx into its own lib module so App.tsx's exports stay
 // component-only (react-refresh/only-export-components).

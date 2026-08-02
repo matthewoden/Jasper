@@ -21,7 +21,7 @@ const getTreeMock = vi.fn();
 const filesApiMoveFileMock = vi.fn();
 
 // treeResource is rebuilt fresh here with the REAL createResource (mirrors
-// plan 07's useBacklinks.test.ts pattern) so useFileTree()'s auto-refresh
+// useBacklinks.test.ts's pattern) so useFileTree()'s auto-refresh
 // contract (broadcastRefresh -> treeResource.invalidate()) is exercised for
 // real — getTreeMock stays a separate mock since useTreeMutations.ts's own
 // moveFile() 404-reconciliation path calls treeApi.getTree() directly,

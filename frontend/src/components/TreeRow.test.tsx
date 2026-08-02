@@ -1,12 +1,8 @@
 /**
- * TreeRow tests — row anatomy, active row, hover state.
+ * The component receives a stub NodeApi shape (cast as any — react-arborist's
+ * NodeApi class is internal).
  *
- * The component receives a stub NodeApi shape (we cast as any since
- * react-arborist's NodeApi class is internal). Tests cover folder vs.
- * note variants, single-click behavior, indent scaling, active-state
- * left-border, kebab placeholder + data-tree-row attributes for Plan
- * 03-07's context-menu hookup, and the no-dangerouslySetInnerHTML
- * gate (XSS hardening per the threat model).
+ * The no-dangerouslySetInnerHTML case is an XSS gate, not a style assertion.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";

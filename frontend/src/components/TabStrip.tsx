@@ -72,7 +72,7 @@ export interface TabStripProps {
   /** Derived from useFileTree by note UUID (TAB-12 live rename). */
   titleForTab: (noteId: string) => string;
   onSelectTab: (tabId: string) => void;
-  /** Flush-aware close (Plan 05 supplies the handler). */
+  /** Flush-aware close; the caller supplies the handler. */
   onRequestClose: (tabId: string) => void;
   onCloseOthers: (tabId: string) => void;
   onCloseToRight: (tabId: string) => void;
@@ -491,7 +491,7 @@ export function TabStrip({
       });
 
       // jsdom (unit tests) does not implement elementFromPoint — real browsers
-      // (and the E2E Playwright suite, Task 3) always do. Feature-detect so
+      // (and the E2E Playwright suite) always do. Feature-detect so
       // the drag lifecycle degrades to "no cross-pane hover" instead of
       // throwing under test.
       const hit =

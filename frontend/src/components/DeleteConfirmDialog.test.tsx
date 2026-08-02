@@ -80,7 +80,7 @@ describe("<DeleteConfirmDialog /> — folder variant (trash copy)", () => {
 
   it("TestDialog_FolderVariant_CopyIsIdenticalRegardlessOfContentsCount", () => {
     // the locked copy is a single generic sentence — it does not
-    // vary by noteCount/subfolderCount (unlike the pre-Phase-30 dialog).
+    // vary by noteCount/subfolderCount.
     render(
       <DeleteConfirmDialog
         open={true}

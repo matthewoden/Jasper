@@ -215,8 +215,8 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   );
 
   /**
-   * onRootDrop — drag-to-root (quick task 260719-jv1 follow-up). Fires
-   * when a bookmark is dropped in the tree's empty area (react-arborist's
+   * onRootDrop — drag-to-root. Fires when a bookmark is dropped in the
+   * tree's empty area (react-arborist's
    * onMove never fires there — TreeView's window-level listener catches
    * it instead). Reuses the same moveToFolder(bookmarkId, null) mutation
    * the kebab's "(No folder)" entry already uses. Bookmarks already at

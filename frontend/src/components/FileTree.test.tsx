@@ -681,7 +681,7 @@ describe("handleMove same-parent no-op (Gap 2)", () => {
     // Test-only stub: this describe block only ever constructs folder/note/
     // file TreeRowData (never bookmark kinds) — the trailing casts are
     // type-only, no behavior/assertion change (TreeRowData widened for
-    // quick task 260719-jv1's shared-tree-component work).
+    // the shared-tree-component work).
     const arboristNode: ArboristNode = {
       id:
         args.data.kind === "folder"

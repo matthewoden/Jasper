@@ -1,8 +1,8 @@
 /**
  * BookmarksPanel tests.
  *
- * Task 1: empty state, live-titled rows, open-in-active-pane, folder collapse.
- * Task 2 (appended below): "…" menu Remove/Move-to-folder, inline
+ * Covers the empty state, live-titled rows, open-in-active-pane, folder
+ * collapse, the "…" menu's Remove/Move-to-folder, and inline
  * "New bookmark folder" input, Sidebar wiring assertions live in Sidebar.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -82,7 +82,7 @@ async function renderPanel(ui: ReactElement) {
 
 /**
  * BookmarksPanel now renders bookmark rows through the shared TreeRow
- * (quick task 260719-jv1) — there's no `data-testid="bookmark-row-*"`
+ * — there's no `data-testid="bookmark-row-*"`
  * anymore. TreeRow exposes `data-tree-row` (bookmarkId/folderId) +
  * `data-tree-row-kind` ("bookmark"/"bookmark-folder") instead; these
  * helpers query by those attributes so the DOM-structure change doesn't
@@ -193,7 +193,7 @@ describe("BookmarksPanel", () => {
     expect(screen.getByText("Work")).toBeDefined();
   });
 
-  // --- Task 2: "…" menu (Remove / Move to folder), inline new-folder input ---
+  // --- "…" menu (Remove / Move to folder), inline new-folder input ---
 
   function openRowMenu(bookmarkId: string) {
     // TreeRow's kebab is aria-label="Row menu" (shared with Notes), not the

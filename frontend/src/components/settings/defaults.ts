@@ -1,13 +1,12 @@
 /**
- * DEFAULT_CONFIG — frontend mirror of `backend/internal/config/defaults.go`'s
- * `Defaults()`, scoped to the fields a per-pane Reset is allowed to
- * write. `server.port`, `server.dataDir`, and `mcp.port` are deliberately
- * omitted — a Reset must never rewrite the listening port or data directory.
+ * Frontend mirror of `backend/internal/config/defaults.go`'s `Defaults()`, scoped
+ * to the fields a per-pane Reset may write. `server.port`, `server.dataDir` and
+ * `mcp.port` are deliberately omitted — a Reset must never rewrite the listening
+ * port or data directory.
  *
- * TypeScript cannot see the Go source, so there is no compile-time link
- * between the two. The pairing is verified end-to-end by the phase-32 E2E
- * Reset assertions (plan 32-11), which compare a fresh vault's `GET /config`
- * against these values.
+ * TypeScript cannot see the Go source, so nothing links the two at compile time.
+ * The E2E Reset assertions compare a fresh vault's GET /config against these
+ * values, and are the only thing that catches drift.
  */
 import type { Config } from "../../lib/useConfig";
 

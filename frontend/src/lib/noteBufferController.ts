@@ -66,8 +66,8 @@ export interface NoteBufferController {
    * Fired once, synchronously, right after a save successfully renames the
    * note on disk (H1-driven move). WS `note:moved` broadcasts exclude the
    * originating session (SYNC-03), so the pane that JUST caused the rename
-   * would otherwise never see its own tree entry update — Plan 05's
-   * EditorPane call-site uses this to trigger its own refreshTree().
+   * would otherwise never see its own tree entry update; EditorPane uses this
+   * to trigger its own refreshTree().
    */
   subscribeRenamed(fn: (newPath: string) => void): () => void;
   /**

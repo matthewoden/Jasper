@@ -20,13 +20,13 @@ export const syncAnnotation = Annotation.define<boolean>();
 interface DocEntry {
   views: Set<EditorView>;
   primary: EditorView | null;
-  /** True once the primary has unregistered but was kept alive off-DOM because a survivor remained (Pattern 2 / Task 2). */
+  /** True once the primary has unregistered but was kept alive off-DOM because a survivor remained. */
   primaryDetached: boolean;
 }
 
 const registry = new Map<string, DocEntry>();
 
-/** Registers a live EditorView for a note. The first view (or an explicit isPrimary) owns undo history — see Pattern 2 / historyExtensionFor. */
+/** Registers a live EditorView for a note. The first view (or an explicit isPrimary) owns undo history — see historyExtensionFor. */
 export function registerView(noteId: string, view: EditorView, isPrimary: boolean): void {
   const entry = registry.get(noteId) ?? { views: new Set(), primary: null, primaryDetached: false };
   entry.views.add(view);

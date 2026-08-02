@@ -73,7 +73,7 @@ export type FileNodeData = {
 };
 
 /**
- * A bookmarked note row (quick task 260719-jv1, item 5). id is the
+ * A bookmarked note row. id is the
  * bookmark's own opaque id (NOT the note's id) — Remove/reorder act on
  * bookmarkId; activation and title resolution act on noteId.
  */

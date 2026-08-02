@@ -219,7 +219,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const cheatSheetOpen = useTreeStore((s) => s.cheatSheetOpen);
   const setCheatSheetOpen = useTreeStore((s) => s.setCheatSheetOpen);
 
-  // --- Pane-tree state (Plan 07 — replaces the flat useTabStore model) ----
+  // --- Pane-tree state (replaces the flat useTabStore model) -------------
   const paneDeletedTabIds = usePaneStore((s) => s.deletedTabIds);
 
   // Flush-confirm dialog state: set when an on-close flush rejects.
@@ -410,7 +410,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
 
   useDeepLink(tree !== null);
 
-  // --- Pane ↔ tree synchronization & persistence (Plan 07) ----------------
+  // --- Pane ↔ tree synchronization & persistence --------------------------
 
   // Keep useTreeStore.activeNoteId mirrored to the ACTIVE PANE's active tab
   // so the tree highlight, breadcrumbs, RightRail, and backlinks rail
@@ -711,8 +711,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       },
 
       // Palette invocation should NOT depend on the keyboard handler
-      // (Task 2, mirrors onToggleSidebar) — both this and
-      // handleAppBookmarkToggle (via the phase7 bus) call toggleBookmark
+      // (mirrors onToggleSidebar) — both this and handleAppBookmarkToggle
+      // call toggleBookmark
       // independently against the active pane's active note.
       onBookmarkCurrent:
         activeNoteId != null
@@ -802,7 +802,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
       {/* Two-row grid. Column 1: ActivityRibbon (48px, spans both rows) — the
           new far-left activity bar (RIBBON-01..04). Column 3: PaneTree spans
           BOTH rows (gridRow "1/3") — it owns its own internal per-leaf tab
-          strip + editor body layout (Plan 06/07), collapsing the prior
+          strip + editor body layout, collapsing the prior
           TabStrip(row1)/EditorPane(row2) split into PaneTree's own flex
           columns. Sidebar + RightRail also span both rows. StatusBar sits
           below the grid as a flex child. The fixed-track grid avoids

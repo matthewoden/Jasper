@@ -89,8 +89,8 @@ export function SidebarTabRow(): React.JSX.Element {
   const selectPanel = (panel: SidebarPanel) => {
     setSidebarPanel(panel);
     setNotesSidebarVisible(true);
-    // The pre-Phase-27 ribbon Search button focused the query input on open;
-    // the tab must too. rAF defers past React's commit so SidebarSearchPanel's
+    // Opening the Search tab must focus the query input. rAF defers past
+    // React's commit so SidebarSearchPanel's
     // focusSearch subscriber exists (same reasoning as handleAppCmdShiftF).
     if (panel === "search") {
       requestAnimationFrame(() => dispatchPhase7("focusSearch"));

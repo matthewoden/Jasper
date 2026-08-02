@@ -1,15 +1,3 @@
-/**
- * NoteNotFoundView.test — LOCKED-copy + CTA wiring.
- *
- * Coverage:
- *   - Heading "This note doesn't exist" rendered
- *   - Subtitle echoes the inline-quoted query when ?query is present
- *   - Subtitle falls back when ?query is absent
- *   - "Search notes" CTA navigates to /?search=<query>
- *   - "Open today's note" CTA calls useDailyNote.openToday
- *   - "Show file tree" CTA navigates to /
- *   - Footer fine-print "renames-resilient links" rendered
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
