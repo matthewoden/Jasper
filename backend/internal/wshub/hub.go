@@ -13,20 +13,11 @@ import (
 
 var _ notes.Broadcaster = (*Hub)(nil)
 
-// Hub is the registry of connected WebSocket clients and the broadcast
-// fan-out point. Per-client outbound buffering + non-blocking sends
-// ensure slow clients are dropped without blocking the broadcast goroutine.
+// Hub is the client registry and broadcast fan-out. Per-client buffering plus
+// non-blocking sends drop slow clients rather than stalling the broadcast.
 //
-// Concurrency:
-//   - mu (RWMutex) guards the clients map.
-//   - Broadcast holds RLock (read-only iteration).
-//   - register / unregister hold Lock (mutate the map).
-//   - closeSlow is invoked in a goroutine so the broadcast loop never
-//     waits on the unregister Lock.
-//
-// marshalFailures (atomic) counts broadcast attempts dropped because
-// json.Marshal returned an error on the payload (e.g. a chan embedded,
-// cyclic struct). MarshalFailureCount() exposes the value for tests.
+// Broadcast holds only RLock, and closeSlow runs in its own goroutine, so the
+// broadcast loop never waits on the unregister Lock.
 type Hub struct {
 	log             *slog.Logger
 	originPatterns  []string

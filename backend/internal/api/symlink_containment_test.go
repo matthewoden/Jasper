@@ -13,19 +13,11 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// newSymlinkEscapeVault builds a vault whose notes/ contains a symlinked
-// directory pointing outside it, with a secret file behind the link:
-//
-//	<data>/notes/shared  ->  <external>/
-//	<external>/secret.txt
-//
-// This shape is not exotic — `notes/shared -> /external/docs`
-// is a common Obsidian habit, which is exactly why the leaf-only os.Lstat the
-// file and attachment handlers used was not enough. Lstat on
-// notes/shared/secret.txt reports an ordinary regular file; the symlink is on
-// an intermediate component, so os.ReadFile follows it straight out of the vault.
-//
-// Returns the wired server, the data dir, and the external dir.
+// newSymlinkEscapeVault builds a vault whose notes/ holds a symlinked directory
+// pointing outside it — `notes/shared -> /external/docs`, a common Obsidian
+// habit. This is why a leaf-only os.Lstat is not enough: Lstat on
+// notes/shared/secret.txt reports an ordinary file, because the symlink is on
+// an intermediate component.
 func newSymlinkEscapeVault(t *testing.T, summaries []notes.NoteSummary) (*Server, string, string) {
 	t.Helper()
 
@@ -163,18 +155,10 @@ func TestGetAttachment_RejectsSymlinkedAncestor(t *testing.T) {
 	}
 }
 
-// TestContainment_RevealsNothingAboutFilesOutsideTheVault closes an oracle
-// that a naive ordering reintroduces.
-//
-// Checking the leaf before containment is tempting, because it lets a
-// symlinked leaf keep its documented 403 symlink_rejected. But it means the
-// response distinguishes an existing file behind a symlinked ancestor from a
-// missing one — 400 vs 404 — which is an existence probe for arbitrary paths
-// outside the vault. No content leaks, and it needs the same user-created
-// symlink as the original bug, but it is the same class of defect and the
-// same handlers.
-//
-// Containment must therefore be decided before the leaf is stat'ed at all.
+// Containment must be decided BEFORE the leaf is stat'ed. Checking the leaf
+// first is tempting (it preserves the 403 symlink_rejected), but then 400-vs-404
+// distinguishes an existing file behind a symlinked ancestor from a missing one
+// — an existence probe for arbitrary paths outside the vault.
 func TestContainment_RevealsNothingAboutFilesOutsideTheVault(t *testing.T) {
 	t.Parallel()
 	srv, _, _ := newSymlinkEscapeVault(t, nil)

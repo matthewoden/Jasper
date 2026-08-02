@@ -15,26 +15,14 @@ import (
 	"time"
 )
 
-// TestAtomicWrite_KillNineSubprocess is the strict-mode crash-during-write
-// durability gate + the success criterion enumerated in the
-// The durability must-have: "kill -9 mid-write under the AtomicWrite test loop
-// NEVER produces a zero-byte target file."
+// TestAtomicWrite_KillNineSubprocess is the crash-during-write durability gate:
+// kill -9 mid-write must NEVER produce a zero-byte target.
 //
-// Implementation strategy (no external dependencies):
+// It forks itself as a helper that writes in a tight loop, SIGKILLs it at a
+// randomized delay, and asserts the target is absent or complete — never
+// partial, never a leftover .tmp.*.
 //
-//   - The test forks itself via `os.Args[0] -test.run=TestAtomicWrite_KillNineHelper`
-//     with an env var `JASPER_KILL9_HELPER=1` and a target-file env var.
-//   - The helper process performs AtomicWrite in a tight loop, writing its
-//     PID + iteration counter into the target.
-//   - The parent test SIGKILLs the helper at a randomized millisecond delay,
-//     then asserts the target file is either absent (helper killed before
-//     first write completed) or contains a complete WRITE-NNN payload —
-//     never zero bytes, never partial, never a leftover .tmp.*.
-//   - The cycle repeats for `iterations` rounds.
-//
-// On Windows (not a Phase-1 target) this test is skipped because SIGKILL
-// is not available; the parallel-goroutines variant in atomic_test.go is
-// the acceptable floor cross-platform.
+// Skipped on Windows, where SIGKILL is unavailable.
 func TestAtomicWrite_KillNineSubprocess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("kill -9 simulation not portable to windows; see atomic_test.go for the parallel-goroutines floor")

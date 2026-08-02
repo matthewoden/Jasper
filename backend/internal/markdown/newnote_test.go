@@ -132,16 +132,7 @@ func TestNewNoteContent_Format(t *testing.T) {
 	}
 }
 
-// TestNewNoteContent_MatchesUISpec verifies that the scaffold exactly matches
-// the canonical frontmatter scaffold:
-//
-//	---
-//	tags: []
-//	---
-//
-//	# {Title}
-//
-// (trailing blank line for cursor placement ease)
+// The scaffold is locked copy — assert it byte-for-byte.
 func TestNewNoteContent_MatchesUISpec(t *testing.T) {
 	const title = "My Note"
 	const expected = "---\ntags: []\n---\n\n# My Note\n\n"

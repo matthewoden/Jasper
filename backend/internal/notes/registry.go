@@ -145,17 +145,11 @@ func (r *Registry) Hydrate(summaries []NoteSummary) {
 	}
 }
 
-// FindByTitle returns every note whose title (NFC + lowercase) equals
-// titleLower. Results sorted same-folder-first (in alphabetical order by
-// path), then all others alphabetically. Pass "" for sourceFolder to skip
-// the same-folder bias.
+// FindByTitle returns matches sorted same-folder-first; pass "" for
+// sourceFolder to skip the bias. The caller normalizes titleLower.
 //
-// The caller must normalize titleLower to NFC + lowercase before calling
-// (the registry does a final NFC normalization on the key, so the lookup
-// is robust to NFD input).
-//
-// Returns a non-nil empty slice (not nil) when no matches are found, so
-// callers can distinguish "zero results" from "not queried yet".
+// Returns a non-nil empty slice when there are no matches, so callers can tell
+// "zero results" from "not queried yet".
 func (r *Registry) FindByTitle(titleLower, sourceFolder string) []NoteRecord {
 	key := titleKey(titleLower)
 

@@ -231,19 +231,10 @@ func TestDailyNotesHandler_HTTP(t *testing.T) {
 	})
 }
 
-// TestDailyNotesHandler_GetIsReadOnly is the state-changing-GET regression guard.
-//
-// The attack it closes needs no JavaScript and no CORS: any page the victim
-// visits can embed
-//
-//	<img src="http://127.0.0.1:6683/api/v1/daily-notes/2099-12-31">
-//
-// and the file lands in the vault. The Host is legitimately loopback, GET is
-// a safe method so csrfOriginMiddleware never inspects it, and the attacker
-// never needs to read the response — the side effect is the payload. The
-// Host allowlist does not help here; these are independent fixes.
-//
-// The general rule this pins: no GET endpoint mutates the filesystem.
+// No GET endpoint may mutate the filesystem. The attack needs no JavaScript and
+// no CORS — an <img src> pointing at a get-or-create GET lands a file in the
+// vault, and neither the Origin guard (GET is safe) nor the Host allowlist
+// (loopback is legitimate) sees it.
 func TestDailyNotesHandler_GetIsReadOnly(t *testing.T) {
 	t.Parallel()
 	srv, dataDir, _ := newDailyTestServer(t, "")

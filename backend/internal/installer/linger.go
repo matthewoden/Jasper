@@ -7,19 +7,11 @@ import (
 	"runtime"
 )
 
-// EnableLingerLinux invokes `loginctl enable-linger $USER` so the
-// systemd user service runs even when no shell is logged in.
-// kardianos/service does NOT call enable-linger — verified by reading
-// service_systemd_linux.go.Install() against master on 2026-05-17.
+// EnableLingerLinux runs `loginctl enable-linger $USER`; kardianos/service does
+// not. Without it the user unit only lives while a shell is logged in, so on
+// WSL2 closing the terminal stops Jasper.
 //
-// Without linger, the user unit only runs while at least one shell is
-// logged in. On WSL2 that means closing the terminal stops Jasper;
-// on a normal Linux laptop, logout (or `loginctl terminate-user`) does
-// the same. Linger lifts that constraint.
-//
-// Idempotent: loginctl returns 0 if the user is already linged.
-//
-// No-op on non-Linux GOOS.
+// Idempotent. No-op on non-Linux.
 func EnableLingerLinux() error {
 	if runtime.GOOS != "linux" {
 		return nil

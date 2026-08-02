@@ -22,21 +22,11 @@ type WikiLinkRef struct {
 	Fragment string
 }
 
-// ExtractWikilinks walks the goldmark AST and returns every wikilink.Node
-// found in the markdown body. Code spans, fenced code blocks, and YAML
-// frontmatter content are excluded automatically:
+// ExtractWikilinks returns every wikilink in source order, duplicates included —
+// the caller deduplicates.
 //
-//   - goldmark/wikilink respects CommonMark inline parsing rules — code
-//     context suppresses the wiki-link tokenizer (empirically verified by
-//     TestExtractWikilinks_A1Assumption).
-//   - goldmark/frontmatter excludes the YAML/TOML block from the body parse,
-//     so [[Title]] values inside frontmatter are never extracted.
-//
-// Return value ordering: source order (first occurrence first). Duplicates
-// within a single note are preserved at this layer; the caller deduplicates
-// per UNIQUE (source_id, target_title) in the backlinks table.
-//
-// Returns nil for nil or empty input.
+// Code spans, fenced blocks and frontmatter are excluded for free by goldmark's
+// own parsing, not by anything here.
 func ExtractWikilinks(content []byte) []WikiLinkRef {
 	if len(content) == 0 {
 		return nil

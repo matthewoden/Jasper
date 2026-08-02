@@ -42,23 +42,14 @@ func IsWSL() bool {
 
 var mntDrive = regexp.MustCompile(`^/mnt/([a-z])(?:/(.*))?/?$`)
 
-// WslToWindows converts a WSL absolute path under /mnt/<drive>/... to its
-// Windows-form equivalent.
+// WslToWindows converts /mnt/<drive>/... to its Windows form:
+// /mnt/c/Users/you → C:\Users\you
 //
-//	/mnt/c                       → C:\
-//	/mnt/c/Users/you             → C:\Users\you
-//	/mnt/c/Users/you/Documents/  → C:\Users\you\Documents
+// Returns "" for anything with no Windows equivalent. WSL does expose Linux
+// paths as \\wsl$\<distro>\..., but that form is deliberately not returned —
+// it is distro-specific and rarely what a Windows user means by a folder.
 //
-// Returns "" when the input has no Windows equivalent: Linux-only paths like
-// /home/me/..., relative paths, the empty string, or any path that doesn't
-// match the /mnt/<drive>(/...) prefix. WSL exposes Linux paths to Windows
-// via the \\wsl$\<distro>\... UNC namespace but we deliberately don't return
-// that form — it's awkward, distro-specific, and rarely what a Windows user
-// is thinking of when they pick a folder.
-//
-// Pure function, no shell-out. Callers don't need to set up a wslpath binary
-// or worry about latency — this is the same arithmetic wslpath would do for
-// the /mnt/ case.
+// Pure arithmetic; no wslpath shell-out.
 func WslToWindows(wslPath string) string {
 	m := mntDrive.FindStringSubmatch(wslPath)
 	if m == nil {

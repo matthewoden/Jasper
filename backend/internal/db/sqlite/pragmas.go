@@ -1,15 +1,9 @@
-// Package sqlite is the writer/reader-split SQLite access layer for the
-// Jasper derived index (DATA-02..05). The filesystem is the source of
-// truth (DATA-01); every row in this database is reconstructable by
-// walking the notes/ directory. Wiping the SQLite file is never data
-// loss — see DESIGN.md §4.4.
+// Package sqlite is the writer/reader-split access layer for the derived index.
+// The filesystem is the source of truth (ADR-0001); wiping this database is
+// never data loss.
 //
-// This file holds the canonical pragma list. The pragmas are applied
-// twice: once via the DSN _pragma= query parameters parsed by
-// modernc.org/sqlite, and once again as defense-in-depth via
-// applyConnectionPragmas after Ping. The DSN approach is the
-// driver-supported "every new connection gets these" path; the
-// post-Ping path catches any silently-ignored DSN pragmas.
+// Pragmas are applied twice — via the DSN, then again after Ping — because a
+// DSN pragma the driver silently ignores would otherwise go unnoticed.
 package sqlite
 
 import (
@@ -18,16 +12,10 @@ import (
 	"fmt"
 )
 
-// Pragmas is the locked DATA-04 pragma list applied to every connection
-// (writer or reader) on open. The slice is exported so tests can iterate
-// it identically.
-//
-// The order matters slightly: journal_mode=WAL must be first so the rest
-// of the pragmas land against a database in WAL mode. busy_timeout is
-// applied after WAL so any subsequent BEGIN inside open paths gets the
-// 5s wait window. foreign_keys=ON is the SQLite default in many
-// environments but is explicit here so the project never depends on the
-// driver's default.
+// Pragmas is applied to every connection on open. Order matters:
+// journal_mode=WAL must be first so the rest land against a WAL database, and
+// busy_timeout after it so any BEGIN in an open path gets the wait window.
+// foreign_keys=ON is explicit so nothing depends on the driver's default.
 var Pragmas = []string{
 	"PRAGMA journal_mode=WAL",
 	"PRAGMA synchronous=NORMAL",

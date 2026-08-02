@@ -1,15 +1,7 @@
-// Package markdown holds tiny stdlib-only markdown helpers shared
-// between the indexer (package index) and the notes service (package
-// notes). It exists as a leaf package — depends on stdlib only — so
-// that both packages can import it without creating an import cycle.
+// Package markdown holds markdown helpers shared by index and notes.
 //
-// The cycle is real: package index imports package notes for NoteRecord,
-// NoteSummary, and the sentinel errors. Keeping this package as a leaf
-// prevents that cycle from forming.
-//
-// index.ExtractTitle (backend/internal/index/title.go) is a thin wrapper
-// that delegates to markdown.ExtractTitle so existing call sites inside
-// the index package continue to compile unchanged.
+// It MUST stay a leaf package: index imports notes, so anything both need has
+// to depend on nothing but stdlib or the cycle forms.
 package markdown
 
 import (
@@ -19,32 +11,13 @@ import (
 	"strings"
 )
 
-// ExtractTitle returns the first H1 heading from markdown content, or
-// the filename without ".md" (filepath.Base + strip ".md") as fallback.
+// ExtractTitle returns the first H1, falling back to the filename without ".md".
 //
-// YAML frontmatter (--- ... ---) at the top of the file is skipped
-// before scanning for headings. The scanner enters "in-frontmatter"
-// mode if the very first non-empty line is "---" and exits on the
-// matching closing "---".
+// Titles come back VERBATIM — no capitalization, truncation or normalization —
+// because wiki-link resolution has to match character-for-character.
 //
-// Titles are returned VERBATIM — no auto-capitalization, no truncation,
-// no Unicode normalization. The UI is responsible for any truncation;
-// the indexer stores the title as-is so wiki-link resolution can match
-// character-for-character.
-//
-// Defensive behaviors:
-//
-//   - Empty / nil content → filename fallback.
-//   - Frontmatter without a closing "---" → consumed to EOF; filename
-//     fallback applies.
-//   - Long lines: scanner buffer is bumped to 1 MiB so a degenerate
-//     "single 100 KB line" file does not error out.
-//   - "#" with no space (e.g. "#tag"): treated as not-a-heading per
-//     CommonMark §4.2.
-//   - Multiple leading "#" (e.g. "## H2"): treated as not-an-H1.
-//
-// index.ExtractTitle is a thin re-export wrapper; notes.Service.Move
-// calls markdown.ExtractTitle directly.
+// "#tag" with no space is not a heading (CommonMark §4.2), and the scanner
+// buffer is 1 MiB so a single-100-KB-line file does not error out.
 func ExtractTitle(content []byte, fallbackPath string) string {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 

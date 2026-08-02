@@ -277,20 +277,9 @@ func TestSwap_GrantsAreVaultScoped(t *testing.T) {
 	}
 }
 
-// TestSwap_HandlerIsNilDuringSwap — V-TEST-4b.
-//
-// Verifies that the swappable HTTP handler transitions through nil (→ 503)
-// during a vault switch, preventing clients from reading stale vault-A grant
-// responses and writing grants to the wrong vault's DB.
-//
-// The test registers a teardownHook on the App that unblocks a goroutine once
-// teardown begins. The goroutine probes GET /api/v1/mcp/grants and asserts it
-// receives 503 (not a stale 200 from vault A). After SwitchVault returns, the
-// handler must be non-nil again.
-//
-// This is the deterministic regression test for the R4-14 race: the old code
-// left vault A's handler live during teardown, so a polling loop could exit on
-// a vault-A 200 before vault B was ready.
+// TestSwap_HandlerIsNilDuringSwap pins that the handler goes nil (→ 503) during
+// a switch. Leaving vault A's handler live during teardown let a polling client
+// exit on a stale vault-A 200 and then write grants into the wrong vault's DB.
 func TestSwap_HandlerIsNilDuringSwap(t *testing.T) {
 	appHome := t.TempDir()
 	t.Setenv("JASPER_APP_HOME", appHome)

@@ -33,12 +33,8 @@ func (s *Server) GetConfig(
 
 // PutConfig implements PUT /api/v1/config. Replaces the whole document atomically.
 //
-// Validation is layered:
-//   - ConfigStrictBodyMiddleware (config_validate.go) runs before this handler:
-//     unknown fields → 400, theme enum → 400, length/range constraints → 400.
-//     oapi-codegen's strict-server does not automatically invoke openapi3filter
-//     validation, so explicit checks in ConfigStrictBodyMiddleware are required.
-//   - This handler still nil-checks req.Body for safety.
+// Validation lives in ConfigStrictBodyMiddleware because oapi-codegen's
+// strict-server never invokes openapi3filter.
 //
 //nolint:revive // generated interface name
 func (s *Server) PutConfig(
@@ -91,16 +87,10 @@ func (s *Server) PutConfig(
 	return PutConfig200JSONResponse(toWireConfig(persisted)), nil
 }
 
-// PatchConfig implements PATCH /api/v1/config. Writes only the keys present
-// in the request body through the serialised sparse-overlay primitive
-// (config.SaveMergedPartial); every other field on disk, including
-// unmanaged/hand-added keys, is left untouched.
+// PatchConfig implements PATCH /api/v1/config.
 //
-// Deliberately does NOT sync app.json's display name the way PutConfig does:
-// that sync derives the name from filepath.Base(s.dataDir), not from any
-// Config field, so no patchable field can change it, and PUT /config (Reset,
-// first-run) still performs the sync — it is not lost by this handler
-// skipping it.
+// Deliberately skips PutConfig's app.json display-name sync: that name derives
+// from the data-dir basename, so no patchable field can change it.
 //
 //nolint:revive // generated interface name
 func (s *Server) PatchConfig(

@@ -45,32 +45,8 @@ type FileStore interface {
 	// if the file is missing.
 	Stat(relPath string) (modTime time.Time, err error)
 
-	// FS mutation primitives. Implementations route through fsstore.Canonicalize
-	// internally for path canonicalization, collision detection, and atomic writes.
-	// See backend/internal/fsstore/ops.go for the full contract:
-	//
-	//   - CreateFile creates a zero-byte .md file; ErrCaseCollision if
-	//     the path is already taken; ErrParentNotFound if the immediate
-	//     parent does not exist (single-level mkdir policy).
-	//   - DeleteFile removes a file; fs.ErrNotExist propagates so the
-	//     API layer maps to 404.
-	//   - MoveFile renames a file; ErrCaseCollision / ErrParentNotFound
-	//     for the destination; both paths are canonicalized.
-	//   - CreateDir creates a directory with mode 0755; ErrCaseCollision
-	//     if anything (file or dir) already exists at the path;
-	//     ErrParentNotFound if the immediate parent does not exist.
-	//   - DeleteDir(recursive=false) returns ErrFolderNotEmpty if the
-	//     directory has any children; recursive=true removes the entire
-	//     subtree.
-	//   - MoveDir renames a directory; ErrCycle if the destination is
-	//     the source itself or a descendant of it; ErrCaseCollision /
-	//     ErrParentNotFound otherwise.
-	//   - TrashFile moves a note into <dataDir>/.trash/, flattening
-	//     the path; returns the collision-safe base name written;
-	//     never overwrites; paths are canonicalized internally.
-	//   - TrashDir moves a folder + subtree into <dataDir>/.trash/ intact;
-	//     returns the collision-safe folder name written;
-	//     paths are canonicalized internally.
+	// FS mutation primitives. Implementations canonicalize internally; the
+	// per-method contract and its sentinel errors live in fsstore/ops.go.
 	CreateFile(relPath string) error
 	DeleteFile(relPath string) error
 	MoveFile(oldRelPath, newRelPath string) error
@@ -81,24 +57,15 @@ type FileStore interface {
 	TrashDir(relPath string) (trashName string, err error)
 }
 
-// Broadcaster is the port over the WebSocket hub adapter (internal/wshub).
-// Defined here per the hexagonal-lite layout: notes/ owns the interface,
-// wshub/ implements it.
+// Broadcaster is the port over the WebSocket hub. Broadcast fires AFTER a
+// successful Index.Upsert, never before. Nil is allowed.
 //
-// Service mutations call Broadcast AFTER a successful Index.Upsert — NEVER
-// before. originSessionID is sourced from the request context via
-// SessionIDFromContext (chi middleware extracts X-Session-ID per request).
+// SECURITY: payloads carry ONLY metadata, NEVER note content. Nothing enforces
+// this — it is a Service-layer contract.
 //
-// SECURITY: Broadcast payloads MUST contain ONLY metadata (id, path,
-// updated_at, title, etc.) — NEVER note content. This is a Service-layer
-// contract; the broadcaster has no enforcement mechanism.
-//
-// The reconciler does NOT call Broadcast — only API mutation paths do.
-// Per-file note:updated during a large reindex would fill per-client
-// buffers and drop slow clients; reindex visibility is handled by the
-// aggregated reindex:started / reindex:complete events instead.
-//
-// Passing nil for Broadcaster is allowed; Service substitutes nopBroadcaster.
+// The reconciler must NOT broadcast: per-file events during a large reindex
+// would fill client buffers and drop slow clients. Use the aggregated
+// reindex:started / reindex:complete events instead.
 type Broadcaster interface {
 	Broadcast(eventType string, payload any, originSessionID string)
 }
@@ -240,26 +207,14 @@ type TagWithCount struct {
 }
 
 // NoteRecord is the canonical projection of a .md file into the index.
-// Both the indexer and Service.Update populate this struct; the SQLite
-// store reads from it column-for-column.
 //
-// MTimeUnix is the file's last-modified time as observed by os.Stat at
-// index time (the on-disk mtime). UpdatedAtUnix is the index-touch time
-// — when the indexer last wrote this row — and is distinct from
-// MTimeUnix because Reconcile can re-touch a row without the file changing.
+// Three timestamps that are easy to confuse: MTimeUnix is the on-disk mtime,
+// UpdatedAtUnix is when the indexer last touched the row (Reconcile can bump it
+// without the file changing), and BirthtimeUnix is the filesystem creation time
+// — 0 when the platform cannot report one.
 //
-// Checksum is reserved for a future checksum-fallback strategy; always “”.
-//
-// BodyFTS is the note body with the leading YAML frontmatter block stripped
-// so frontmatter keys don't pollute body FTS matches.
-// TagNamesFTS is the space-joined list of normalized tag names for the note
-// (enabling tag-name FTS matches in addition to note_tags joins). Both are
-// “” for callers without content available; the next reconcile pass repopulates.
-//
-// BirthtimeUnix is the true filesystem creation time in UNIX seconds
-// (index/birthtimeFromPath), a SEPARATE concept from UpdatedAtUnix/
-// created_at's "first-seen-by-indexer" semantics.
-// 0 is the sentinel meaning "platform/filesystem cannot report birthtime".
+// BodyFTS/TagNamesFTS are "" for callers without content; reconcile repopulates.
+// Checksum is always "".
 type NoteRecord struct {
 	ID            uuid.UUID
 	Path          string // canonical relpath (NFC + lowercase) under notes/

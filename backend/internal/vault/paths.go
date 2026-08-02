@@ -1,23 +1,12 @@
 // Package vault — paths.go is the single source of truth for per-vault path
-// resolution. <vault>/.jasper/ is the canonical per-vault data directory;
-// every server-side artifact (SQLite index, config.json, logs, backup,
-// seed-grants queue) lives under that subdir.
+// resolution.
 //
-// The string ".jasper" MUST NOT appear as a path component literal in
-// production code outside this file, with exactly two documented exceptions:
+// ".jasper" MUST NOT appear as a path literal in production code outside this
+// file, with two exceptions: vault.AppHomePath and config.DefaultDataDir, which
+// are app-home semantics (one per user) rather than per-vault (one per vault).
+// The literal matches; the concepts do not. Do not fold them together.
 //
-//   - backend/internal/vault/types.go — vault.AppHomePath uses $HOME/.jasper
-//     for the app-level registry (the directory that holds app.json).
-//   - backend/internal/config/defaults.go — config.DefaultDataDir mirrors
-//     that same app-home value.
-//
-// Both exceptions are app-home semantics (one per user); SubdirName here is
-// per-vault semantics (one per vault). The string literal happens to match,
-// but the concepts are distinct — do not fold them together.
-//
-// All helpers below accept a raw root string and return a pure string; they
-// do NOT canonicalize the input (call sites already gate paths upstream).
-// Helpers perform no filesystem I/O.
+// Helpers do NOT canonicalize and do no I/O — call sites gate paths upstream.
 package vault
 
 import "path/filepath"

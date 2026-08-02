@@ -34,20 +34,9 @@ func configPath(dataDir string) string {
 	return filepath.Join(dataDir, ".jasper", "config.json")
 }
 
-// decodeField unmarshals raw[jsonKey], if present, into *target. On
-// unmarshal failure (wrong JSON type) target is left at whatever value the
-// caller seeded it with — Load always starts from DefaultConfig(), so a bad
-// field simply keeps its default while every sibling field keeps decoding
-// independently.
-//
-// This is the per-field leniency primitive at the heart of the lenient
-// read path (ADR-0020): callers must NEVER decode a whole struct (Config
-// or any nested block) via a single json.Unmarshal/Decoder.Decode call —
-// that fails the
-// ENTIRE struct the instant one field has the wrong JSON type, which is
-// exactly the data-loss bug this package exists to close. Decoding one
-// scalar field at a time via json.RawMessage is what makes the fallback
-// local to that one field.
+// decodeField is the per-field leniency primitive (ADR-0020). Never decode a
+// whole struct in one Unmarshal: that fails the ENTIRE struct the instant one
+// field has the wrong type, which is the data-loss bug this package closes.
 func decodeField[T any](raw map[string]json.RawMessage, jsonKey, fieldPath, path string, target *T, log *slog.Logger) {
 	v, ok := raw[jsonKey]
 	if !ok {
@@ -226,32 +215,13 @@ func decodeTemplates(raw map[string]json.RawMessage, path string, log *slog.Logg
 	}
 }
 
-// Load reads the persisted config with per-field leniency (ADR-0020).
-// Behavior on edge cases:
-//   - File missing: returns DefaultConfig() AND writes it to disk so
-//     subsequent reads succeed with the canonical shape.
-//   - File present but genuinely unparseable JSON: logs a WARN and returns
-//     DefaultConfig() WITHOUT overwriting the bad file (preserves the
-//     user's state for forensics).
-//   - File present and valid JSON but with an unrecognized key (top-level
-//     or nested): the key is silently dropped; every recognized field
-//     keeps its on-disk value.
-//   - File present with a known field of the wrong JSON type, or a
-//     well-typed value outside its documented range/enum: that field
-//     alone reverts to its own Defaults() value (never clamped to a
-//     bound) and a slog.Warn names the field and the reason; every
-//     sibling field, including siblings in the same nested section, keeps
-//     its on-disk value.
+// Load reads the persisted config with per-field leniency (ADR-0020): a bad
+// field reverts to its own default — never clamped to a bound — while every
+// sibling keeps its on-disk value. Unparseable JSON is left on disk for
+// forensics rather than overwritten.
 //
-// This read path is intentionally lenient; the write path
-// (ConfigStrictBodyMiddleware / strictConfigValidator, PUT /config) stays
-// strict — a malformed or unknown field is rejected before it ever
-// reaches disk, so leniency here only ever has to absorb a hand-edited or
-// cross-version file, never a fresh write from the current binary.
-//
-// Returns an error ONLY when the disk is unreadable for non-not-exist
-// reasons (permission denied, I/O error). The caller logs and continues;
-// startup is not gated on config.
+// Returns an error only when the disk is unreadable for non-not-exist reasons.
+// Startup is not gated on config.
 func Load(dataDir string, log *slog.Logger) (Config, error) {
 	mu.Lock()
 	defer mu.Unlock()

@@ -1267,16 +1267,11 @@ func TestApp_Run_NoVault_CreateVault_InPlaceTransition(t *testing.T) {
 	}
 }
 
-// TestApp_LiveRouter_RejectsReboundHost is the DNS-rebinding integration gate: it
-// drives the fully-wired lifecycle router, not just app.New's, because the
-// middleware has to be present on every router the app swaps in.
+// TestApp_LiveRouter_RejectsReboundHost drives the fully-wired lifecycle router,
+// not app.New's, because the middleware must be on every router the app swaps in.
 //
-// The request is shaped exactly like a post-rebind exfiltration attempt —
-// a real loopback connection carrying Host: evil.com. Only the Host header
-// distinguishes it from a legitimate read, and GET bypasses the CSRF Origin
-// guard entirely, so this is the sole gate standing between an open tab on
-// a malicious page and every note in the vault (ADR-0003: the bind address
-// is the whole security boundary).
+// GET bypasses the CSRF Origin guard, so the Host allowlist is the only gate
+// between a malicious open tab and every note in the vault (ADR-0003).
 func TestApp_LiveRouter_RejectsReboundHost(t *testing.T) {
 	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
 	dir := t.TempDir()

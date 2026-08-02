@@ -51,16 +51,8 @@ type Server struct {
 	log           *slog.Logger
 }
 
-// NewServer constructs an MCP server with every tool registered.
-//
-// Parameters:
-//   - notesSvc: the production notes.Service. Required.
-//   - notesProv: adapter that lists every note.
-//   - search: adapter that runs an FTS5 search.
-//   - attach: adapter that reads attachment bytes.
-//   - acl: the folder-grant ACL. Required for write tools.
-//   - bcast: the WS hub. May be nil (notes.Service emits its own events).
-//   - log: structured logger. A nil logger is replaced with slog.Default().
+// NewServer constructs an MCP server with every tool registered. notesSvc and
+// acl are required; bcast may be nil, since notes.Service emits its own events.
 func NewServer(
 	notesSvc *notes.Service,
 	notesProv NotesProvider,

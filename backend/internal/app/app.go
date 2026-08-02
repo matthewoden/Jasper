@@ -1,17 +1,7 @@
-// Package app is the composition root. It wires concrete adapters
-// (fsstore.Store) → ports (notes.FileStore) → service (notes.Service)
-// → API (api.Server + StrictHandler) → router (chi) → SPA fallback
-// (static.Handler).
+// Package app is the composition root.
 //
-// chi mount order: API first under r.Route("/api/v1", ...), SPA fallback
-// last — this prevents the fallback from swallowing API 404s.
-//
-// New() builds the router with the API server in nil-everything mode.
-// The real composition (sqlite.Open → migrate.NewRunner → index.New →
-// api.NewServerWithIndex) happens in lifecycle.Run because it is
-// side-effecting (mkdir + open DB) and must run BEFORE the HTTP listener
-// accepts connections. Run replaces a.handler with the fully-wired router
-// after migrations + incremental reindex complete.
+// chi mount order matters: API first, SPA fallback LAST — otherwise the
+// fallback swallows API 404s.
 package app
 
 import (
@@ -71,16 +61,7 @@ type Config struct {
 	// that vault's log file alongside the console handler.
 	Logger *slog.Logger
 
-	// MigrationsOverride is a TEST-ONLY override for the embedded
-	// migrations FS. When non-nil, lifecycle.Run uses this fs.FS
-	// instead of migrations.FS. Production callers leave it nil.
-	//
-	// Used by:
-	//   - app_test.go (TestApp_Run_BrokenMigration_FiresPath1) to
-	//     inject a deliberately broken 002_break.sql
-	//   - cmd/jasper/smoke_test.go via JASPER_TEST_MIGRATIONS_DIR
-	//     env var (cmd/jasper/serve.go reads the env var and sets
-	//     this field to os.DirFS(<dir>) before calling app.New).
+	// MigrationsOverride is TEST-ONLY; production callers leave it nil.
 	MigrationsOverride fs.FS
 
 	// DisableFirstRunGate is a TEST-ONLY flag retained for backward
@@ -103,18 +84,11 @@ type Config struct {
 	ListenerOverride net.Listener
 }
 
-// App bundles the wired application. New constructs the initial
-// composition and returns the composed *App; Run executes the full
-// startup sequence (sqlite + migrate + reindex) and serves until ctx
-// is canceled.
+// App bundles the wired application.
 //
-// pair, runner, and indexer are populated by lifecycle.Run, NOT by
-// New. They are nil between New and Run so tests that call
-// New + Handler() directly continue to work unchanged.
-//
-// diskFullHandler is non-nil ONLY when boot fails (ErrDiskFull or
-// ErrUnrecoverable). When non-nil, lifecycle.Run installs it as
-// a.handler and serves it on the listener instead of the API + SPA.
+// pair, runner and indexer are nil between New and Run, so tests may call
+// New + Handler() directly. diskFullHandler is non-nil only when boot failed,
+// and then replaces the API + SPA on the listener.
 type App struct {
 	cfg Config
 
@@ -188,23 +162,9 @@ func allowedOrigins(listenAddr string) []string {
 	return origins
 }
 
-// New builds the initial composition for `jasper serve`. The real
-// wiring (sqlite.Open → migrate.NewRunner → index.New →
-// api.NewServerWithIndex) lives in lifecycle.Run because it is
-// side-effecting (mkdir + open DB) and must run BEFORE the listener
-// accepts connections.
-//
-// Wiring sequence (kept minimal for tests that call New + Handler()):
-//
-//  1. fsstore.NewStore(<DataDir>/notes) — concrete FileStore adapter.
-//  2. notes.NewService(files, nil, log) — domain service with nil
-//     Index (Service substitutes nopIndex). lifecycle.Run replaces
-//     this with a real *index.Indexer-backed Service.
-//  3. api.NewServerWithIndex with nil status/runner/index so handlers
-//     gracefully degrade.
-//  4. chi router with RequestID + Recoverer + requestLogger.
-//  5. r.Route("/api/v1", ...) wrapping api.HandlerFromMux.
-//  6. r.Mount("/", static.Handler()) — SPA fallback LAST.
+// New builds the initial composition for `jasper serve`. The real wiring lives
+// in lifecycle.Run because it is side-effecting (mkdir + open DB) and must run
+// BEFORE the listener accepts connections.
 func New(cfg Config) (*App, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()

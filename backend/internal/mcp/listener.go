@@ -70,21 +70,12 @@ func StartMCPListener(_ context.Context, server *Server, bindAddr string, log Lo
 	return srv, nil
 }
 
-// hostAllowlistHandler rejects requests whose Host header names a host this
-// listener is not serving, closing DNS rebinding against MCP.
+// hostAllowlistHandler closes DNS rebinding against MCP. Unconditional — MCP is
+// loopback-enforced with no opt-out (ADR-0013), so there is no LAN-bind case.
 //
-// The allowlist is unconditional — unlike the HTTP listener there is no
-// LAN-bind case to accommodate, because MCP is loopback-enforced with no
-// opt-out (ADR-0013, CONTEXT invariant 5).
-//
-// Browsers are already largely blocked from driving these tools: MCP's
-// StreamableHTTP transport POSTs JSON-RPC as application/json, which
-// triggers a CORS preflight this endpoint does not answer. That mitigation
-// is incidental, though — it depends on the SDK's transport choice and on
-// browser CORS behavior, neither of which Jasper controls. Checking Host
-// makes the loopback guarantee explicit rather than emergent, which matters
-// here because MCP is the one boundary where ADR-0002's no-plugin-surface
-// stance was deliberately relaxed.
+// The CORS preflight on MCP's JSON-RPC POST already blocks most browser-driven
+// exploitation, but that is incidental: it rests on the SDK's transport choice
+// and browser behavior, neither of which Jasper controls.
 func hostAllowlistHandler(next http.Handler, log Logger) http.Handler {
 	allowlist := netbind.LoopbackHostAllowlist()
 

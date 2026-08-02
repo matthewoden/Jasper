@@ -16,44 +16,23 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Pair holds the writer/reader split for safe concurrent SQLite access.
-//
-// Writer is a *sql.DB with MaxOpenConns=1 — every write is serialized
-// onto a single connection so there is exactly one in-flight writer
-// transaction at a time. Combined with BEGIN IMMEDIATE (forced by the
-// _txlock=immediate DSN parameter — see Open), this guarantees the
-// RESERVED lock is acquired up-front and SQLITE_BUSY does not surface
-// during normal operation.
-//
-// Reader is a separate *sql.DB pool (MaxOpenConns=8 by default). Under
-// WAL mode, readers never block writers and writers never block readers;
-// the two halves run independently.
+// Pair holds the writer/reader split (ADR-0025). Writer is MaxOpenConns=1, so
+// exactly one writer transaction is ever in flight; with BEGIN IMMEDIATE the
+// RESERVED lock is taken up front and SQLITE_BUSY never surfaces. Reader is a
+// separate pool — under WAL the two halves never block each other.
 type Pair struct {
 	Writer *sql.DB // MaxOpenConns=1, BEGIN IMMEDIATE writes
 	Reader *sql.DB // pooled reads, MaxOpenConns=8
 }
 
-// Open opens (or creates) the SQLite database at dbPath, applies the
-// required pragmas to both halves, verifies WAL is active, and returns
-// the writer/reader pair.
+// Open opens (or creates) the database at dbPath and returns the writer/reader
+// pair, erroring unless WAL is actually active afterwards.
 //
-// dbPath MUST be absolute. The caller (composition root) is responsible
-// for ensuring the parent directory exists; Open does not auto-mkdir —
-// directory creation is a startup-lifecycle concern, not an I/O
-// primitive concern.
+// dbPath MUST be absolute, and Open does NOT auto-mkdir — directory creation is
+// a startup-lifecycle concern, not an I/O primitive's.
 //
-// The DSN encodes the pragmas via modernc.org/sqlite's _pragma= query
-// parameter so each new connection (across both pools) gets the
-// pragmas applied automatically by the driver. _txlock=immediate
-// promotes every implicit BEGIN to "BEGIN IMMEDIATE" — defense in
-// depth alongside Pair.BeginImmediate.
-//
-// Open returns an error wrapping the underlying cause when:
-//   - dbPath is not absolute,
-//   - sql.Open or Ping fails on either half,
-//   - the post-Ping pragma re-application fails,
-//   - PRAGMA journal_mode does not return "wal" (case-insensitive)
-//     after the pragma application has run.
+// _txlock=immediate promotes every implicit BEGIN, defence in depth alongside
+// Pair.BeginImmediate.
 func Open(ctx context.Context, dbPath string) (*Pair, error) {
 	if !filepath.IsAbs(dbPath) {
 		return nil, fmt.Errorf("sqlite.Open: dbPath must be absolute, got %q", dbPath)

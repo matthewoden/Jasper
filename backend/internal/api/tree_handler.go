@@ -11,17 +11,10 @@ import (
 
 // GetTree implements GET /api/v1/tree.
 //
-// Calls *index.Indexer.BuildTree (SQLite rows + filesystem directory listing
-// projected into a nested folder/note hierarchy) and translates the result
-// into wire-shape api.Tree. Translation goes through oapi-codegen-generated
-// FromFolderNode / FromNoteNode helpers — the only safe way to populate the
-// discriminated TreeNode oneOf union.
-//
-// Nil index returns an empty Tree (NOT 503) so the frontend renders an empty
-// file-tree when the indexer is not wired.
-//
-// The wire shape is a strict subset of NoteRecord: never ships checksum_sha256,
-// size_bytes, mtime_unix, or updated_at_unix.
+// Translation goes through the generated FromFolderNode / FromNoteNode helpers
+// — the only safe way to populate the discriminated TreeNode oneOf. The wire
+// shape is a strict subset of NoteRecord: checksum_sha256, size_bytes,
+// mtime_unix and updated_at_unix never ship.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetTree(

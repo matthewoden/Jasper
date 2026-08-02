@@ -10,19 +10,11 @@ import (
 	"os"
 )
 
-// Load reads the persisted workspace document. Behavior on edge cases:
-//   - File missing: returns a zero-value Workspace{} with nil error.
-//   - File present but malformed (genuinely unparseable JSON): logs a WARN
-//     and returns a zero-value Workspace{}, never an error to the caller.
-//   - File present and valid — including a well-formed document carrying an
-//     extra/unrecognized field (e.g. written by a newer binary, or
-//     hand-edited): unknown fields are ignored, matching normal Go JSON
-//     decode semantics (mirrors the SET-05 / bookmarks forward-compat
-//     lesson — an unknown field must never be treated the same as corrupt
-//     JSON and coerced to a default document).
+// Load returns a zero-value Workspace for a missing or unparseable file, and
+// errors only when the disk is unreadable for non-not-exist reasons.
 //
-// Returns an error ONLY when the disk is unreadable for non-not-exist
-// reasons (permission denied, I/O error).
+// An unknown field must never be treated like corrupt JSON — that would coerce
+// a newer binary's document back to defaults.
 func Load(dataDir string, log *slog.Logger) (Workspace, error) {
 	path := workspacePath(dataDir)
 	raw, err := os.ReadFile(path)

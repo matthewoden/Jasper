@@ -29,17 +29,11 @@ var (
 	ErrCycle = errors.New("fsstore: cannot move a folder into its own descendant")
 )
 
-// CreateFile creates an empty .md file at relPath under rootDir using
-// AtomicWrite for durability. Rejects collisions and propagates every
-// Canonicalize sentinel (ErrPathEscape / ErrAbsolutePath / ErrEmptyPath
-// / ErrNotInRoot) unchanged.
+// CreateFile creates an empty .md file at relPath, propagating every
+// Canonicalize sentinel unchanged.
 //
-// Behavior choices:
-//   - The IMMEDIATE parent directory must exist (single-level only). Multi-
-//     level missing chains return ErrParentNotFound — callers must create
-//     the chain explicitly via CreateDir or the API layer must reject the
-//     request as 400.
-//   - The file is created with zero bytes.
+// Only the IMMEDIATE parent may be missing-checked: a multi-level chain returns
+// ErrParentNotFound rather than being created implicitly.
 func CreateFile(rootDir, relPath string) error {
 	abs, err := Canonicalize(rootDir, relPath)
 	if err != nil {

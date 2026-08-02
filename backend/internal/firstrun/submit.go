@@ -19,16 +19,8 @@ import (
 // independent of the api package and is testable without the chi
 // router.
 type SetupRequest struct {
-	// DataDir is the path the user picked in Step 1 of the wizard. The
-	// user is allowed to type a tilde-prefixed path like
-	// "~/Documents/Jasper" (the wizard input placeholder); RunSetup
-	// resolves the tilde against os.UserHomeDir() via
-	// firstrun.ResolveDataDir before any filesystem work runs. The
-	// resolved absolute path is what gets MkdirAll'd, persisted into
-	// cfg.Server.DataDir, and handed to sqlite.Open. RunSetup also
-	// re-runs ValidateDataDir against the resolved value as a final
-	// gate so a hostile client can't skip the debounced validate
-	// endpoint and submit a bad path directly.
+	// DataDir may be tilde-prefixed; RunSetup resolves it and re-validates the
+	// result, so a client cannot skip the debounced validate endpoint.
 	DataDir string
 
 	// Theme is one of "dark" or "light". Anything else is rejected
@@ -75,27 +67,11 @@ type SetupGrantSeed struct {
 	Level  int
 }
 
-// RunSetup is the submit pipeline. The order is:
+// RunSetup is the submit pipeline.
 //
-//  1. Theme value-check (cheap, no syscall).
-//  2. ResolveDataDir: tilde-expand + absolute-path enforcement.
-//  3. ValidateDataDir against the resolved path (final gate so a hostile
-//     client cannot skip the debounced validate endpoint).
-//  4. vault.Canonicalize: resolve symlinks + NFC-normalize ONCE; every
-//     subsequent path computation uses the canonical value. This single
-//     canonicalization invariant prevents writer/reader path mismatch
-//     between writeSeedGrants and firstrun.ApplySeedGrants.
-//  5. vault.CreateVault: creates <canonical>/.jasper/, config.json, and
-//     registers the vault in app.json. CreateVault does NOT open SQLite —
-//     the per-vault DB is opened by lifecycle on first boot of the vault.
-//  6. Queue MCP seed grants via writeSeedGrants to
-//     <canonical>/.jasper/seed_grants.json — drained on first boot by
-//     firstrun.ApplySeedGrants after migrations succeed.
-//  7. (optional) Write <canonical>/notes/daily/<today>.md from the
-//     template.
-//
-// Errors are wrapped with a UI-friendly prefix; the handler maps the
-// resulting error to a 500 with the wrapped message in the body.
+// The load-bearing invariant: canonicalize ONCE, then compute every subsequent
+// path from that value. Canonicalizing twice lets writeSeedGrants and
+// ApplySeedGrants disagree on the path and silently drop the grants.
 func RunSetup(ctx context.Context, req SetupRequest) error {
 	if req.Theme != "dark" && req.Theme != "light" {
 		return fmt.Errorf("theme must be 'dark' or 'light'")
@@ -147,19 +123,9 @@ func RunSetup(ctx context.Context, req SetupRequest) error {
 	return nil
 }
 
-// writeSeedGrants queues mcp_write_grants for first-boot apply. Writes
-// <canonical>/.jasper/seed_grants.json atomically. firstrun.ApplySeedGrants
-// drains the queue after migrations on first server boot of the vault.
-//
-// canonical MUST be the canonicalized vault root — see RunSetup's single
-// canonicalization invariant. Mismatched canonicalization between writer
-// and reader would silently drop the grants (handoff-TOCTOU).
-//
-// Returns nil if len(grants) == 0 (no queue file written — the common
-// path when the user did not seed any grants in the wizard).
-//
-// Parent <canonical>/.jasper/ is created by vault.CreateVault earlier in
-// RunSetup, so fsstore.AtomicWrite's parent-exists precondition is met.
+// writeSeedGrants queues mcp_write_grants for ApplySeedGrants to drain on first
+// boot. canonical MUST be the canonicalized vault root — if writer and reader
+// canonicalize differently the grants are silently dropped.
 func writeSeedGrants(canonical string, grants []SetupGrantSeed) error {
 	if len(grants) == 0 {
 		return nil

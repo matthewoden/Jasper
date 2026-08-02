@@ -4,16 +4,9 @@ import (
 	"context"
 )
 
-// GetAdminStatus implements GET /api/v1/admin/status. Returns the
-// current migration runner state for the migration banner.
+// GetAdminStatus implements GET /api/v1/admin/status.
 //
-// The wire format never carries the SQL that failed or the absolute filesystem
-// path of the live database — only the migration filename and the log
-// file path (which the user already knows lives under their data dir).
-//
-// State enum mapping is 1:1 between migrate.State and
-// api.MigrationStatusState because the underlying string constants
-// match by design (status.go locks the string values).
+// Never puts the failing SQL or the live database's absolute path on the wire.
 //
 //nolint:revive // generated interface name (capital Id-style is upstream)
 func (s *Server) GetAdminStatus(

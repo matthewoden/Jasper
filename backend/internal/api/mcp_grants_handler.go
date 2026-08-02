@@ -43,16 +43,8 @@ func (s *Server) GetMcpGrants(
 	return GetMcpGrants200JSONResponse{Grants: out}, nil
 }
 
-// PostMcpGrant implements POST /api/v1/mcp/grants. UPSERTs the grant at
-// req.Body.FolderPath to req.Body.Level. Re-granting at a different tier is
-// an in-place update; one row per canonical folder_path is maintained via an
-// ON CONFLICT clause.
-//
-// Validation errors from the ACL layer (".." paths, empty path, invalid level)
-// map to 400 "invalid_path".
-//
-// granted_via defaults to "tree-menu"; the frontend has not yet been wired to
-// supply an X-Granted-Via header.
+// PostMcpGrant implements POST /api/v1/mcp/grants. Upserts one row per
+// canonical folder_path, so re-granting at a different tier updates in place.
 //
 //nolint:revive // generated interface name
 func (s *Server) PostMcpGrant(

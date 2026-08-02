@@ -65,17 +65,8 @@ func (s *Server) GetTagNotes(
 	return GetTagNotes200JSONResponse{Notes: out}, nil
 }
 
-// PutTag implements PUT /api/v1/tags/{name} (tag rename).
-//
-// Validates charset for both old and new names, calls
-// s.notes.RenameTagAcrossVault() which rewrites disk files AND the SQL row,
-// then broadcasts the tags:rewritten WS event with origin_session_id for
-// self-suppression.
-//
-// Error mapping:
-//   - notes.ErrTagNotFound    → 404 not_found
-//   - notes.ErrTagCollision   → 409 conflict
-//   - notes.ErrInvalidTagName → 400 invalid_request
+// PutTag implements PUT /api/v1/tags/{name} (tag rename). Rewrites disk files
+// AND the SQL row via s.notes.RenameTagAcrossVault.
 func (s *Server) PutTag(
 	ctx context.Context,
 	req PutTagRequestObject,

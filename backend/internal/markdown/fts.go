@@ -5,16 +5,9 @@ import (
 	"strings"
 )
 
-// ExtractBodyForFTS strips a leading YAML frontmatter block (--- ... ---\n)
-// from a markdown note's bytes and returns the remaining body as a string.
-// Frontmatter content (esp. "tags: [foo]") MUST NOT pollute body matches.
-// Idempotent on already-stripped content.
-//
-// Edge cases:
-//   - No leading "---" prefix: returns full content unchanged.
-//   - Opening "---" present but no closing "\n---": treats all content as body
-//     (unclosed frontmatter is not stripped — better to over-index than drop content).
-//   - Empty content: returns "".
+// ExtractBodyForFTS strips leading frontmatter so "tags: [foo]" cannot pollute
+// body matches. Unclosed frontmatter is left in place — better to over-index
+// than to drop content.
 func ExtractBodyForFTS(content []byte) string {
 	if !bytes.HasPrefix(content, []byte("---")) {
 		return string(content)

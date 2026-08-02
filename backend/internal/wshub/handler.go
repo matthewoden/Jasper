@@ -13,27 +13,18 @@ import (
 
 const maxSessionIDLen = 128
 
-// ServeHTTP upgrades the request and runs read+write pumps until
-// either side errors. Bound by chi at /api/v1/ws; the manual route
-// is registered BEFORE api.HandlerFromMux so it wins over the
-// oapi-codegen-generated stub.
+// ServeHTTP upgrades the request and runs the read+write pumps. Registered
+// BEFORE api.HandlerFromMux so it wins over the generated stub.
 //
-// Origin enforcement: AcceptOptions.OriginPatterns rejects upgrades
-// whose Origin header doesn't match. coder/websocket REQUIRES this
-// option (or InsecureSkipVerify) — without it the connection is rejected.
+// coder/websocket's authenticateOrigin returns nil for an EMPTY Origin (curl,
+// scripts), bypassing OriginPatterns — hence the explicit empty-Origin reject,
+// so a future bind-to-LAN regression cannot silently open the door.
 //
-// Defense-in-depth: coder/websocket's authenticateOrigin returns nil when
-// Origin is empty (e.g. curl, scripts), bypassing OriginPatterns. The
-// localhost-bind posture already mitigates this, but we reject empty Origin
-// here so a future bind-to-LAN regression cannot silently open the door.
-//
-// Host enforcement: OriginPatterns is not merely weak against DNS
-// rebinding, it is inert. coder/websocket authorizes the upgrade before
-// consulting the patterns whenever Origin's host equals Host (accept.go:
-// `if strings.EqualFold(r.Host, u.Host)`) — and rebinding makes those two
-// equal by construction. The router-root hostAllowlistMiddleware also covers
+// Against DNS rebinding OriginPatterns is not merely weak, it is inert: the
+// library authorizes the upgrade whenever Origin's host equals Host, and
+// rebinding makes those equal by construction. The root middleware also covers
 // this, but the shortcut is inherent to the library, so relying on the
-// middleware alone would leave the upgrade one refactor away from re-exposure.
+// middleware alone leaves the upgrade one refactor from re-exposure.
 func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !h.hosts.Allows(r.Host) {
 		h.log.Warn("hub: rejecting upgrade with non-allowlisted Host",

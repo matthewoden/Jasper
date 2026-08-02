@@ -16,12 +16,8 @@ var dailyDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 // GetDailyNote implements GET /api/v1/daily-notes/{date}.
 //
-// Read-only. Returns 404 when the note does not exist — creation
-// is POST to the same path. This handler used to get-or-create, which made
-// a plain cross-origin <img> tag on any page the user visited write a file
-// into the vault: GET is a safe method, so the Origin guard never inspects
-// it, and the Host allowlist cannot help because such a request carries a
-// genuinely loopback Host.
+// Read-only, and must stay that way: a get-or-create GET let any cross-origin
+// <img> tag write into the vault, since the Origin guard skips safe methods.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetDailyNote(
@@ -52,13 +48,7 @@ func (s *Server) GetDailyNote(
 }
 
 // CreateDailyNote implements POST /api/v1/daily-notes/{date}.
-//
-// Idempotent get-or-create: 201 on create, 200 when the note already
-// existed. Get-or-create semantics are owned entirely by
-// notes.Service.GetOrCreateDailyNote (file-FIRST write, index upsert,
-// registry title index, note:created broadcast exactly once on create,
-// zero broadcasts on get). This handler validates the date format, loads
-// the configured template, and maps the Service result onto the wire.
+// Idempotent: 201 on create, 200 when it already existed.
 //
 //nolint:revive // generated interface name
 func (s *Server) CreateDailyNote(

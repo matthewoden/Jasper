@@ -31,19 +31,14 @@ func loaderLog() io.Writer {
 	return nil
 }
 
-// LoadAppJSON reads the app-level registry from `path`.
+// LoadAppJSON reads the app-level registry.
 //
-// Semantics (V11 + V12):
-//   - file missing → returns (empty state, nil) AND writes the empty state via
-//     SaveAppJSON(path, empty) so the file exists for subsequent reads.
-//   - valid JSON → returns the unmarshalled state. recent_vaults are then
-//     os.Stat-probed: any entry whose path no longer exists gets Missing=true
-//     (entries are NOT removed — the user may want to "Reconnect…").
-//   - invalid JSON OR read-error other than ENOENT → the existing file is
-//     moved aside to "app.json.corrupt.<unix-ts>", a fresh empty state is
-//     written via SaveAppJSON, and (&empty, nil) is returned. The corrupt-
-//     reset path is NEVER surfaced as a static error page (mirrors PROJECT.md
-//     posture: derived registry, vaults still exist on disk).
+// A missing entry is marked Missing rather than removed — the user may want to
+// reconnect it.
+//
+// A corrupt file is moved aside to app.json.corrupt.<ts> and replaced with an
+// empty state, never surfaced as an error page: this registry is derived, and
+// the vaults themselves still exist on disk.
 func LoadAppJSON(path string) (*AppState, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

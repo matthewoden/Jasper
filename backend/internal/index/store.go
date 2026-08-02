@@ -16,30 +16,12 @@ import (
 
 var fts5OperatorKeywordRE = regexp.MustCompile(`\b(AND|OR|NOT|NEAR)\b`)
 
-// Upsert inserts or updates a row in `notes`.
+// Upsert needs BOTH a pre-check SELECT and the UNIQUE failure from the INSERT:
+// the SELECT catches a new id landing on an owned path, the constraint catches a
+// writer racing between them.
 //
-// Case-collision detection (DATA-12) — two strategies, both required:
-//
-//  1. PRE-CHECK: SELECT id FROM notes WHERE path = ? AND id != ?. If a
-//     row is found, return ErrCaseCollision before any INSERT runs.
-//     This catches the common case where the indexer mints a NEW id for
-//     a freshly-walked file but a different id already owns that path.
-//  2. POST-CHECK: catch SQLite's UNIQUE constraint failure on
-//     `notes.path` from the INSERT itself. This covers the race where
-//     a concurrent Upsert wrote a colliding row between our SELECT and
-//     INSERT.
-//
-// The transaction is BEGIN IMMEDIATE so concurrent writers serialize
-// without SQLITE_BUSY.
-//
-// `checksum_sha256` is rec.Checksum, which the indexer currently always
-// sets to "" — the column exists in the schema but checksum computation
-// is deferred; callers should not rely on it being populated.
-//
-// rec.BirthtimeUnix == 0 means "unknown" (API save paths don't stat the
-// file), so the conflict clause only overwrites a stored birthtime when
-// the incoming value is positive — otherwise every interactive save would
-// clobber the captured birthtime and degrade the "created" sort.
+// BirthtimeUnix == 0 means "unknown", so the conflict clause only overwrites a
+// stored birthtime with a positive value — otherwise every save would clobber it.
 func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -196,23 +178,15 @@ func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes
 	}, nil
 }
 
-// MovePathPrefix updates every notes row whose path starts with oldPrefix
-// to start with newPrefix instead. Used by Service.MoveFolder to
-// recursively re-canonicalize every note under a renamed folder in one
-// BEGIN IMMEDIATE transaction. Returns the count of updated rows.
+// MovePathPrefix re-canonicalizes every note under a renamed folder in one
+// BEGIN IMMEDIATE transaction, returning the count of updated rows.
 //
-// Returns notes.ErrCaseCollision if any row already lives under newPrefix
-// AND that row is NOT itself under oldPrefix (i.e. a foreign note would
-// collide on rename). The destination contents that ARE under oldPrefix
-// are the ones being moved — we must not mistake them for a collision
-// against themselves (consider MovePathPrefix("a/", "a/") — degenerate
-// no-op, never collides).
+// Collides only on a FOREIGN row already under newPrefix — rows under oldPrefix
+// are the ones being moved and must not be mistaken for a collision against
+// themselves (MovePathPrefix("a/", "a/") is a degenerate no-op).
 //
-// LIKE-escape note: SQLite LIKE treats `%` and `_` as wildcards. Canonical
-// paths can contain `_` legitimately (a valid filename character) and
-// theoretically `%` (filenames are bytes; canonical form does not strip
-// `%`). The ESCAPE '\' clause + escapeLike() ensures `_` and `%` in the
-// prefix bind as literal characters.
+// The ESCAPE clause is required: `_` is a legitimate filename character and a
+// SQLite LIKE wildcard.
 func (x *Indexer) MovePathPrefix(ctx context.Context, oldPrefix, newPrefix string) (int, error) {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
@@ -418,21 +392,14 @@ func searchOrderClause(sort string) string {
 	}
 }
 
-// SearchFTS runs an FTS5 MATCH query against the notes_fts virtual table with
-// optional AND-combined tag filters. sort selects the ORDER BY (the
-// SQL-level order runs BEFORE the LIMIT, so "modified"/"created" reflect the
-// true full match set, not a client reshuffle of a relevance top-N):
-//   - "relevance" (default/""): bm25 + recency blend
-//   - "modified": n.updated_at DESC
-//   - "created": COALESCE(NULLIF(n.birthtime_unix, 0), n.created_at) DESC
+// SearchFTS runs an FTS5 MATCH with optional AND-combined tag filters.
 //
-// Security: the MATCH clause always uses a positional bind parameter (?1) —
-// NEVER string concatenation. The ORDER BY is chosen by searchOrderClause's
-// closed switch over hardcoded literals — the raw sort string never reaches
-// the query text.
+// The ORDER BY runs BEFORE the LIMIT, so a time sort reflects the true full
+// match set rather than reshuffling a relevance top-N.
 //
-// FTS5 syntax errors (unbalanced parentheses, etc.) are caught and wrapped as
-// notes.ErrFTSQuerySyntax so the handler maps to HTTP 400.
+// MATCH always binds positionally, never concatenates, and the ORDER BY comes
+// from a closed switch over literals — the raw sort string never reaches the
+// query text.
 func (x *Indexer) SearchFTS(ctx context.Context, q string, tags []string, limit int, sort string) ([]notes.SearchHit, error) {
 	if limit < 1 {
 		limit = 1

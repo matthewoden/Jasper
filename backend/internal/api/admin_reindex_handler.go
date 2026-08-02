@@ -30,22 +30,6 @@ func (s *Server) hydrateRegistryFromIndex(ctx context.Context) {
 
 // PostAdminReindex implements POST /api/v1/admin/reindex.
 //
-// Body: {mode: "full" | "incremental"} — "full" defaults if omitted.
-//
-//   - mode="full"        → s.runner.RebuildAndReindex (drop, re-run migrations, full walk).
-//   - mode="incremental" → s.index.Reconcile(ModeIncremental) (cheap mtime-only delta).
-//
-// Concurrency: reindexBusy.TryLock returns 409 with code
-// "reindex_in_progress" if another reindex is already running.
-//
-// Error mapping:
-//
-//   - nil runner               → 503 "no_runner".
-//   - nil index for incremental → 503 "no_indexer".
-//   - mode not in enum          → 409 "invalid_mode".
-//   - ErrUnrecoverable          → 503 "unrecoverable".
-//   - other errors              → 500 with a generic message (no SQL or path leakage).
-//
 //nolint:revive // generated interface name
 func (s *Server) PostAdminReindex(
 	ctx context.Context,

@@ -9,21 +9,9 @@ import (
 	"testing"
 )
 
-// TestPathTraversal_AllEndpoints walks the canonical traversal table
-// across every path-accepting endpoint. Each (endpoint, payload) pair
-// runs as a t.Run subtest so failures point to exactly which contract
-// regressed.
-//
-// Acceptance contract:
-//   - For each payload row with Want4xx=true, the handler MUST return
-//     a typed 4xx response object (any 400/403/404/409/413/422 etc.) —
-//     the precise code varies per endpoint but the rejection MUST be
-//     before any side-effect (no file written, no DB row inserted, no
-//     external dispatch fired).
-//   - For the "happy path" payload (Want4xx=false) we assert non-4xx
-//     where the endpoint can actually succeed under the test fixture
-//     (some endpoints have additional dependencies — see per-endpoint
-//     comments).
+// TestPathTraversal_AllEndpoints walks the canonical traversal table across
+// every path-accepting endpoint. The exact 4xx code varies per endpoint; what
+// is asserted is that rejection happens BEFORE any side effect.
 func TestPathTraversal_AllEndpoints(t *testing.T) {
 	t.Parallel()
 

@@ -14,16 +14,8 @@ import (
 
 // GetNoteByPath implements GET /api/v1/notes/by-path?path=<rel>.
 //
-// Pipeline:
-//
-//  1. Reject `..`, absolute paths, and Windows-style `\` prefixes.
-//  2. filepath.Clean and refuse empty/"."/"/" residue.
-//  3. Require `.md` suffix (deep-links target notes, not folders or attachments).
-//  4. Canonicalize via NFC + lowercase — the indexer stores paths in this form.
-//  5. s.index.LookupByPath: on hit → 200 NoteSummary; on
-//     notes.ErrNotFound → 404 "not_found"; on other err → 500.
-//
-// Returns 404 when s.index is nil (deep-links are useless without the indexer).
+// Canonicalizes to NFC + lowercase before lookup — the indexer stores paths
+// in that form.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNoteByPath(

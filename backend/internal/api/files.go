@@ -16,22 +16,7 @@ import (
 
 // CreateFile implements POST /api/v1/files?path=<targetDir>.
 //
-// Pipeline:
-//
-//  1. Path-traversal hardening on the TARGET DIRECTORY (req.Params.Path),
-//     via the same containment gate the read path uses; an empty path (the
-//     vault root) is accepted here.
-//  2. Lstat the cleaned target — must exist (NO auto-mkdir for safety),
-//     must NOT be a symlink (403), must be a directory (400 otherwise).
-//  3. Read multipart body's "file" part.
-//  4. 100 MB cap via io.LimitReader+1 (shared maxAttachmentBytes const).
-//  5. Sanitize the client-supplied filename via filepath.Base(filepath.Clean(...)).
-//  6. Refuse .md uploads (case-insensitive). Markdown must go through POST /notes.
-//     Returns 400 with code "invalid_filename".
-//  7. generateUniqueFilename renames on collision:
-//     photo.png → photo-1.png → photo-2.png up to 999.
-//  8. fsstore.AtomicWrite for the disk write.
-//  9. http.DetectContentType for the response's content_type field.
+// The target directory must already exist — deliberately no auto-mkdir.
 //
 //nolint:revive // generated interface name
 func (s *Server) CreateFile(
@@ -374,16 +359,10 @@ func (s *Server) PostFileMove(
 	}, nil
 }
 
-// ServeFile is a manual http.HandlerFunc that bypasses the generated
-// GetFile wrapper (which hard-codes Content-Type: application/octet-stream
-// — wrong for SVG, which browsers refuse to render in <img> without
-// image/svg+xml). Wired in app/lifecycle.go AFTER HandlerFromMux so chi's
-// last-registration-wins promotes it over wrapper.GetFile.
-//
-// Same 5-rule path-traversal pipeline as the strict GetFile handler. The
-// Content-Type is computed via http.DetectContentType(first512) with an
-// extension-based override for .svg (DetectContentType returns
-// "text/xml; charset=utf-8" for SVG, which browsers refuse for <img>).
+// ServeFile bypasses the generated GetFile wrapper, which hard-codes
+// application/octet-stream. Mounted AFTER HandlerFromMux so chi's
+// last-registration-wins promotes it. Sniffs the type, overriding .svg to
+// image/svg+xml — browsers refuse the sniffed "text/xml" in an <img>.
 func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {
 	rawPath := r.URL.Query().Get("path")
 

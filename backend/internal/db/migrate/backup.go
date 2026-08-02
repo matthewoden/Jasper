@@ -9,16 +9,9 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 )
 
-// BackupBeforeMigration copies dbPath -> backupPath using a temp+rename
-// pattern. The destination is durable on disk before the function
-// returns; a SIGKILL between any two steps leaves either the old backup
-// intact or no backup at all — never a half-written backup.
-//
-// The in-memory ReadFile + fsstore.AtomicWrite path is the ONLY path;
-// streaming backup is not implemented — dead code at this vault size.
-//
-// If dbPath does not exist (fresh data dir), BackupBeforeMigration is a
-// no-op: there is nothing to back up. Returns nil.
+// BackupBeforeMigration copies dbPath -> backupPath via temp+rename, so a
+// SIGKILL between any two steps leaves the old backup intact or none at all —
+// never a half-written one. No-op when dbPath does not exist.
 func BackupBeforeMigration(dbPath, backupPath string) error {
 	if _, err := os.Stat(dbPath); err != nil {
 		if os.IsNotExist(err) {
@@ -37,18 +30,9 @@ func BackupBeforeMigration(dbPath, backupPath string) error {
 	return nil
 }
 
-// RestoreBackup overwrites dbPath with the contents of backupPath using
-// the same atomic temp+rename pattern. Steps:
-//
-//  1. open backup for streaming read
-//  2. CreateTemp in dbPath's directory
-//  3. io.Copy + tmp.Sync()
-//  4. rename tmp -> dbPath (atomic on POSIX)
-//  5. fsync the parent directory
-//
-// SIGKILL between any two steps either keeps the previous app.db intact
-// (rename has not happened yet) or installs the new one (rename has
-// happened) — never partial.
+// RestoreBackup overwrites dbPath from backupPath via the same temp+rename
+// pattern: a SIGKILL either keeps the previous app.db or installs the new one,
+// never a partial.
 func RestoreBackup(backupPath, dbPath string) error {
 	bf, err := os.Open(backupPath)
 	if err != nil {

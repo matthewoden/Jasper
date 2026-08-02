@@ -104,34 +104,13 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 	}, nil
 }
 
-// Update writes new content for the given UUID. Filesystem write FIRST;
-// Index.Upsert SECOND; Broadcast THIRD.
-// Returns the updated Note (or ErrNotFound if the UUID is unknown).
+// Update writes content. File FIRST, Index SECOND, Broadcast THIRD (ADR-0007).
+// Empty ifMatch is permissive, for curl and automation.
 //
-// Empty content is allowed; empty markdown is a legal state.
-//
-// If-Match validation: when ifMatch is non-empty, the file's current mtime
-// is compared to the client-supplied value (formatted as RFC3339Nano UTC).
-// On mismatch the method returns ErrStaleWrite without touching the file.
-// Empty ifMatch is permissive (curl/automation friendly).
-//
-// Index ordering and error semantics:
-//
-//   - On WriteAtomic failure: return wrapped error; index is NOT touched
-//     (the on-disk state did not change).
-//   - On Stat-after-write failure: return wrapped error; the file was
-//     written but we cannot report a UpdatedAt — surface to caller.
-//   - On Index.Upsert returning ErrCaseCollision: return the error
-//     wrapped. The file IS on disk (file-FIRST contract). The next
-//     Reconcile will re-attempt Upsert; in the meantime the API layer
-//     surfaces 409 to the user.
-//   - On any other Index.Upsert error: log + continue. The file write
-//     is preserved because the filesystem is the source of truth;
-//     the index is recoverable via Reconcile. We do NOT return the error
-//     to the caller — a transient SQLite error must not surface as a 500
-//     when the user's content is safely on disk.
-//   - Broadcast fires ONLY when Upsert succeeded (not on transient
-//     index errors) — broadcast after index, never before.
+// A non-collision Index.Upsert error is logged and SWALLOWED: the filesystem is
+// the source of truth and Reconcile heals, so a transient SQLite error must not
+// surface as a 500 over content already safely on disk. ErrCaseCollision is
+// returned — the API maps it to 409.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMatch string) (Note, error) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -247,18 +226,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 	}, nil
 }
 
-// Create creates a new note at <parentPath>/<title>.md. The path is
-// canonicalized inside FileStore.CreateFile; collision rejection and
-// atomic temp+rename are delegated to the FileStore.
+// Create makes a new note at <parentPath>/<title>.md.
 //
-// FS-FIRST contract: file is created, then index is upserted, then the
-// registry is updated. On Index.Upsert failure AFTER successful file
-// creation, the file is deleted in a best-effort cleanup and the index
-// error is returned wrapped. The reconciler heals any half-state if the
-// cleanup fails.
-//
-// Create is a thin wrapper around CreateWithBody routing through the
-// single-write code path.
+// On Index.Upsert failure after the file exists, the file is deleted
+// best-effort; the reconciler heals whatever the cleanup missed.
 func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSummary, error) {
 	return s.CreateWithBody(ctx, parentPath, title, "")
 }
@@ -274,17 +245,10 @@ func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title,
 	return s.createInternal(ctx, parentPath, title, body, displayTitle)
 }
 
-// CreateWithBody creates a new note at <parentPath>/<title>.md, optionally
-// pre-populating it with the supplied body. Composes (scaffold + body) IN
-// MEMORY and writes it in one atomic operation.
+// CreateWithBody composes scaffold + body IN MEMORY and writes once, so there is
+// a single updated_at, a single Upsert and a single broadcast.
 //
-// body == "" produces the canonical NewNoteContent(title) scaffold.
-//
-// body != "" appends the body BYTES VERBATIM after the scaffold, so the
-// caller's content is preserved exactly as supplied — no server-side
-// massaging beyond the scaffold prefix.
-//
-// Single updated_at, single WS broadcast, single index Upsert.
+// The body is appended VERBATIM — no server-side massaging beyond the scaffold.
 func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
 	return s.createInternal(ctx, parentPath, title, body, "")
 }
@@ -420,20 +384,12 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// Move renames a note. FS-FIRST: rename the file, then UPDATE the index
-// row's path inside a fresh Upsert, then update the registry. On
-// Index.Upsert failure AFTER successful FS rename, the file is moved
-// back (best-effort).
+// Move renames a note FS-first, moving the file back best-effort if the index
+// update then fails.
 //
-// The new path is canonicalized inside FileStore.MoveFile.
-//
-// After the FS rename succeeds, the file's content is re-read and the
-// title is re-extracted (markdown.ExtractTitle — the same scanner the
-// indexer uses) so the index row's Title reflects the current first-H1
-// (or filename fallback).
-//
-// A read failure post-rename is non-fatal: a warn log is emitted and
-// the filename fallback is used. The reconciler heals at the next pass.
+// The title is re-extracted with the same scanner the indexer uses, so the row
+// reflects the current first-H1. A post-rename read failure is non-fatal —
+// filename fallback, and the reconciler heals.
 func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteSummary, error) {
 	oldRelPath, ok := s.registry.Lookup(id)
 	if !ok {
@@ -533,16 +489,9 @@ func (s *Service) CreateFolder(ctx context.Context, parentPath, name string) (st
 	return canon, nil
 }
 
-// DeleteFolder removes a folder. With recursive=false: rmdir if empty,
-// otherwise ErrFolderNotEmpty (no index work — empty folder has no .md
-// rows by definition). With recursive=true: rmtree the FS subtree FIRST,
-// then DELETE FROM notes WHERE path LIKE prefix/% in one batch, then
-// drop every removed id from the registry.
-//
-// Reverse-locked from delete-note (FS first, SQLite second) because
-// dir-delete is rmtree-style and the SQLite cleanup is a derived
-// bookkeeping op. On index-delete failure AFTER FS rmtree, the FS is
-// already gone — log loudly and return; reconciler heals.
+// DeleteFolder is FS-first, the reverse of delete-note: an rmtree cannot be
+// undone, and the index cleanup is derived bookkeeping. If it fails afterwards
+// the files are already gone — log loudly and let the reconciler heal.
 func (s *Service) DeleteFolder(ctx context.Context, folderPath string, recursive bool) error {
 	canon := canonicalRelPath(folderPath)
 
@@ -707,19 +656,10 @@ func uuidsToStrings(ids []uuid.UUID) []string {
 	return out
 }
 
-// RenameTagAcrossVault renames a tag from oldName to newName in every carrier
-// note's YAML frontmatter. Two-phase atomicity: FS pass first, SQL pass
-// second (non-fatal), broadcast third.
+// RenameTagAcrossVault rewrites the tag in every carrier's frontmatter. FS pass
+// first, SQL pass second (non-fatal), broadcast third.
 //
-// Returns the UUIDs of all affected notes, or:
-//   - ErrTagNotFound if oldName has no carriers (empty index result).
-//   - ErrInvalidTagName if newName violates the allowed charset ([a-z0-9_-]+).
-//   - ErrTagCollision if newName collides with an existing tag (propagated
-//     from index.RenameTag).
-//
-// Rollback on FS failure: if any WriteAtomic call fails, every
-// already-written file is restored to its pre-state via a best-effort
-// WriteAtomic pass.
+// If any write fails, every already-written file is restored best-effort.
 func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
 	if !isValidTagName(newName) {
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrInvalidTagName)
@@ -851,17 +791,11 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 	return touchedIDs, nil
 }
 
-// RenameRewriteWikilinks rewrites every [[OldTitle]] and [[OldTitle|alias]]
-// reference to [[NewTitle]] / [[NewTitle|alias]] across the vault. Two-phase
-// atomicity: FS pass first, SQL pass second (non-fatal), broadcast third.
+// RenameRewriteWikilinks rewrites INBOUND references only — the renamed note's
+// own links are left for the next save's SyncBacklinks.
 //
-// Only INBOUND references are rewritten — the renamed note's own [[...]] links
-// are not touched here (they are updated on next Save via SyncBacklinks).
-//
-// Returns the UUIDs of all touched referrer notes, or an empty slice when
-// there are no referrers (no broadcast fired in that case).
-//
-// Rollback on FS failure: every already-written file is restored.
+// FS pass first, SQL second (non-fatal), broadcast third; every already-written
+// file is restored if a write fails.
 func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]uuid.UUID, error) {
 	referrers, err := s.index.SourcesByBacklinkTitle(ctx, oldTitle)
 	if err != nil {

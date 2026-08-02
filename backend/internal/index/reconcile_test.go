@@ -178,20 +178,10 @@ func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	}
 }
 
-// TestReconcile_ReadoptsRestoredFile — TRASH-05 regression: a .md file
-// moved back into notes/ (manual restore from .trash/) is re-adopted by an
-// incremental Reconcile with a FRESH, non-nil UUID.
-//
-// Flow:
-//  1. Seed: write note.md, run full Reconcile, capture first UUID.
-//  2. Simulate post-delete state: delete the index row + remove the file from
-//     disk (mirrors Service.Delete which deletes the index row before moving
-//     the file to .trash/).
-//  3. Restore: drop a .md back under notes/ (the user's manual restore from
-//     .trash/), run incremental Reconcile.
-//  4. Assert: index row exists with a NON-NIL UUID (may differ from original —
-//     UUIDs are not persisted in files; chooseID mints uuid.New() for a
-//     newly-seen path). Assert the row's title matches the restored content.
+// TestReconcile_ReadoptsRestoredFile — TRASH-05 regression: a file manually
+// restored from .trash/ is re-adopted with a fresh non-nil UUID. It may differ
+// from the original: UUIDs are not persisted in files, so a newly-seen path
+// mints a new one.
 func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)

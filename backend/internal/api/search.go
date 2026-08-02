@@ -13,13 +13,8 @@ const maxTagFilters = 8
 
 // SearchNotes implements GET /api/v1/search.
 //
-// Parameters:
-//   - q     (optional when tag is present): full-text search query; < 2 chars
-//     with NO tag params → 200 empty results. When one or more tag params are
-//     present, q may be empty/short and the request falls through to a
-//     tag-only lookup — bare `tag:name` queries must return matches.
-//   - tag   (optional, repeatable): AND-combined tag filters, capped at 8.
-//   - limit (optional): max results; default 50, clamped [1, 100].
+// A short/empty q is not an error when tag params are present — bare
+// `tag:name` queries must still return matches.
 //
 //nolint:revive // generated interface name
 func (s *Server) SearchNotes(

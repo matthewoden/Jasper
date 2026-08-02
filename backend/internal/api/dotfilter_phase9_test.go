@@ -17,17 +17,9 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// Dot-filter tests: the file tree, indexer, and search all skip the
-// per-vault `.jasper/` subdirectory because the dot-prefix filter in
-// index/walk.go + index/tree.go elides it. These tests pin that behavior
-// so a future refactor that loosens the filter surfaces immediately.
-//
-// The fixture places `.jasper/` INSIDE notesDir (worst case — in production
-// `.jasper/` is a sibling of notes/). If the filter regresses, sentinel.md
-// appears in the tree and in the indexer's reconciled set.
-//
-// Tests exercise GetTree + Indexer.BuildTree directly without httptest.Server
-// to keep assertions focused on the filter.
+// The fixture puts `.jasper/` INSIDE notesDir — the worst case; in production
+// it is a sibling. If the dot-prefix filter regresses, sentinel.md shows up in
+// the tree and in the indexer's reconciled set.
 
 func setupDotFilterPhase9(t *testing.T) (*Server, *index.Indexer, string) {
 	t.Helper()

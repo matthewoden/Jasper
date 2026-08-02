@@ -41,16 +41,10 @@ var (
 	// on notes.path (see 001_initial.sql).
 	ErrCaseCollision = errors.New("notes: case-insensitive path collision with existing note")
 
-	// ErrStaleWrite is returned by Service.Update when the supplied
-	// If-Match value does not match the current file's mtime. The API
-	// layer maps this to HTTP 409 with `code: stale_write` and
-	// `current_updated_at` in the body so the client can show the
-	// Save-anyway / Discard banner.
+	// ErrStaleWrite is returned when If-Match does not match the file's mtime.
 	//
-	// Service.Update returns a *StaleWriteInfo that wraps this sentinel —
-	// handlers should `errors.As(err, &swErr)` to obtain the already-statted
-	// mtime instead of issuing a second Get (which races against a third
-	// writer between the failed Update's Stat and the follow-up Get's Stat).
+	// Update wraps it in a *StaleWriteInfo carrying the already-statted mtime;
+	// use errors.As rather than a follow-up Get, which races a third writer.
 	ErrStaleWrite = errors.New("notes: stale write — If-Match mismatch")
 
 	// ErrTagNotFound is returned by Index.RenameTag and Index.DeleteTag when

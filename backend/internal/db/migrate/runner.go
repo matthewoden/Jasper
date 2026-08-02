@@ -35,25 +35,9 @@ type RunnerOptions struct {
 	DiskFreeFn func(path string) (uint64, error) // injectable for tests; production default reads syscall.Statfs
 }
 
-// Runner is the three-path migration orchestrator.
-//
-// Lifecycle of a single Run(ctx) call:
-//
-//  1. PreflightFreeSpace — abort with ErrDiskFull if free < 2× current
-//     app.db size.
-//  2. Discover pending migrations from Migrations FS (lex-sorted; only
-//     those NOT in schema_migrations are pending).
-//  3. If none pending, refresh notes_indexed, set Status = OK, return.
-//  4. BackupBeforeMigration -> backupPath (no-op on a fresh DB).
-//  5. For each pending migration in order:
-//     BEGIN IMMEDIATE; tx.Exec(<sql>); INSERT INTO schema_migrations; COMMIT.
-//     On any failure inside the transaction: rollback + Path 1.
-//     6a. All succeed → DeleteBackup; Status = OK; return.
-//     6b. Any failed → Path 1 — RestoreBackup; Status = RolledBack; Run
-//     returns nil error (the app keeps running on the prior schema).
-//  7. Path 2 (RebuildAndReindex) is triggered by POST /admin/reindex.
-//     Path 3 (Unrecoverable) fires when restore itself fails OR when
-//     Path 2 also fails.
+// Runner is the three-path migration orchestrator (ADR-0028). Backup first,
+// then apply; Path 1 restores that backup and keeps the app on the prior
+// schema, Path 2 rebuilds from the filesystem, Path 3 is unrecoverable.
 type Runner struct {
 	DBPath       string
 	BackupPath   string
@@ -104,19 +88,9 @@ func (r *Runner) Status(ctx context.Context) Status {
 	return r.store.Status(ctx)
 }
 
-// Run orchestrates the three-path migration strategy. See the Runner
-// type doc for the full lifecycle. Returns:
-//
-//   - (Status{State: ok}, nil) when all migrations applied (or none
-//     were pending).
-//   - (Status{State: rolled_back, FailedMigration: <name>}, nil) when
-//     Path 1 fired — the caller treats this as a successful start
-//     (the app runs on the prior schema; the migration banner is shown).
-//   - (Status{State: unrecoverable}, ErrUnrecoverable) when Path 3
-//     fires. The composition root refuses to start the HTTP listener.
-//   - (Status{State: unrecoverable}, ErrDiskFull-wrapped) when the
-//     pre-flight aborts. The composition root serves the static
-//     disk-full.html page.
+// Run applies pending migrations. A rolled_back state returns a NIL error —
+// the caller treats it as a successful start on the prior schema. Only Path 3
+// and the disk-full pre-flight return an error, and both stop the listener.
 func (r *Runner) Run(ctx context.Context) (Status, error) {
 	if err := r.preflight(); err != nil {
 		r.Log.Error("migrate preflight failed", "err", err)
@@ -249,16 +223,14 @@ type Queryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// PendingMigrations reports which embedded migrations are not yet recorded in
-// schema_migrations, applying the same discovery and the same filename
-// validation the runner applies before it will run anything.
+// PendingMigrations reports which embedded migrations are unrecorded, using the
+// runner's own discovery and filename validation.
 //
-// Sharing this matters more than the deduplication: a diagnostic that
-// enumerates migrations by its own looser rule will call a file "pending" that
-// the runner would refuse outright, and tell the user to restart a server that
-// then declines to boot.
+// Sharing that matters more than the deduplication: a diagnostic with its own
+// looser rule would call a file "pending" that the runner refuses, and tell the
+// user to restart a server that then declines to boot.
 //
-// Read-only — safe to call against a `?mode=ro` connection.
+// Read-only — safe against a `?mode=ro` connection.
 func PendingMigrations(ctx context.Context, reader Queryer, fsys fs.FS) ([]string, error) {
 	applied, err := AppliedMigrations(ctx, reader)
 	if err != nil {
@@ -393,32 +365,12 @@ func (r *Runner) refreshNoteCount(ctx context.Context) {
 	r.store.set(cur)
 }
 
-// RebuildAndReindex implements Path 2. Called by
-// api.Server.PostAdminReindex with mode=full.
+// RebuildAndReindex implements Path 2. The drop list is derived from the
+// embedded migrations at runtime, so a new NNN_*.sql needs no list maintenance.
+// A failure here is unrecoverable — there is no prior schema to fall back to.
 //
-// Lifecycle:
-//
-//  1. Set Status = Rebuilding so admin/status surfaces the progress
-//     overlay.
-//  2. BEGIN IMMEDIATE; DROP every derived table; COMMIT. The drop
-//     list is derived at runtime from the embedded migrations via
-//     deriveDropStatements — newer migrations' tables drop first,
-//     schema_migrations drops last. Adding a new NNN_*.sql migration
-//     is automatically picked up; no manual list maintenance.
-//  3. Re-run every migration on the clean schema via discoverPending +
-//     applyAll. If any migration breaks on the now-clean schema, the
-//     whole rebuild is unrecoverable (Path 3) — there is no prior
-//     schema to fall back to.
-//  4. Invoke r.Path2Rebuild(ctx) — bridge to *index.Indexer.Reconcile
-//     that walks the filesystem and repopulates the notes table.
-//  5. Status = OK on success; Status = Unrecoverable + wrapped
-//     ErrUnrecoverable on any failure (the composition root must
-//     refuse to start the listener; the user must restore-from-backup
-//     or wipe the data dir).
-//
-// The api.Server.PostAdminReindex handler holds reindexBusy for the
-// entire call; combined with Pair.Writer.SetMaxOpenConns(1), no
-// concurrent Service.Update can interleave with the DROP.
+// The caller holds reindexBusy throughout; with Writer's MaxOpenConns=1 that is
+// what stops a concurrent Service.Update interleaving with the DROP.
 func (r *Runner) RebuildAndReindex(ctx context.Context) (Status, error) {
 	r.store.set(Status{State: StateRebuilding, LogsPath: r.LogsPath})
 

@@ -16,19 +16,13 @@ import (
 // in progress. The HTTP handler maps this to 409 + vault_switch_in_progress.
 var ErrSwitchInProgress = errors.New("vault switch already in progress")
 
-// SwitchVault hot-swaps from the currently open vault to targetPath.
+// SwitchVault hot-swaps to targetPath. Single-flight: returns
+// ErrSwitchInProgress on contention rather than queuing.
 //
-// V5: TryLock-based single-flight enforcement. Returns ErrSwitchInProgress
-// immediately on contention; no queuing.
+// Drains in-flight writes with a 2-second cap. Writers still running when the
+// cap fires hit a closed DB and surface an error — an accepted trade-off.
 //
-// V6: drains inFlightWrites with a 2-second cap before teardown. Writers
-// that complete BEFORE the drain window are safely committed in the old vault.
-// Writers that are still in-flight when the 2s cap fires will hit a closed DB
-// and surface an error to their callers; this is logged as a Warn and is an
-// accepted trade-off.
-//
-// The ctx parameter governs the lifetime of the NEW vault's per-vault
-// subsystems (DB, indexer, MCP, etc.). Cancel it to shut down the new vault.
+// ctx governs the NEW vault's subsystems; cancel it to shut them down.
 func (a *App) SwitchVault(ctx context.Context, targetPath string) (vault.RecentVaultEntry, error) {
 	if !a.swapMu.TryLock() {
 		return vault.RecentVaultEntry{}, ErrSwitchInProgress

@@ -17,19 +17,10 @@ import (
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
-// TestStress_5000Note_FullReconcile_NoBusy is the criterion-5 floor
-// (ROADMAP §Performance). It creates 5,000 .md files, opens a real
-// sqlite.Pair, runs the migration runner (Path 0 — fresh boot), then
-// fires concurrent Reconcile + concurrent disk writers. Asserts:
-//
-//	(a) zero errors containing "SQLITE_BUSY" / "database is locked";
-//	(b) wall-clock under 60 seconds (enforced via context.WithTimeout);
-//	(c) SELECT COUNT(*) FROM notes returns 5000 after a settling full
-//	    reconcile pass.
-//
-// The wall-clock bound + the count assertion are the W-5 strong gates
-// the planner wanted: a stress test that fails the build if we ever
-// regress on writer-pool serialization (DATA-03).
+// TestStress_5000Note_FullReconcile_NoBusy fires concurrent Reconcile against
+// concurrent disk writers over 5,000 files. Zero SQLITE_BUSY plus a wall-clock
+// bound is what makes it fail the build on a writer-pool serialization
+// regression, rather than merely getting slower.
 func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping 5000-note stress test in -short")

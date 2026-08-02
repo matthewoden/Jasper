@@ -51,24 +51,11 @@ func (s *Service) GetDailyNote(ctx context.Context, date string) (Note, error) {
 	return note, nil
 }
 
-// GetOrCreateDailyNote implements the get-or-create semantics for
-// POST /api/v1/daily-notes/{date} entirely inside the domain service —
-// no direct filesystem, index, or registry access from the API handler.
+// GetOrCreateDailyNote is reached only by POST. It used to back the GET too,
+// which made note creation a side effect of a safe method.
 //
-// This is reached only by POST. It used to back the GET as well, which made
-// note creation a side effect of a safe method — see the note on
-// GetDailyNote above.
-//
-// relPath is always "daily/<date>.md"; date is validated (YYYY-MM-DD) by
-// the caller before this is invoked.
-//
-// Existing note (get branch): the registry is (re)populated with the date
-// as title — via AddRecord — so [[date]] resolves even across a restart
-// or a registry eviction. This is a read: no broadcast fires.
-//
-// Absent note (create branch): created via CreateWithBodyAndTitle, which
-// owns the file-FIRST write, index upsert, title/FTS/backlink indexing,
-// and the note:created broadcast (exactly once).
+// The get branch still re-adds the registry record so [[date]] resolves across
+// a restart or registry eviction; that is a read, so no broadcast fires.
 func (s *Service) GetOrCreateDailyNote(ctx context.Context, date, template string) (Note, bool, error) {
 	note, getErr := s.GetDailyNote(ctx, date)
 	switch {

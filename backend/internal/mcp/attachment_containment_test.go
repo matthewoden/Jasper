@@ -15,16 +15,10 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// TestReadAttachment_RejectsSymlinkedAncestor is the MCP half of the vault-escape gate.
-//
-// The vault-escape guarantee held for notes and failed for attachments:
-// notes go through fsstore, which rejects symlink writes, but read_attachment
-// ran its own leaf-only os.Lstat. A symlink on an intermediate directory —
-// notes/shared -> /external, a common Obsidian habit — is invisible to that
-// check, so the AI could read any file the user could read.
-//
-// It is gated on a user-created symlink — the AI cannot plant one itself,
-// because MCP note writes go through fsstore, which rejects symlink writes.
+// The vault-escape guarantee held for notes but failed for attachments:
+// read_attachment ran its own leaf-only os.Lstat, blind to a symlink on an
+// intermediate directory. The AI cannot plant one itself — MCP writes go
+// through fsstore — but a user's own notes/shared -> /external would do.
 func TestReadAttachment_RejectsSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
 

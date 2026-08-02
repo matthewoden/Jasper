@@ -9,13 +9,8 @@ import (
 
 // GetNoteBacklinks implements GET /api/v1/notes/{id}/backlinks.
 //
-// Returns the resolved backlinks for the given note (source rows, sorted by
-// source mtime DESC). Pending rows (target_id IS NULL) are excluded.
-// When the note has no inbound links the response is an empty array, not null.
-//
-// The server builds excerpt HTML server-side; the client must pass it through
-// sanitize.ts (DOMPurify). This handler does not sanitize (single-user,
-// localhost-only) but the contract is enforced via the client-side sanitize.ts wrapper.
+// Excerpt HTML is built here but NOT sanitized — the client must pass it
+// through sanitize.ts before rendering.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNoteBacklinks(

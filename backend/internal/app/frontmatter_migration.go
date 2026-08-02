@@ -45,16 +45,9 @@ func doAtomicWrite(path string, data []byte) error {
 	return fsstore.AtomicWrite(path, data)
 }
 
-// InjectFrontmatterScaffoldMigration walks notesDir and, for each .md file
-// lacking a frontmatter block, atomically prepends the scaffold. On
-// completion it records FrontmatterScaffoldMarker in schema_migrations so
-// the walk never runs again (idempotent across restarts).
-//
-// Parameters:
-//   - ctx      — passed to all DB calls; honours cancellation.
-//   - writerDB — the single-writer *sql.DB; marker is written here.
-//   - notesDir — absolute path to the vault's notes/ directory.
-//   - log      — structured logger; one entry per injected file + summary.
+// InjectFrontmatterScaffoldMigration prepends the scaffold to every .md file
+// lacking frontmatter, then records a marker in schema_migrations so the walk
+// never runs again.
 func InjectFrontmatterScaffoldMigration(
 	ctx context.Context,
 	writerDB *sql.DB,

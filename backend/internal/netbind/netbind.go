@@ -31,19 +31,15 @@ func IsLoopback(host string) bool {
 	return false
 }
 
-// HostAllowlist decides whether an HTTP Host header names a host this
-// server is actually serving. It is the DNS-rebinding gate.
+// HostAllowlist is the DNS-rebinding gate. Rebinding dissolves the bind address,
+// which ADR-0003 makes Jasper's entire security boundary: the attacker's page
+// re-resolves to 127.0.0.1, its fetches become same-origin, and the connection
+// is indistinguishable from a legitimate one. Host is the only part of the
+// request still naming the attacker.
 //
-// Rebinding dissolves the bind address, which ADR-0003 makes Jasper's entire
-// security boundary: the attacker's page re-resolves its own name to
-// 127.0.0.1, so its fetches become same-origin and it can read every
-// response. The connection is indistinguishable from a legitimate one. The
-// Host header is the only part of the request that still names the attacker.
-//
-// Only the hostname is compared, never the port. The port carries no signal
-// — the request already arrived on this listener — and requiring it would
-// break the Vite dev proxy, which runs changeOrigin:false and so forwards
-// Host: localhost:5173 to a backend bound on 6683.
+// Only the hostname is compared, never the port: the request already arrived on
+// this listener, and requiring the port would break the Vite dev proxy, which
+// forwards Host: localhost:5173 to a backend bound on 6683.
 type HostAllowlist struct {
 	hosts map[string]bool
 

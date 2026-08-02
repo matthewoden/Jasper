@@ -22,21 +22,8 @@ func DefaultDataDir() string {
 	return filepath.Join(home, ".jasper")
 }
 
-// Defaults returns a Config populated with DESIGN.md §11 default values
-// for every field. Used by:
-//
-//   - load.go when .jasper/config.json is missing (the file is then
-//     written so subsequent reads succeed with the canonical shape).
-//   - load.go to seed missing nested-struct fields when an old config
-//     (without `server` / `mcp` blocks) is loaded.
-//   - The first-run wizard as the baseline before overlaying user choices.
-//
-// Server.Port is 6683 (T9 spelling of "NOTE"). Server.DataDir is
+// Defaults returns a fully-populated Config. Server.DataDir defaults to
 // DefaultDataDir() so the binary boots into ~/.jasper without a wizard run.
-//
-// MCP defaults: Port=6684, Bind="127.0.0.1". The listener always starts
-// on boot; write access is governed solely by per-folder
-// grants, not a listener toggle.
 func Defaults() Config {
 	return Config{
 		AppName: "Jasper",

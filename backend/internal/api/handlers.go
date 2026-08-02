@@ -28,14 +28,9 @@ func (nilStatusProvider) Status(_ context.Context) migrate.Status {
 
 // Server bundles dependencies and implements api.StrictServerInterface.
 //
-// status, runner, and index can each be nil; the constructor substitutes a
-// no-op fallback for status and handlers degrade gracefully:
-//   - GetNotes with nil index → returns an empty list (NOT 503).
-//   - PostAdminReindex with nil runner → 503 with code "no_runner".
-//
-// broadcaster is the WebSocket broadcaster port. In production this is
-// *wshub.Hub; in tests it is nil. We accept the interface (not *wshub.Hub)
-// to avoid an import cycle: wshub imports api, so api MUST NOT import wshub.
+// status, runner and index may each be nil; handlers degrade rather than 503.
+// broadcaster is an interface, not *wshub.Hub, because wshub imports api —
+// taking the concrete type would be an import cycle.
 type Server struct {
 	notes       *notes.Service
 	status      migrate.StatusProvider

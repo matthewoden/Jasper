@@ -27,17 +27,12 @@ type fileSink struct {
 	closed   bool
 }
 
-// NewFileHandler returns a slog.Handler that writes JSON-encoded records
-// to <logsDir>/jasper.log, mkdir -p'ing logsDir if missing. 0700: the
-// logs dir lives inside .jasper/ and is Jasper's own data (ADR-0030).
+// NewFileHandler writes JSON records to <logsDir>/jasper.log, rotating daily on
+// first write after the date changes. 0700 — this is Jasper's own data
+// (ADR-0030).
 //
-// Daily rotation: on each Write, if today's date differs from openedOn,
-// close the current file, rename jasper.log → jasper-<openedOn>.log,
-// open a fresh jasper.log.
-//
-// Returned io.Closer must be Close()'d on graceful shutdown and on vault
-// teardown by the caller; once closed, subsequent Writes return
-// os.ErrClosed, which Fanout tolerates without starving the console.
+// The caller MUST Close on shutdown and vault teardown. Writes after close
+// return os.ErrClosed, which Fanout tolerates without starving the console.
 func NewFileHandler(logsDir string) (slog.Handler, io.Closer, error) {
 	if err := os.MkdirAll(logsDir, 0o700); err != nil {
 		return nil, nil, err

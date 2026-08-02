@@ -205,18 +205,9 @@ func TestFTSUpsertSync(t *testing.T) {
 
 var fixedMtime = time.Unix(1700000000, 0)
 
-// TestFTSDivergenceRebuild verifies that checkAndRepairFTSDivergence detects
-// and heals FTS content staleness. The test exercises two scenarios:
-//
-//  1. Healthy index (body_fts populated): checkAndRepairFTSDivergence is a no-op.
-//  2. Stale index (all body_fts empty): checkAndRepairFTSDivergence detects
-//     staleness via the “all body_fts empty” heuristic, runs 'rebuild', and
-//     restores FTS5 MATCH capability.
-//
-// Note: for FTS5 external-content tables, SELECT COUNT(*) FROM notes_fts
-// always equals SELECT COUNT(*) FROM notes. The divergence check therefore
-// uses both a count comparison (for corruption detection) and a content-
-// staleness check (all body_fts=”) for the primary real-world scenario.
+// For FTS5 external-content tables COUNT(*) on notes_fts always equals COUNT(*)
+// on notes, so a count comparison alone cannot see staleness. The check needs
+// the "all body_fts empty" heuristic too — that is the real-world scenario.
 func TestFTSDivergenceRebuild(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)

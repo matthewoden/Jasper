@@ -36,17 +36,11 @@ func (s *Server) SetVaultSwitcher(vs VaultSwitcher) {
 	s.vaultSwitcher = vs
 }
 
-// VaultOpener is the interface PostVaultCreate + PostVaultOpen use to
-// transition the running server from no-vault mode (picker shell only) to
-// vault-open mode (full stack). Implemented by *app.App.
+// VaultOpener transitions the server from no-vault mode to vault-open mode.
 //
-// Distinct from VaultSwitcher: SwitchVault assumes a vault is already open
-// and runs the teardown protocol; OpenVault assumes no vault is open and
-// brings up per-vault subsystems alongside the existing listener.
-//
-// nil-safe: when the opener isn't wired, handlers fall back to best-effort —
-// write to disk and update app.json, skip the in-process transition. The next
-// process restart picks it up.
+// Distinct from VaultSwitcher: SwitchVault assumes a vault is already open and
+// runs the teardown protocol; OpenVault assumes none is. When nil, handlers
+// still write to disk and app.json — the next restart picks it up.
 type VaultOpener interface {
 	// OpenVault transitions a no-vault App to an open-vault App for the
 	// vault at absCanonical. Updates app.json and brings up the per-vault
@@ -244,18 +238,6 @@ func (s *Server) PostVaultOpen(
 }
 
 // PostVaultCreate creates a new Jasper vault inside the chosen folder.
-//
-// Validation pipeline:
-//  1. abs path
-//  2. ASCII+NFC check
-//  3. parent directory must exist
-//  4. .jasper/ must NOT already exist (already-a-vault check)
-//  5. nested-vault detection (upstream-walk for ancestor .jasper/)
-//
-// If validation passes: mkdir .jasper/ 0700 → write per-vault config.json
-// → open DB + run migrations → register in app.json via TouchOpened.
-//
-// Wire: POST /api/v1/vault/create → 200 RecentVaultEntry | 400 | 409
 //
 //nolint:revive // generated interface method name
 func (s *Server) PostVaultCreate(

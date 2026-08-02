@@ -26,16 +26,7 @@ func writeVaultFile(t *testing.T, dataDir, rel string, data []byte) {
 }
 
 // TestServeFile_SVGIsNotAnActiveDocument pins the raw-file hardening.
-//
-// Today the only thing stopping this attack is the app-wide CSP's
-// script-src 'self'. That is a real mitigation, and also exactly why this is
-// worth fixing: the protection is one CSP relaxation away from being gone,
-// and such relaxations happen years later for unrelated reasons, by someone
-// with no idea that a file-serving path depends on this one.
-//
-// The assertion is on headers, not on browser behavior: `sandbox` puts the
-// response in an opaque origin with scripting disabled when it is loaded as a
-// document, which is what removes same-origin API access.
+// Asserts headers, not browser behavior — see RawFileCSP for why.
 func TestServeFile_SVGIsNotAnActiveDocument(t *testing.T) {
 	t.Parallel()
 	srv, dataDir := newAttachmentTestServer(t, nil)

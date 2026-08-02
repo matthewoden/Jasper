@@ -11,20 +11,10 @@ import (
 	errorpage "github.com/matthewoden/jasper/backend/internal/static/error"
 )
 
-// StartupErrorData feeds the startup-error.html template.
-//
-//   - PhaseName: human-friendly init-step name (e.g. "Migration",
-//     "Migration 004_mcp_grants.sql", "Index rebuild"). Auto-escaped.
-//   - ErrorSummary: short text from err.Error() — must NOT contain a
-//     stack trace (caller sanitizes). Auto-escaped by html/template
-//     so SQL or filesystem error messages containing `<` or `>` cannot
-//     break out of the surrounding paragraph.
-//   - SuggestedAction: one of three short user-facing strings — one of
-//     "Run jasper doctor", "Restore from your most recent backup", or
-//     "Free up disk space and retry". Picked by suggestedActionFor.
-//   - LogExcerpt: last ~20 lines of jasper.log. Rendered inside a
-//     <pre> block; html/template auto-escapes < > & so log content
-//     cannot break out of the pre.
+// StartupErrorData feeds the startup-error.html template. Every field is
+// auto-escaped by html/template, so SQL errors and log excerpts containing
+// `<` or `>` cannot break out. ErrorSummary must not carry a stack trace —
+// the caller sanitizes.
 type StartupErrorData struct {
 	PhaseName       string
 	ErrorSummary    string

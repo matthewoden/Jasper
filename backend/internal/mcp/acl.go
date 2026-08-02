@@ -1,20 +1,12 @@
-// Package mcp provides the Model Context Protocol server + ACL for
-// folder-scoped AI write access.
+// Package mcp provides the MCP server and its folder-scoped write ACL.
 //
-// The ACL stores grants in the mcp_write_grants table (migration 004).
-// Reads are global (any folder readable). Writes are gated by Resolve,
-// which walks parent folders to find the most-specific grant.
+// Reads are global; writes resolve the most-specific ancestor grant.
+// Tier 1 is create+update, Tier 2 adds move+delete.
 //
-// Tier 1 (level=1): create_note + update_note in the granted folder (recursive).
-// Tier 2 (level=2): create_note + update_note + move_note + delete_note.
+// Grants are recursive and there are no deny entries — to exclude a subfolder,
+// grant its siblings instead.
 //
-// Grants are recursive: a grant on "projects" covers
-// "projects/ai/draft.md". To exclude a sub-folder, users grant siblings
-// instead (no deny entries in v1).
-//
-// Revocation takes effect on the next MCP tool invocation: Resolve is
-// consulted on every call, so once Revoke deletes the row, the very next
-// call fails. In-flight writes are allowed to finish.
+// Revocation takes effect on the next tool call; in-flight writes finish.
 package mcp
 
 import (
@@ -89,10 +81,8 @@ func (a *ACL) List(ctx context.Context) ([]Grant, error) {
 	return out, nil
 }
 
-// Set upserts a grant. If a grant already exists for the canonical
-// folderPath, level overwrites it (so re-granting Tier 2 over Tier 1
-// is an in-place upgrade; granted_at and granted_via also refresh so
-// the wizard-vs-tree-menu telemetry tracks the latest entry point).
+// Set upserts a grant, so re-granting at a different tier is an in-place
+// change rather than a second row.
 //
 // Returns the resulting grant on success. Errors:
 //   - invalid level (not TierEditOnly / TierFull)
@@ -148,20 +138,11 @@ func (a *ACL) Revoke(ctx context.Context, folderPath string) error {
 	return nil
 }
 
-// Resolve walks parent folders of notePath and returns the most-specific
-// grant level (longest-prefix match), or (0, false) if no ancestor has
-// a grant.
+// Resolve returns the most-specific ancestor grant, or (0, false).
 //
-// notePath is the rel path under notes/ (e.g., "projects/ai/draft.md"
-// or just "projects/ai" for a folder-targeted check).
-//
-// We start from filepath.Dir(notePath) because grants are folder-scoped —
-// a grant on "projects/ai" applies to any file directly inside it AND to
-// deeper descendants. For folder-target queries (where the caller passes a
-// folder path directly), the Dir() strip walks one level too high; callers
-// meaning "is THIS folder granted?" should append "/x" sentinel before
-// calling. The MCP tool dispatch path always has a note path, so the
-// Dir-first behavior is correct.
+// It starts at filepath.Dir(notePath) because grants are folder-scoped. A
+// caller asking "is THIS folder granted?" must append a "/x" sentinel, or the
+// Dir strip walks one level too high. Tool dispatch always passes a note path.
 func (a *ACL) Resolve(ctx context.Context, notePath string) (GrantLevel, bool) {
 	cur := filepath.Dir(normalizeGrantPath(notePath))
 	for {

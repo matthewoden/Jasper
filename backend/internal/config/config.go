@@ -1,18 +1,8 @@
-// Package config owns Jasper's user configuration file (DESIGN.md §11).
-// The file lives at <dataDir>/.jasper/config.json. The filesystem is the
-// source of truth; the package never holds in-memory state across calls
-// — every Load reads disk, every Save writes via fsstore.AtomicWrite
-// (temp + fsync + rename + fsync(parent)).
+// Package config owns <dataDir>/.jasper/config.json. No in-memory state: every
+// Load reads disk, every Save writes atomically.
 //
-// No filesystem watcher / hot-reload; restart picks up changes.
-//
-// Read/write asymmetry: Load is lenient — a hand-edited, older-, or
-// newer-binary config.json degrades per-field (unrecognized keys are
-// dropped; a wrong-typed or out-of-range known field reverts to its own
-// default) instead of nuking the whole document. The write path
-// (ConfigStrictBodyMiddleware's strictConfigValidator, PUT /config) stays
-// strict — a malformed or unknown field there is rejected before it ever
-// reaches disk. This asymmetry is intentional and must not be blurred.
+// Read is lenient per field, write is strict (ADR-0020). The asymmetry is
+// intentional and must not be blurred.
 package config
 
 // Config mirrors the DESIGN.md §11 schema.

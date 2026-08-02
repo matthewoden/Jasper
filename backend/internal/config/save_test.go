@@ -376,18 +376,9 @@ func rawValueAtPath(doc map[string]json.RawMessage, path []string) (json.RawMess
 	return nil, false
 }
 
-// TestConcurrentPartialSaves_NoLostUpdate. 24 goroutines
-// call SaveMergedPartial simultaneously (barrier-gated on a single closed
-// channel, no sleeps — [no-flaky-tests]), each writing one distinct field.
-// The package mutex serialises every writer's read->merge->write cycle, so
-// no interleaving can drop a write: every one of the 24 fields must be
-// present on disk with its expected value after wg.Wait().
-//
-// Pre-lock RED evidence (mu.Lock()/defer mu.Unlock() commented out of
-// SaveMergedPartial): `go test ./internal/config/ -run
-// TestConcurrentPartialSaves_NoLostUpdate -count=5` failed 5/5 runs, each
-// naming several lost probe_NN and editor.* keys
-// for the captured output. Restored before this commit.
+// TestConcurrentPartialSaves_NoLostUpdate: 24 goroutines each write one
+// distinct field, barrier-gated on a closed channel rather than sleeps. With
+// the package mutex removed this failed 5/5 runs, losing several keys.
 func TestConcurrentPartialSaves_NoLostUpdate(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

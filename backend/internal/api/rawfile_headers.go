@@ -6,24 +6,15 @@ import (
 	"strings"
 )
 
-// RawFileCSP is the Content-Security-Policy sent with every raw file served
-// out of the vault.
+// RawFileCSP guards raw vault files. An SVG served as image/svg+xml is also a
+// document: opened as a top-level navigation, a <script> inside it runs in the
+// app origin with same-origin access to every note. `sandbox` with no allow-
+// tokens kills that, and does not affect subresource loads, so embedded images
+// still render.
 //
-// The problem it solves: user files are served from the app's own origin, and
-// ServeFile deliberately labels .svg as image/svg+xml so browsers will render
-// it in an <img>. An SVG is also a document — plant one containing <script>,
-// lure the user into opening it as a top-level navigation, and that script
-// runs in the app origin with full same-origin API access to every note.
-//
-// `sandbox` with no allow- tokens loads the response into an opaque origin
-// with scripting disabled, which removes both halves of the attack. It has no
-// effect on subresource loads, so images embedded in notes keep rendering.
-//
-// The app-wide script-src 'self' also blocks this today. That is a real
-// mitigation, but it is one CSP relaxation away from being gone, and such
-// relaxations get made years later, for unrelated reasons, by someone who has
-// no idea this path depends on them. This header keeps the guarantee attached
-// to the response that needs it.
+// The app-wide script-src 'self' also blocks it today — but that is one
+// unrelated CSP relaxation away from being gone. This keeps the guarantee
+// attached to the response that needs it.
 const RawFileCSP = "default-src 'none'; sandbox"
 
 // IsRawFilePath reports whether p is a route that streams user-controlled

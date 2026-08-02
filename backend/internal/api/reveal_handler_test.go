@@ -506,17 +506,9 @@ func TestPostReveal_LinuxNative_ExecFailure_Returns500(t *testing.T) {
 	}
 }
 
-// TestRevealOnLinux_OpensParentForFile exercises the production helper
-// against the filesystem to verify it computes the right xdg-open target.
-// We DON'T actually invoke xdg-open (CI has no display); instead we swap
-// the exec dispatcher by walking PATH via a stub binary that just records
-// its args.
-//
-// Implementation note: revealOnLinux uses exec.CommandContext directly
-// (no package-var indirection like revealDarwinFn). To test the
-// parent-dir-vs-self decision without shelling out, we just verify the
-// pre-exec Lstat branch on a file vs a directory target — the actual exec
-// is covered by integration testing on a real Linux desktop.
+// Verifies the parent-dir-vs-self decision without shelling out: CI has no
+// display, and revealOnLinux calls exec.CommandContext directly with no
+// package-var seam to swap. The exec itself is covered on a real Linux desktop.
 func TestRevealOnLinux_OpensParentForFile_OrSelfForDir(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux-only — relies on /tmp + Lstat semantics")

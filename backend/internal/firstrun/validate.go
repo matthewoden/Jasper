@@ -21,16 +21,10 @@ const maxDataDirPathLen = 4096
 // string constants so the handler in setup_handler.go can cast directly.
 type RefusalCode string
 
-// Refusal codes — strings match openapi.yaml's SetupValidateResponseCode
-// enum (generated as api.SetupValidateResponseCode constants).
+// Refusal codes — strings must match openapi.yaml's SetupValidateResponseCode.
 //
-// `not_absolute`: when the user types a relative path (e.g. "Jasper/notes")
-// that ResolveDataDir cannot normalise into an absolute path against $HOME,
-// the wizard refuses with this code rather than silently materialising a
-// stray directory under the binary's launch CWD. Tilde-prefixed paths
-// (`~`, `~/...`) are NOT relative — they are resolved against
-// os.UserHomeDir() before this check runs, so the common
-// `~/Documents/Jasper` case lands cleanly on the Valid path.
+// A relative path is refused rather than silently materialising a stray
+// directory under the binary's launch CWD.
 const (
 	RefusalParentMissing RefusalCode = "parent_missing"
 	RefusalNestedVault   RefusalCode = "nested_vault"
@@ -58,30 +52,14 @@ type ValidateResult struct {
 	Message string
 }
 
-// ResolveDataDir normalises a wizard-supplied data-dir path into an
-// absolute filesystem path before any other validation runs. Two
-// transforms are applied, in order:
+// ResolveDataDir tilde-expands then enforces an absolute path. "~user" is NOT
+// supported and falls through to the absolute check.
 //
-//  1. Tilde expansion. A bare "~" or a "~/..." prefix is rewritten
-//     against os.UserHomeDir(). The shell convention "~user" (expand
-//     against another user's home) is NOT supported — those forms are
-//     treated as relative and fall through to the absolute-path check.
-//     This matches what users will plausibly type into the wizard input
-//     whose placeholder is `~/Documents/Jasper`.
+// The absolute requirement is not cosmetic: a relative path reaches sqlite.Open
+// as a confusing "dbPath must be absolute", and the write probe would first
+// create a stray directory tree under the binary's launch CWD.
 //
-//  2. Absolute-path enforcement. After expansion the path MUST be
-//     filepath.IsAbs() — otherwise sqlite.Open will reject it later
-//     with a confusing "dbPath must be absolute" error, and the
-//     write-probe step in ValidateDataDir will silently create a
-//     stray directory tree under the binary's launch CWD.
-//
-// On success returns (resolved, "", "") — the resolved path is what
-// callers should persist into cfg.Server.DataDir / pass to MkdirAll /
-// hand to sqlite.Open. On failure returns ("", code, locked message)
-// matching ValidateResult's Code/Message fields exactly.
-//
-// This function does NO filesystem I/O. It is safe to call from any
-// goroutine, and ValidateDataDir + RunSetup both call it.
+// Does no filesystem I/O.
 func ResolveDataDir(raw string) (string, RefusalCode, string) {
 	expanded := raw
 	if raw == "~" || strings.HasPrefix(raw, "~/") {
@@ -103,28 +81,12 @@ func ResolveDataDir(raw string) (string, RefusalCode, string) {
 	return filepath.Clean(expanded), "", ""
 }
 
-// ValidateDataDir applies refusal rules in order:
+// ValidateDataDir short-circuits on the first refusal. Order matters: the
+// absolute-path check must precede the write probe, or the probe creates a
+// stray directory tree under the launch CWD.
 //
-//  0. tilde-expand + absolute-path check (ResolveDataDir) — prevents the
-//     write-probe from creating a stray "~" directory under the binary's
-//     launch CWD.
-//  1. non-ASCII / non-NFC (cheap; runs on the resolved path)
-//  2. parent directory missing
-//  3. nested-vault detection
-//  4. write probe (mkdir 0700 + create+remove a tempfile)
-//
-// The rules short-circuit: the first that fires returns immediately.
-// A "valid" result means the path is usable as the data-dir without any
-// further check — RunSetup re-runs ValidateDataDir as a final gate to
-// defend against a client that bypasses the debounced /validate-data-dir
-// call.
-//
-// Notes:
-//   - Path-length is capped at 4096 bytes before any filesystem syscall
-//     to bound work per request.
-//   - The underlying os.Error is surfaced for the unwritable case because
-//     the UI needs actionable remediation; the user is local-host and
-//     already controls the filesystem.
+// The underlying os.Error is surfaced for the unwritable case — the user is
+// local and already controls the filesystem, and the UI needs remediation.
 func ValidateDataDir(path string) ValidateResult {
 	if len(path) > maxDataDirPathLen {
 		return ValidateResult{Code: RefusalNonASCII, Message: msgNonASCII}

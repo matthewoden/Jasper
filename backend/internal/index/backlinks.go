@@ -22,20 +22,12 @@ import (
 // Deprecated: use notes.BacklinkRow directly.
 type BacklinkRow = notes.BacklinkRow
 
-// SyncBacklinks resolves every WikiLinkRef in refs, groups them by target
-// title (one target_id resolution per unique source+title), and rewrites all
-// backlinks rows for sourceID in a single BEGIN IMMEDIATE transaction.
+// SyncBacklinks rewrites every backlinks row for sourceID in one BEGIN
+// IMMEDIATE transaction. Resolution biases toward the source's own folder; a
+// nil registry leaves every link pending.
 //
-// Resolution: for each ref, registry.FindByTitle is called with the source
-// folder as the bias parameter. The first result (if any) becomes target_id.
-// If registry is nil, all links are treated as pending.
-//
-// Excerpt generation: buildExcerpts scans content for every LINE
-// containing [[target]] (case-insensitive) and returns one HTML excerpt per
-// matching line (see buildExcerpts godoc). One backlinks row is inserted per
-// excerpt line — the UNIQUE(source_id, target_title) collapse was removed in
-// 005_backlink_multi_excerpt.sql specifically to allow this. Per-file errors
-// during extract are non-fatal.
+// One row per excerpt LINE — migration 005 dropped the
+// UNIQUE(source_id, target_title) collapse specifically to allow that.
 func (x *Indexer) SyncBacklinks(
 	ctx context.Context,
 	sourceID uuid.UUID,
@@ -216,16 +208,11 @@ func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]n
 	return out, nil
 }
 
-// UpdateBacklinksTargetTitle atomically updates the target_title (and
-// optionally target_id) for every backlinks row that currently has
-// target_title = oldTitle. Used by RenameRewriteWikilinks after the FS pass
-// to keep the derived index in sync without requiring a full SyncBacklinks
-// for each affected referrer.
+// UpdateBacklinksTargetTitle re-points every row at oldTitle without a full
+// SyncBacklinks per referrer.
 //
-// newTargetID is optional: pass nil to leave target_id unchanged (or to clear
-// it to NULL if you pass a pointer to uuid.Nil). In practice, after a note
-// rename the new UUID is the same UUID — only the title changes. Pass a
-// non-nil pointer when the ID changes (rare: simultaneous rename + merge).
+// newTargetID is usually nil: a rename keeps the same UUID and changes only the
+// title. Pass non-nil only when the ID actually changes.
 func (x *Indexer) UpdateBacklinksTargetTitle(
 	ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID,
 ) error {
@@ -250,21 +237,14 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 	return tx.Commit()
 }
 
-// ResolvePendingBacklinks updates all backlinks rows where target_id IS NULL
-// by attempting to resolve target_title via the registry. Called after
-// registry hydration at startup, because ReconcileWithRegistry runs before
-// the registry is populated, leaving all startup-synced backlinks pending.
+// ResolvePendingBacklinks runs after registry hydration, because reconcile runs
+// before the registry is populated and leaves every startup-synced link pending.
 //
-// One-pass scan: SELECT DISTINCT (target_title, source_id, source path)
-// FROM backlinks WHERE target_id IS NULL, then for each pair resolve via
-// registry.FindByTitle using THAT source's folder bias and
-// UPDATE ... WHERE target_id IS NULL AND target_title = ? AND source_id = ?
-// Scoping the update per source matters when two notes share a title in
-// different folders: each source must resolve with its own folder bias,
-// matching what a subsequent save of that source would produce.
+// The update is scoped per source, not per title: when two notes share a title
+// in different folders each source must resolve with its own folder bias, or it
+// disagrees with what a later save of that source would produce.
 //
-// Non-fatal: errors are logged; partial updates leave remaining rows pending
-// to be resolved on the next save of the source note.
+// Non-fatal — anything unresolved is retried on the next save.
 func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.Registry) error {
 	if registry == nil {
 		return nil

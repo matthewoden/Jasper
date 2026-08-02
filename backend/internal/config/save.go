@@ -73,21 +73,9 @@ func deepMergeRawMaps(base, overlay map[string]json.RawMessage) map[string]json.
 	return base
 }
 
-// SaveMerged reads the raw on-disk JSON, overlays the managed keys from
-// updates onto it (preserving any unmanaged/unknown keys), and writes back
-// atomically. This prevents a PUT /config round-trip from dropping keys
-// added by hand or by a newer binary version.
-//
-// Load intentionally uses DisallowUnknownFields — this function does NOT
-// relax that. Load is the read-path; SaveMerged is write-path only.
-//
-// Algorithm:
-//  1. Read existing disk JSON into map[string]json.RawMessage (best-effort).
-//  2. Marshal updates to JSON, decode into overlay map.
-//  3. Deep-merge: for nested object keys (editor, dailyNotes, server, mcp)
-//     unknown sub-keys from existing are preserved; overlay wins on conflicts.
-//     Top-level unknown keys are also preserved (unchanged from before).
-//  4. MarshalIndent merged map and AtomicWrite to disk.
+// SaveMerged overlays the managed keys onto the raw on-disk JSON, preserving
+// unmanaged/unknown keys at every nesting level, so a PUT /config round-trip
+// cannot drop keys added by hand or by a newer binary.
 func SaveMerged(dataDir string, updates Config, log *slog.Logger) error {
 	mu.Lock()
 	defer mu.Unlock()

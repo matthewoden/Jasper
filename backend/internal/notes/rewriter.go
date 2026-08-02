@@ -106,21 +106,12 @@ func extractFrontmatterRange(content []byte) (fmStart, fmEnd int, yamlBody []byt
 	return
 }
 
-// RewriteWikilinksAST replaces every [[oldTitle]] and [[oldTitle|alias]]
-// reference in content with [[newTitle]] / [[newTitle|alias]].
+// RewriteWikilinksAST rewrites [[old]] and [[old|alias]] case-insensitively,
+// preserving the alias.
 //
-// Code-context skipping: goldmark/wikilink's parser respects CommonMark
-// inline-parsing rules — code spans and fenced code blocks do NOT contain
-// wikilink nodes in the AST. We walk the AST to collect all matching wikilink
-// nodes, read their source byte positions via node.Pos() and the label Text
-// child segment stop offset, then splice in reverse source order so earlier
-// offsets remain valid.
-//
-// Alias preservation: [[Old|Alias]] is rewritten to [[New|Alias]]. The alias
-// is taken from the child ast.Text node's segment.
-//
-// Matching is case-insensitive: [[FOO]], [[Foo]], and [[foo]] all match
-// oldTitle "foo".
+// Splices in REVERSE source order so earlier byte offsets stay valid. Code
+// spans and fenced blocks are skipped for free — goldmark puts no wikilink
+// nodes inside them.
 func RewriteWikilinksAST(content []byte, oldTitle, newTitle string) []byte {
 	if len(content) == 0 {
 		return content

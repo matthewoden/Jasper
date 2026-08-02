@@ -1,14 +1,5 @@
-// Package errorpage embeds the static HTML pages served when boot
-// cannot complete (disk-full pre-flight, unrecoverable migration state).
-//
-// These pages are served when the migration runner aborts and the React
-// SPA cannot load (no API to talk to). The Go binary serves a
-// self-contained HTML file directly on the listen address instead of
-// the SPA shell.
-//
-// Files in this directory must match `*.html`. Templates use Go's
-// html/template syntax with struct-typed data passed by the caller
-// (see backend/internal/app/disk_full_handler.go).
+// Package errorpage embeds the self-contained HTML served when boot cannot
+// complete and the SPA has no API to talk to.
 package errorpage
 
 import "embed"

@@ -21,24 +21,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ExtractTags parses YAML (or TOML) frontmatter and returns a normalized,
-// deduplicated tag list.
+// ExtractTags returns a normalized, deduplicated tag list.
 //
-// Returns nil when:
-//   - content is nil or empty
-//   - the file has no frontmatter block
-//   - the YAML/TOML cannot be decoded (malformed YAML must never prevent a
-//     save; treat tags as empty rather than surfacing an error)
+// Malformed YAML returns nil, never an error — it must never prevent a save.
 //
-// Returns an empty non-nil slice when frontmatter is present and the tags
-// array is explicitly empty (`tags: []`). Callers can distinguish "has
-// frontmatter but no tags" from "no frontmatter at all".
-//
-// Normalization: each tag is lowercased, trimmed, and filtered to
-// [a-z0-9_-]. Characters outside that set are stripped; tags that reduce
-// to empty are dropped.
-//
-// Deduplication happens after normalization so `[foo, foo, FOO]` → `["foo"]`.
+// nil vs empty-non-nil is meaningful: nil means "no frontmatter at all", empty
+// means "frontmatter present with `tags: []`".
 func ExtractTags(content []byte) []string {
 	if len(content) == 0 {
 		return nil
@@ -98,21 +86,12 @@ func dedupeTags(in []string) []string {
 
 var bodyTagRE = regexp.MustCompile("(?:^|[\\s(`\\[,;:!?.'\"—–-])#([a-zA-Z0-9_-]+)")
 
-// ExtractBodyTags walks the body (everything after the frontmatter block)
-// and returns all inline #tagname occurrences, normalized to [a-z0-9_-].
+// ExtractBodyTags returns inline #tagname occurrences from the body, skipping
+// headings and fenced code blocks.
 //
-// Rules:
-//   - "#tagname" where tagname matches [a-z0-9_-]+ after case-fold = tag
-//   - Lines starting with "#" + space or "#" = heading; skip
-//   - Fenced code blocks (``` ... ```) are skipped entirely
-//   - Inline code spans: NOT skipped on the server side — editor plugin handles
-//     visual suppression. Full backtick-span tracking would add complexity for
-//     negligible benefit (users rarely put #tags inside `code`). This choice
-//     is pinned by the TestExtractBodyTags "InlineCodeTag" test case.
-//   - The leading "#" is stripped from each returned tag name
-//
-// Returns nil when content is empty or no body tags are found.
-// Never panics on malformed content.
+// Inline code spans are deliberately NOT skipped server-side: the editor
+// suppresses them visually, and backtick-span tracking here would add real
+// complexity for a case users rarely hit. Pinned by the "InlineCodeTag" test.
 func ExtractBodyTags(content []byte) []string {
 	if len(content) == 0 {
 		return nil
@@ -174,20 +153,11 @@ func stripFrontmatterBlock(content []byte) []byte {
 	return after
 }
 
-// RewriteFrontmatterTags replaces the "tags:" array in the YAML frontmatter
-// with the provided canonical tag list. Uses gopkg.in/yaml.v3 for safe,
-// structure-preserving YAML manipulation.
+// RewriteFrontmatterTags replaces the tags array structure-preservingly. An
+// empty canonical list writes "tags: []" rather than omitting the key.
 //
-// Rules:
-//   - No frontmatter in content → returns content unchanged, nil error
-//   - Canonical matches existing tags exactly → returns content unchanged
-//   - Canonical differs → returns content with tags: array replaced
-//   - Malformed YAML → returns original content + non-nil error
-//   - Empty canonical → writes "tags: []" (NOT omitted)
-//
-// Lives in package markdown (not notes) so Service.Update can call it
-// without creating an import cycle. Implements its own range extraction
-// so markdown stays a leaf package.
+// Lives here rather than in notes so Service.Update can call it without an
+// import cycle, and does its own range extraction to stay a leaf package.
 func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) {
 	openFence := []byte("---\n")
 	if !bytes.HasPrefix(content, openFence) {

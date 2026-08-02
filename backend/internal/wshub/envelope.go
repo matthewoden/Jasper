@@ -1,19 +1,11 @@
-// Package wshub is the server-side WebSocket connection hub for
-// multi-tab session sync.
+// Package wshub is the server-side WebSocket hub for multi-tab session sync.
+// It fans out to every client EXCEPT the originating session.
 //
-// The hub is the third port the notes.Service consumes (alongside
-// FileStore + Index). Service mutations call (*Hub).Broadcast AFTER a
-// successful FS write + Index.Upsert (FS-FIRST / INDEX-SECOND /
-// BROADCAST-THIRD). The hub fans out the resulting Envelope to all
-// connected clients EXCEPT the one whose session_id matches the
-// originating session.
+// The wire format is locked to api/openapi.yaml's WSEnvelope schema; the
+// constants below mirror that enum 1:1.
 //
-// Wire format is locked to api/openapi.yaml's WSEnvelope schema; the
-// event-type constants below mirror that enum 1:1.
-//
-// SECURITY: Broadcast payloads MUST NOT contain note content — only
-// metadata (id, path, updated_at, title, etc.). Callers are expected
-// to honor this by passing maps shaped per the WS*Payload schemas.
+// SECURITY: payloads MUST NOT contain note content — metadata only. Nothing
+// enforces this; callers honor it by shaping maps per the WS*Payload schemas.
 package wshub
 
 import (
@@ -74,18 +66,11 @@ const (
 	// drift here breaks the schema-typed fixture sentinel above.
 	EventMcpGrantChanged = "mcp:grant_changed"
 
-	// EventBookmarkChanged is broadcast by the /bookmarks* CRUD handlers
-	// whenever a bookmark or bookmark folder is added, removed, moved, or
-	// created. Payload carries NO data, so there is no payload-trust
-	// surface; clients refetch GET /bookmarks on receipt. Unlike
-	// EventMcpGrantChanged, this is a per-user content mutation like
-	// note:*/folder:*, so callers broadcast with the mutating session's
-	// own origin_session_id (SessionIDFromContext(ctx)), NOT the
-	// ""-origin server-wide pattern. Matches the openapi.yaml
-	// WSEnvelope.event enum entry "bookmark:changed" — drift here breaks
-	// the schema-typed fixture sentinel above. Mirrors the local const of
-	// the same name in backend/internal/bookmarks/events.go (cycle
-	// avoidance — bookmarks cannot import wshub).
+	// EventBookmarkChanged carries NO payload; clients refetch GET /bookmarks.
+	//
+	// Unlike EventMcpGrantChanged this is a per-user content mutation, so
+	// callers pass the mutating session's own origin_session_id rather than
+	// the ""-origin server-wide pattern.
 	EventBookmarkChanged = "bookmark:changed"
 
 	// EventVaultSwitching is broadcast at the start of a hot-swap.

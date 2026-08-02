@@ -30,18 +30,10 @@ func TestMCPAlwaysLoopback(t *testing.T) {
 	}
 }
 
-// TestMCPListener_RejectsReboundHost covers DNS rebinding. The MCP listener binds
-// loopback-only with no opt-out (ADR-0013, CONTEXT invariant 5), but bind
-// posture alone does not survive DNS rebinding: a rebound page reaches
-// 127.0.0.1:6684 over a legitimate loopback connection and only the Host
-// header still names evil.com.
-//
-// Browser-driven exploitation is already largely blocked because MCP's
-// JSON-RPC POST triggers a CORS preflight the endpoint does not answer. But
-// that mitigation is incidental — it rests on the SDK's transport choice and
-// on browser CORS behavior, neither of which Jasper controls. The residual
-// risk is a same-machine malicious process, which sits lower in this threat
-// model. The check makes the loopback guarantee explicit rather than emergent.
+// Bind posture alone does not survive DNS rebinding: a rebound page reaches
+// 127.0.0.1:6684 over a genuine loopback connection, and only the Host header
+// still names evil.com. See hostAllowlistHandler for why the CORS preflight is
+// not enough on its own.
 func TestMCPListener_RejectsReboundHost(t *testing.T) {
 	t.Parallel()
 

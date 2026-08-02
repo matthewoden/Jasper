@@ -4,19 +4,10 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
-// ExtractTitle returns the first H1 heading from markdown content, or
-// the filename without ".md" (filepath.Base + strip ".md") as fallback.
+// ExtractTitle wraps markdown.ExtractTitle, which owns the real contract.
 //
-// This is a thin wrapper over markdown.ExtractTitle (the canonical
-// implementation). The wrapper exists to avoid the notes → index import
-// cycle that a co-located definition would have caused: package index
-// imports package notes for NoteRecord, so package notes cannot import
-// package index.
-//
-// The scanner contract — empty/nil content fallback, frontmatter
-// handling, "#"-without-space tolerance, ## H2 not matched, 1 MiB
-// long-line buffer, filename-fallback — is fully documented in
-// markdown.ExtractTitle and tested by package markdown.
+// The wrapper exists only to avoid an import cycle: index imports notes for
+// NoteRecord, so notes cannot import index.
 func ExtractTitle(content []byte, fallbackPath string) string {
 	return markdown.ExtractTitle(content, fallbackPath)
 }

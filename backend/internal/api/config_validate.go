@@ -8,26 +8,11 @@ import (
 	"strings"
 )
 
-// ConfigStrictBodyMiddleware is a chi-compatible HTTP middleware that
-// enforces strict JSON decoding on PUT /config request bodies.
+// ConfigStrictBodyMiddleware enforces strict JSON decoding on PUT /config.
 //
-// The oapi-codegen strict-server uses json.NewDecoder without
-// DisallowUnknownFields, so unknown keys would otherwise be silently
-// accepted. This middleware reads the raw body, validates it with a
-// strict decoder, and returns 400 if:
-//   - The JSON has unknown fields (additionalProperties: false)
-//   - The theme value is not in the enum [dark, light]
-//   - A nested object (dailyNotes, editor) has unknown fields
-//
-// The raw body bytes are restored on r.Body so the downstream strict
-// handler can decode them normally.
-//
-// Usage: mount in the /api/v1 chi sub-router before HandlerFromMux:
-//
-//	r.Route("/api/v1", func(r chi.Router) {
-//	    r.Use(api.ConfigStrictBodyMiddleware)
-//	    api.HandlerFromMux(si, r)
-//	})
+// Exists because oapi-codegen's strict-server decodes without
+// DisallowUnknownFields, so unknown keys would otherwise be silently accepted.
+// Mount before HandlerFromMux; the raw body is restored for the handler.
 func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method != http.MethodPut && r.Method != http.MethodPatch) || !strings.HasSuffix(r.URL.Path, "/config") {
@@ -223,16 +208,9 @@ type strictConfigPatchValidator struct {
 	} `json:"templates,omitempty"`
 }
 
-// validateConfigPatchBody decodes raw against strictConfigPatchValidator and
-// applies one guard here per constraint in the PUT block above, wrapped in the
-// non-nil guards the sparse shape requires. The two lists MUST stay in
-// lockstep: a constraint deleted from one and not the other is a silent
-// validation hole — that has happened: a presence guard vanished
-// from PUT when dailyNotes.folder was retired. Deliberately stated
-// structurally rather than as a count, which goes stale and then reassures
-// nobody. An absent field is never an
-// error; a present zero value (e.g. dailyNotes.template: "") always passes,
-// because clearing a field is a legitimate write, not an omission.
+// validateConfigPatchBody mirrors the PUT constraint list above. The two MUST
+// stay in lockstep — a constraint dropped from one is a silent validation hole,
+// which has happened. A present zero value passes; clearing a field is a write.
 func validateConfigPatchBody(w http.ResponseWriter, raw []byte, next http.Handler, r *http.Request) {
 	var tmp strictConfigPatchValidator
 	dec := json.NewDecoder(bytes.NewReader(raw))

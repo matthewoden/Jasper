@@ -36,18 +36,10 @@ var ErrAlreadyOpen = errors.New("a vault is already open; hot-swap not yet suppo
 
 func notesDirFor(dataDir string) string { return filepath.Join(dataDir, "notes") }
 
-// Vault directory modes (ADR-0030, decided 2026-08-01).
-//
-// notes/ is 0755 because it is the part users legitimately point other tools
-// at — Syncthing, iCloud, git — and the original lifecycle rationale for 0755
-// is sound for exactly that directory.
-//
-// Jasper's own directories are 0700. .jasper/ holds the index database, which
-// carries full note bodies in the FTS table along with titles, tags,
-// backlinks, and the MCP write grants; .trash/ holds deleted note content.
-// Neither is something a sync tool needs, and on a shared host — the WSL
-// "coworkers self-host" case — 0755 lets any other local user read every note
-// straight off disk.
+// Vault directory modes (ADR-0030). notes/ stays 0755 — users legitimately
+// point Syncthing, iCloud and git at it. Jasper's own directories are 0700:
+// .jasper/ holds full note bodies in the FTS table and .trash/ holds deleted
+// content, and on a shared host 0755 would expose both to every local user.
 const (
 	NotesDirMode  os.FileMode = 0o755
 	JasperDirMode os.FileMode = 0o700
@@ -86,19 +78,10 @@ func EnsureDataDir(dataDir string) error {
 	return nil
 }
 
-// restrictDBFileModes tightens app.db and its -wal / -shm siblings to 0600
-// after open (ADR-0030). The SQLite driver creates them with its own default
-// (0644), and that database holds full note bodies in the FTS table — so
-// leaving it world-readable would undo the 0700 on .jasper/ for anyone who
-// can reach the file directly.
-//
-// The -wal and -shm siblings matter as much as the database itself: recent
-// writes live in the WAL, so chmod'ing only app.db would leave the newest
-// content readable.
-//
-// Failures are logged, not fatal. A vault that cannot be chmod'ed (an exotic
-// filesystem, a mount without POSIX modes) should still open — the notes are
-// the product; the mode is defence in depth.
+// restrictDBFileModes tightens app.db and its -wal / -shm siblings to 0600; the
+// driver creates them 0644 (ADR-0030). The siblings matter as much as the
+// database — recent writes live in the WAL. Failures are logged, not fatal: a
+// vault on a filesystem without POSIX modes should still open.
 func restrictDBFileModes(dbPath string, log *slog.Logger) {
 	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
 		if err := os.Chmod(p, DBFileMode); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -140,35 +123,11 @@ func (a *App) serveStartupError(ctx context.Context, phaseName string, initErr e
 	return a.serveListener(ctx)
 }
 
-// Run executes the startup sequence and serves until ctx is canceled.
-// On ctx cancellation a graceful shutdown is attempted with a 5-second
-// deadline.
+// Run executes the startup sequence and serves until ctx is canceled, then
+// shuts down gracefully with a 5-second deadline.
 //
-// Boot steps:
-//
-//  0. resolveVaultMode — read app.json; determine modeOpen vs modeNoVault.
-//     Per-vault subsystems remain dormant in no-vault mode.
-//
-// Per-vault steps (only when modeOpen):
-//
-//  1. EnsureDataDir — mkdir <DataDir>/{notes,.jasper}.
-//  2. attachVaultFileLog — open <DataDir>/.jasper/logs/jasper.log and tee
-//     it with the console handler; SeedScratchpadIfMissing — write the
-//     welcome template if absent.
-//  3. mkdir <DataDir>/.jasper (migration runner expects it).
-//  4. sqlite.Open — open the writer/reader Pair on app.db.
-//     pair.Close is always safe even if the runner returned an error.
-//  5. Build *index.Indexer + *migrate.Runner; wire Path2Rebuild.
-//  6. runner.Run — apply pending migrations. Three outcomes:
-//     - StateOK / StateRolledBack → continue to step 7.
-//     - ErrDiskFull → install the disk-full static handler.
-//     - ErrUnrecoverable → install the unrecoverable static handler.
-//  7. indexer.Reconcile(ModeIncremental) — startup delta scan.
-//     Only runs when state != Unrecoverable.
-//  8. Rebuild api.Server with full wiring and replace a.handler.
-//  9. net.Listen + http.Server.Serve, graceful shutdown on ctx.Done.
-//
-// ReadHeaderTimeout is set to mitigate slowloris-style attacks.
+// Per-vault subsystems stay dormant in no-vault mode. ReadHeaderTimeout is set
+// to mitigate slowloris.
 func (a *App) Run(ctx context.Context) error {
 	appJSONPath, err := vault.AppJSONPath()
 	if err != nil {

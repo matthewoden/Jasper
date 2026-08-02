@@ -25,26 +25,11 @@ import (
 // errors.Is(err, ErrDiskFull).
 var ErrDiskFull = errors.New("migrate: insufficient free disk space for safe migration")
 
-// PreflightFreeSpace verifies free space on the volume containing dbPath.
+// PreflightFreeSpace requires free >= 2× size(dbPath): the backup is a full
+// copy, and the migration may grow the live db on top of that.
 //
-// Returns:
-//   - nil if free >= 2 * size(dbPath)
-//   - ErrDiskFull (wrapped, with required/available numbers in the
-//     message) if free < 2 * size(dbPath)
-//   - any IO error from Stat/Statfs otherwise
-//
-// If dbPath does not exist (fresh data dir), the free-space requirement
-// is 0 — there is nothing to back up — and PreflightFreeSpace returns
-// nil. The runner then proceeds to apply 001_initial.sql with no backup
-// step (Path 3 if it fails because there is nothing to restore).
-//
-// The 2× heuristic: the backup file is a full copy of app.db, plus the
-// migration may grow the live db (e.g. an index rebuild), so 2× is the
-// floor.
-//
-// Single-user self-host means we don't worry about the disk being shared
-// with hostile users between the check and the write — the user owns
-// their machine.
+// A missing dbPath needs 0 — nothing to back up — so the runner applies
+// 001_initial.sql with no backup, and a failure there is unrecoverable.
 func PreflightFreeSpace(dbPath string) error {
 	info, err := os.Stat(dbPath)
 	if err != nil {

@@ -1,29 +1,16 @@
 package wshub
 
-// RegisterFake is a test-only helper: registers a fake *client into
-// the hub's registry so tests can verify SYNC-08 slow-client behavior
-// WITHOUT spinning up a real WebSocket connection. bufSize=0 means
-// the channel is full from the start, so the broadcast's default:
-// branch fires immediately (drop path).
+// RegisterFake registers a fake client so slow-client behavior can be tested
+// without a real WebSocket. bufSize=0 makes the channel full from the start, so
+// the broadcast's drop path fires immediately.
 //
-// closeSlow is invoked in a goroutine when the broadcast hits the
-// default branch, mirroring the production code's
-// `go c.closeOnce.Do(c.closeSlow)` call.
+// LOAD-BEARING: the returned client has c.conn == nil. That is safe only while
+// no production hot path touches c.conn. The day Broadcast inspects it — for a
+// remote addr in a log line, say — this nil-derefs in the TEST path only, and
+// passes CI until someone runs the slow-client test locally.
 //
-// LOAD-BEARING WARNING:
-//
-// The returned *client has c.conn == nil. This is fine TODAY because
-// only writePump touches c.conn and writePump is never started for
-// fakes. Any future change that has Broadcast or any other production
-// hot-path inspect c.conn (e.g. for logging the remote addr, surfacing
-// connection metadata in metrics, etc.) WILL nil-deref in the test
-// path only — silently passing in CI until a developer locally runs
-// the slow-client test that reaches the hot-path.
-//
-// MUST NOT be called from any code path — production or test — that
-// dereferences c.conn. If you need conn-touching coverage, either
-// stand up a real httptest server (see hub_test.go dialClient) or
-// teach this helper to wire a stub conn explicitly.
+// If you need conn-touching coverage, stand up a real httptest server
+// (hub_test.go's dialClient) or wire a stub conn here explicitly.
 func RegisterFake(h *Hub, sid string, bufSize int, closeSlow func()) *client {
 	c := &client{
 		sid:       sid,

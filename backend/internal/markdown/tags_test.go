@@ -111,17 +111,9 @@ func TestExtractTags_EmptyTagsNonNil(t *testing.T) {
 	}
 }
 
-// TestExtractBodyTags verifies the inline #tagname extraction contract.
-//
-// Rules:
-//   - "#tagname" where tagname matches [a-z0-9_-]+ = inline tag
-//   - Lines starting with "# " or "## " etc. = markdown heading; skip
-//   - Fenced code blocks (``` ... ```) skipped entirely
-//   - Tags normalized (lowercase, strip non-[a-z0-9_-] chars)
-//   - Inline code spans are ALLOWED to contribute tags (server-side choice;
-//     the editor plugin suppresses visual decoration inside inline code spans,
-//     but tracking backtick-span boundaries server-side adds complexity for
-//     little benefit). This choice is pinned by the "InlineCodeTag" test case.
+// The "InlineCodeTag" case pins a deliberate choice: inline code spans DO
+// contribute tags server-side, because the editor suppresses them visually and
+// backtick tracking here is not worth the complexity.
 func TestExtractBodyTags(t *testing.T) {
 	tests := []struct {
 		name    string

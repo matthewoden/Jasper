@@ -30,17 +30,10 @@ var (
 
 var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
-// SyncTags upserts the tag vocabulary and replaces every note_tags row for
-// noteID in a single BEGIN IMMEDIATE transaction. Orphan tags (tags whose
-// last note_tags row was removed) are deleted inside the same transaction.
+// SyncTags replaces every note_tags row for noteID and deletes orphaned tags in
+// one BEGIN IMMEDIATE transaction. Nil and empty are equivalent.
 //
-// Passing nil or an empty slice is equivalent: all tags for the note are
-// removed and orphans cleaned up.
-//
-// Tags are assumed to already be normalized by the caller (lowercase,
-// [a-z0-9_-] charset). Duplicate entries in the input slice are
-// de-duplicated before insertion; ON CONFLICT(name) DO NOTHING guards
-// against race-window re-insertion.
+// Tags must already be normalized by the caller.
 func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {

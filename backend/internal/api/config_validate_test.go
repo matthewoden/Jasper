@@ -424,16 +424,10 @@ func TestStrictConfigValidatorMatchesConfigStruct(t *testing.T) {
 	t.Errorf("config.Config and strictConfigValidator have drifted:\n%s", b.String())
 }
 
-// TestStrictConfigPatchValidatorMatchesConfigStruct is the PATCH-side safety
-// net: ConfigPatch can't $ref Config and subtract `required` (OpenAPI 3.1
-// has no such subtraction operator), so a hand-maintained twin schema is
-// unavoidable. This test enforces 1:1 JSON-path parity across all three
-// definitions of the patchable field set — config.Config,
-// strictConfigPatchValidator, and the generated ConfigPatch — turning "a
-// v1.5 field added to Config but forgotten in ConfigPatch" from a silent
-// runtime 400 into a CI failure. collectJSONPaths is reused unmodified: it
-// already dereferences pointers before recursing, so a value-typed struct
-// and an all-pointer struct produce identical path sets.
+// ConfigPatch cannot $ref Config and subtract `required` — OpenAPI 3.1 has no
+// such operator — so a hand-maintained twin schema is unavoidable. This pins
+// 1:1 parity across all three definitions, turning a field added to Config but
+// forgotten in ConfigPatch from a silent runtime 400 into a CI failure.
 func TestStrictConfigPatchValidatorMatchesConfigStruct(t *testing.T) {
 	t.Parallel()
 	cfgPaths := collectJSONPaths(reflect.TypeOf(config.Config{}), "")

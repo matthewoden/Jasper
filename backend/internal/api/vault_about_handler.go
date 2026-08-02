@@ -9,14 +9,10 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/index"
 )
 
-// GetVaultAbout implements GET /api/v1/vault/about. Assembles every
-// About-pane fact server-side in one response: the client never
-// walks the tree itself.
+// GetVaultAbout implements GET /api/v1/vault/about, assembling every About-pane
+// fact server-side so the client never walks the tree.
 //
-// Follows GetAdminStatus's shape: gate each subsystem-dependent field
-// behind a nil/cast check and degrade to zero rather than 500. A subsystem
-// failure is logged via s.log.Error; the response is still 200 unless
-// something genuinely unrecoverable happens (there is no such path today).
+// Each subsystem-dependent field degrades to zero rather than 500.
 //
 //nolint:revive // generated interface name (capital Id-style is upstream)
 func (s *Server) GetVaultAbout(

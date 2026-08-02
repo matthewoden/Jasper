@@ -153,13 +153,8 @@ func (s *Server) CreateAttachment(
 
 // GetAttachment implements GET /api/v1/attachments/{noteId}/{filename}.
 //
-// Streams the attachment file with full path-traversal hardening (5-rule pipeline).
-//
-// Note on Content-Type: oapi-codegen's GetAttachment200ApplicationoctetStreamResponse
-// always sets Content-Type: application/octet-stream in VisitGetAttachmentResponse.
-// The actual MIME type is not settable via the generated response struct; the frontend
-// must sniff the type from the filename or re-request after knowing the category from
-// the CreateAttachment response. This is a known v1 limitation.
+// The generated response type hard-codes application/octet-stream and offers no
+// way to set a real MIME type, so the client sniffs from the filename instead.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetAttachment(

@@ -1,20 +1,7 @@
 // Package firstrun implements the first-run wizard server gate.
 //
-// Two responsibilities live here:
-//
-//   - RedirectMiddleware (this file): a chi middleware that 302-redirects
-//     every non-/setup, non-/api/v1/setup/*, non-/assets/* request to
-//     /setup whenever <dataDir>/.jasper/config.json does NOT yet exist.
-//     This is the single source of truth for "is this a first-run boot?" —
-//     the SPA never has to branch on first-run-vs-steady-state because the
-//     redirect happens before any non-wizard route is reached.
-//
-//   - ValidateDataDir + RunSetup (validate.go + submit.go): the wizard's
-//     server-side validate-data-dir and submit pipelines. They live in
-//     this package (rather than internal/api) so the http handler layer
-//     stays a thin adapter and the side-effecting work (mkdir + config
-//     write + migration runner + optional daily-note seed) is testable
-//     without spinning up a full chi router.
+// The side-effecting work lives here rather than in internal/api so it is
+// testable without spinning up a chi router.
 package firstrun
 
 import (
@@ -27,22 +14,11 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// RedirectMiddleware returns a chi middleware that 302-redirects every
-// request to /setup when <dataDir>/.jasper/config.json is absent.
+// RedirectMiddleware 302-redirects to /setup when config.json is absent.
 //
-// Deprecated: the no-vault state is now handled by the lifecycle's
-// vaultMode branch — not by a redirect middleware. The /setup route is
-// repurposed as a legacy alias for /vault/create. This function is
-// retained for one minor version to ease testing rollback; it is NOT
-// mounted on the live router.
-//
-// Pass-through rules (must run before the existence check):
-//   - exact path /setup (the wizard SPA mount point)
-//   - any path with /api/v1/setup prefix (validate-data-dir, status, submit)
-//   - any path with /assets prefix (the wizard's JS/CSS bundles served
-//     from the embedded //go:embed dist/)
-//
-// Once config.json exists, the middleware is a no-op for every request.
+// Deprecated: the no-vault state is handled by the lifecycle's vaultMode
+// branch. Retained for one minor version to ease testing rollback; NOT mounted
+// on the live router.
 func RedirectMiddleware(dataDir string) func(http.Handler) http.Handler {
 	cfgPath := vault.ConfigPath(dataDir)
 	return func(next http.Handler) http.Handler {

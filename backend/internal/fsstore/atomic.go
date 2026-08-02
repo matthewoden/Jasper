@@ -6,26 +6,15 @@ import (
 	"path/filepath"
 )
 
-// AtomicWrite writes data to absPath durably and atomically, satisfying
-// DATA-13: never truncate before confirming write success; the parent
-// directory entry is fsynced so a crash after rename returns either the
-// old content or the new content but never zero-byte / partial.
+// AtomicWrite never truncates before the write succeeds, so a crash returns the
+// old content or the new — never zero-byte or partial.
 //
-// The temp file lives in the SAME directory as absPath (not /tmp) so
-// os.Rename is a true rename, never a cross-device fallback (EXDEV).
+// Do not reorder the steps. The temp file must live in the SAME directory as
+// the target so os.Rename is a true rename and not a cross-device copy, and the
+// parent directory must be fsynced AFTER the rename or the directory entry
+// itself is not durable — the most commonly skipped step.
 //
-// Caller is responsible for ensuring the parent directory exists. We do
-// NOT auto-mkdir because that hides real configuration bugs (e.g. a
-// caller reaching into /var that must be created intentionally).
-//
-// Step order — each step is load-bearing; do not reorder:
-//  1. os.CreateTemp in the SAME dir as the target (not TMPDIR).
-//  2. Write all bytes, then file.Sync() to fsync the data.
-//  3. file.Close().
-//  4. os.Rename to the final path (atomic on POSIX).
-//  5. Open the parent directory and Sync() it so the rename's directory-
-//     entry change is durable across power loss. This is the most
-//     commonly-skipped step.
+// Does NOT auto-mkdir: that hides real configuration bugs.
 func AtomicWrite(absPath string, data []byte) error {
 	dir := filepath.Dir(absPath)
 

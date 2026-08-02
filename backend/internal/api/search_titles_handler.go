@@ -12,15 +12,8 @@ import (
 
 const recencyWindowSecs = 90 * 24 * 3600
 
-// GetNotesSearchTitles implements GET /api/v1/notes/search-titles.
-//
-// Used by the wiki-link [[autocomplete]] extension as its data source.
-//
-// Parameters:
-//   - q:     case-insensitive substring filter on title (default "")
-//   - limit: max results (default 10, clamped to [1, 50])
-//
-// Results are ordered by recency (mtime DESC). proximity_score is null for all v1 results.
+// GetNotesSearchTitles implements GET /api/v1/notes/search-titles, backing the
+// wiki-link [[autocomplete]] popup.
 //
 //nolint:revive // generated interface name
 func (s *Server) GetNotesSearchTitles(

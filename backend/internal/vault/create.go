@@ -32,20 +32,12 @@ type CreateOpts struct {
 	ReadingFont string
 }
 
-// CreateVault initializes a new Jasper vault at canonical and registers it in
-// app.json. It does NOT run migrations or open SQLite — the first time the
-// server boots into this vault it runs the migration runner against
-// <canonical>/.jasper/app.db (lifecycle.bootPerVaultSubsystems).
+// CreateVault initializes a vault and registers it in app.json. It does NOT run
+// migrations or open SQLite — first boot into the vault does that.
 //
-// canonical MUST already be canonicalized (via vault.Canonicalize). The vault
-// directory itself need not exist yet; CreateVault creates .jasper/ inside it.
-//
-// The per-vault config.json is written in the full server-config shape so the
-// new-vault writer here and the in-place updater in package config produce
-// byte-equivalent files — single shape, single reader (config.Load).
-//
-// Returns the loaded *AppState after the registration so callers can inspect
-// the new entry without re-reading app.json.
+// canonical MUST already be canonicalized. config.json is written in the FULL
+// server-config shape so this writer and the in-place updater in package config
+// stay byte-equivalent: one shape, one reader.
 func CreateVault(ctx context.Context, canonical string, opts CreateOpts) (*AppState, error) {
 	displayName := opts.DisplayName
 	if displayName == "" {

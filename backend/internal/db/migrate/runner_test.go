@@ -126,19 +126,9 @@ func TestRun_NoPending_NoOp(t *testing.T) {
 	}
 }
 
-// TestRun_BrokenMigration_FiresPath1 — pre-apply 001_initial.sql so
-// schema_migrations has a prior-schema row; then Run with migrations
-// FS = [001, 002_break]. 002 is the only pending migration. The
-// runner takes a backup of the post-001 state, fails on 002, and
-// restores the backup. Expected:
-//   - State = RolledBack
-//   - FailedMigration = "002_break.sql"
-//   - schema_migrations after restore still has exactly 1 row (001).
-//
-// This is the canonical "Path 1 keeps the app on the prior schema"
-// flow — the runner's pseudocode in DESIGN.md §4.4 backs up BEFORE
-// applying any migration in the current Run, so the restored state is
-// "whatever this Run started with".
+// TestRun_BrokenMigration_FiresPath1 is the canonical "Path 1 keeps the app on
+// the prior schema" flow. The backup is taken BEFORE any migration in this Run,
+// so the restored state is whatever the Run started with.
 func TestRun_BrokenMigration_FiresPath1(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

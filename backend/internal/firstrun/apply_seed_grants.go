@@ -13,29 +13,11 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
-// ApplySeedGrants reads <dataDir>/.jasper/seed_grants.json, applies any
-// queued mcp_write_grants via INSERT ... ON CONFLICT DO UPDATE, and
-// deletes the file on success. Idempotent: returns nil if the file does
-// not exist (the common path on every boot of an established vault).
+// ApplySeedGrants drains the grant queue RunSetup writes at submit time, when
+// the per-vault DB does not yet exist. Idempotent — no file is the common path.
 //
-// RunSetup queues grants at submit time (when the per-vault DB does not
-// yet exist); the server's first boot of the vault drains the queue after
-// migrations.
-//
-// Path discipline: both writer (writeSeedGrants in submit.go) and reader
-// (this function) compute the path via vault.SeedGrantsPath with their
-// respective canonical roots. RunSetup canonicalizes once at the top and
-// passes the canonical value to the writer. Lifecycle invokes this with
-// a.cfg.DataDir, which is canonical post-boot. Same helper, same input →
-// same path. No TOCTOU.
-//
-// Errors:
-//   - JSON decode failure: returns wrapped error, leaves file in place
-//     so the operator can inspect and correct it.
-//   - SQL execution failure: returns wrapped error, leaves file in place.
-//   - File-delete failure after a successful apply: returns nil (grants
-//     are applied; a leftover queue file is cosmetic and the next boot
-//     will re-apply them idempotently via ON CONFLICT DO UPDATE).
+// Every failure leaves the file in place for the operator to inspect, except a
+// failed delete after a successful apply: the next boot re-applies harmlessly.
 func ApplySeedGrants(ctx context.Context, db *sql.DB, dataDir string) error {
 	path := vault.SeedGrantsPath(dataDir)
 	raw, err := os.ReadFile(path)

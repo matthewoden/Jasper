@@ -5,21 +5,7 @@ import (
 	"testing"
 )
 
-// TestHasFrontmatter verifies the canonical frontmatter detection contract.
-//
-// HasFrontmatter is the single source of truth for "is a frontmatter block
-// present in this file?" — duplicate implementations would re-introduce
-// loose-vs-strict drift.
-//
-// The contract (also recorded verbatim in FrontmatterCanonicalContract):
-//
-//	Frontmatter is present iff the file begins at byte 0 with the exact
-//	bytes "---\n" (three hyphens + LF), AND a subsequent line consisting
-//	of exactly "---\n" appears before EOF. Case-sensitive. No leading BOM,
-//	no leading whitespace, no CR/CRLF line endings, no four-or-more
-//	hyphens, no trailing space on the fence.
-//
-// The matrix below covers every rejection axis named in the contract.
+// The matrix covers every rejection axis in FrontmatterCanonicalContract.
 func TestHasFrontmatter(t *testing.T) {
 	tests := []struct {
 		name  string

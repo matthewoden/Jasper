@@ -546,18 +546,9 @@ func startsWith(s, prefix string) bool {
 	return s[:len(prefix)] == prefix
 }
 
-// TestUpsert_NFC_Equivalence — paths that compare equal under NFC
-// (e.g. NFD "café" vs NFC "café") collide. The pre-check that we
-// store paths in their canonical lowercased+NFC form means inserting
-// with the alternate normalization form should hit the unique-path
-// constraint as a collision.
-//
-// Note: this test inserts two paths whose Go string-equality differs
-// (one is NFD, one NFC) but whose canonical forms are equal. The
-// indexer's caller (WalkVault + Reconcile) is responsible for
-// canonicalizing before calling Upsert; this test verifies that IF a
-// caller passes both forms (e.g. due to a bug), the second upsert
-// against the SAME canonical bytes is rejected as a collision.
+// Two paths whose Go string-equality differs (NFD vs NFC "café") but whose
+// canonical forms are equal must collide. Callers are meant to canonicalize
+// before Upsert; this pins that a caller that does not still cannot insert both.
 func TestUpsert_NFC_Equivalence(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)

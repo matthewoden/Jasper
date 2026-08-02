@@ -16,19 +16,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// TestConcurrentWrites_5000Notes_NoBusy stress-tests 5,000 INSERTs
-// distributed across runtime.NumCPU() goroutines, each running its own
-// BEGIN IMMEDIATE writer transaction, while a pool of reader goroutines
-// hammers SELECT COUNT(*) against the reader half of the Pair.
-//
-// Failure modes (any of these fails the test):
-//   - any error message contains "SQLITE_BUSY"
-//   - any error message contains "database is locked"
-//   - the 60s wall-clock deadline elapses
-//   - the final row count is not 5000
-//
-// Pass condition: zero SQLITE_BUSY, no "database is locked", final
-// count == 5000, completes well under 60s on 2024-era M-series Mac.
+// TestConcurrentWrites_5000Notes_NoBusy drives 5,000 INSERTs across NumCPU
+// writer goroutines while readers hammer the reader half. Zero SQLITE_BUSY is
+// the point: it proves the writer/reader split and BEGIN IMMEDIATE hold.
 func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 	const totalNotes = 5000
 
