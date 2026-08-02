@@ -14,9 +14,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/matthewoden/jasper/backend/internal/vault"
+	"github.com/matthewoden/jasper/backend/migrations"
 )
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes a booted
@@ -207,6 +209,78 @@ func TestBootFailure_ErrorPageShowsRealLogLines(t *testing.T) {
 	}
 	if !strings.Contains(page, "scratchpad") {
 		t.Errorf("error page log excerpt has no real boot records\npage=%s", page)
+	}
+}
+
+// TestMigrationFailure_ErrorPageShowsRealLogLines drives the case the finding
+// actually named: a migration fails, the runner goes unrecoverable, and the
+// page the user lands on must show the failure rather than a path to a file
+// that was never written. A broken migration against a fresh DB has no prior
+// schema to roll back to, so it takes the unrecoverable branch.
+func TestMigrationFailure_ErrorPageShowsRealLogLines(t *testing.T) {
+	t.Setenv("JASPER_APP_HOME", filepath.Join(t.TempDir(), ".jasper"))
+
+	initial, err := migrations.FS.ReadFile("001_initial.sql")
+	if err != nil {
+		t.Fatalf("read embedded 001_initial.sql: %v", err)
+	}
+	override := fstest.MapFS{
+		"001_initial.sql": &fstest.MapFile{Data: initial},
+		"002_break.sql":   &fstest.MapFile{Data: []byte("THIS IS NOT VALID SQL;")},
+	}
+
+	dir := t.TempDir()
+	ln, addr := pickFreeListener(t)
+	a, err := New(Config{
+		DataDir:             dir,
+		ListenAddr:          addr,
+		ListenerOverride:    ln,
+		Logger:              discardLogger(),
+		MigrationsOverride:  override,
+		DisableFirstRunGate: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- a.Run(ctx) }()
+
+	var page string
+	err = waitFor(t, 5*time.Second, func() error {
+		resp, getErr := http.Get("http://" + addr + "/")
+		if getErr != nil {
+			return getErr
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			return fmt.Errorf("status %d; want 503 (unrecoverable page)", resp.StatusCode)
+		}
+		page = string(body)
+		return nil
+	})
+	cancel()
+	<-runErr
+	if err != nil {
+		t.Fatalf("unrecoverable page never served: %v", err)
+	}
+
+	if !strings.Contains(page, "Migration couldn") {
+		t.Fatalf("not the unrecoverable page:\n%s", page)
+	}
+	// The runner's own explanation of why it gave up, and a record from
+	// before the migration ran — the excerpt is the log, not one line.
+	for _, want := range []string{"Path 1 unavailable", "seeded scratchpad"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("error page log excerpt missing %q\npage=%s", want, page)
+		}
+	}
+
+	if onDisk := readVaultLog(t, dir); !strings.Contains(onDisk, "Path 1 unavailable") {
+		t.Errorf("the migration failure never reached %s: %q", vault.LogsPath(dir), onDisk)
 	}
 }
 
