@@ -52,6 +52,8 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **`.jasper/`** — the per-vault directory beside `notes/`. Holds `config.json`, `app.db` (the index), `logs/`, and the per-vault UI stores (`bookmarks.json`, `workspace.json`).
 
+**`.jasper/logs/jasper.log`** — the diagnostic surface. One per vault, opened on every vault open and closed on teardown, written alongside the console rather than instead of it. Everything that tells a user to check the log means this file, so anything that reports a log location resolves it through `vault.LogsDir`. See [ADR-0031](./docs/adr/0031-per-vault-logging.md).
+
 **Note** — a single `.md` file under the vault's `notes/`. Has a UUID for identity and a relative path for location. The UUID is what UI state references, so bookmarks and tabs survive rename and move.
 
 **Registry** — the in-memory UUID ↔ relative-path map, hydrated from the index at boot. The bridge between "what the UI holds" and "what's on disk."
