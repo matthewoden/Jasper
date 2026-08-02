@@ -17,7 +17,7 @@ describe("countWords", () => {
     ).toBe(2);
   });
 
-  it("includes code-block content (D-08)", () => {
+  it("includes code-block content", () => {
     expect(countWords("```\nconst x = 1\n```")).toBe(3);
   });
 
@@ -43,7 +43,7 @@ describe("formatWordCount", () => {
     expect(formatWordCount(2)).toBe("2 words");
   });
 
-  it("formats 1234 with a thousands separator (D-09)", () => {
+  it("formats 1234 with a thousands separator", () => {
     expect(formatWordCount(1234)).toBe("1,234 words");
   });
 });

@@ -62,7 +62,7 @@ describe("breadcrumbTrail", () => {
 // RED scaffold: `breadcrumbSegments` is NOT yet exported from breadcrumbPrefix.ts.
 // These tests FAIL until plan 03 adds the function.
 //
-// Contract (from 17.1-RESEARCH.md §SET2-06/07):
+// Contract (SET2-06/07):
 //   breadcrumbSegments(notePath) → BreadcrumbSegment[]
 //   BreadcrumbSegment = { label: string; folderPath: string; kind: "folder" | "note" }
 //

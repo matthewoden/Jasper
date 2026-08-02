@@ -1,8 +1,8 @@
 /**
  * Tests for treeNoteLookup — the single shared "note id -> containing folder
- * path" primitive (D-06). Covers nested-folder resolution, the vault-root
+ * path" primitive. Covers nested-folder resolution, the vault-root
  * fallback, and the null/unknown-id edge cases the switcher-create flow
- * (Plan 05) depends on.
+ * depends on.
  */
 import { describe, expect, it } from "vitest";
 

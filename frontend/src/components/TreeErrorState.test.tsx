@@ -1,5 +1,5 @@
 /**
- * TreeErrorState tests — UI-SPEC §Surface 1 §Error state.
+ * TreeErrorState tests — the tree's error state.
  *
  * Locked copy:
  *   Headline: "Couldn't load the tree." (text-destructive)
@@ -30,7 +30,7 @@ describe("<TreeErrorState />", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
-  it("Try again button is 28px tall with 1px border-border per UI-SPEC", () => {
+  it("Try again button is 28px tall with 1px border-border", () => {
     render(<TreeErrorState onRetry={() => {}} />);
     const btn = screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement;
     expect(btn.style.height).toBe("28px");

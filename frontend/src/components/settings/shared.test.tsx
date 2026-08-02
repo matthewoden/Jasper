@@ -57,7 +57,7 @@ describe("ControlRow", () => {
     expect(label).toHaveAttribute("for", "test-font-size");
   });
 
-  it("gives the description an id a control can point aria-describedby at (32-REVIEW WR-02)", () => {
+  it("gives the description an id a control can point aria-describedby at (32-REVIEW)", () => {
     render(
       <ControlRow
         label="Font size"
@@ -96,7 +96,7 @@ describe("ControlRow", () => {
   // enough to grow the column would desynchronise the slider tracks beside
   // it — the exact regression 32-12 closed. Asserted for both the captioned
   // and uncaptioned row so a future long label in Editor / Daily notes is
-  // covered too (32-REVIEW IN-01).
+  // covered too (32-REVIEW).
   it("hard-caps the label column at 160px whether or not a description is present", () => {
     const { unmount } = render(
       <ControlRow

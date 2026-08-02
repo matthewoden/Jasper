@@ -55,7 +55,7 @@ func TestSearchFTS_SortModified(t *testing.T) {
 // COALESCE(NULLIF(birthtime_unix,0), created_at) DESC — a DIFFERENT order
 // from "modified" here, proving the created sort reads birthtime (not
 // updated_at), and note "beta" (birthtime=0) falls back to its created_at
-// (D-04's per-file fallback), never to mtime.
+// (the per-file fallback), never to mtime.
 func TestSearchFTS_SortCreated(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
@@ -115,7 +115,7 @@ func TestSearchFTS_SortRelevanceUnchanged(t *testing.T) {
 	}
 }
 
-// TestSearchFTS_SortSkipsLikeFallback — Pitfall 4 (RESEARCH): for
+// TestSearchFTS_SortSkipsLikeFallback: for
 // sort in {modified, created}, the title-LIKE fallback merge must be
 // skipped entirely so no out-of-order tail row appears. "widget-fallback.md"
 // has an EMPTY body (no FTS match for "widget") but its title/path DO
@@ -155,7 +155,7 @@ func TestSearchFTS_SortSkipsLikeFallback(t *testing.T) {
 		}
 		for _, h := range hits {
 			if h.ID == fallback.String() {
-				t.Fatalf("SearchFTS(sort=%s): title-LIKE fallback row %s leaked into a time-sorted result (Pitfall 4)", sort, fallback)
+				t.Fatalf("SearchFTS(sort=%s): title-LIKE fallback row %s leaked into a time-sorted result", sort, fallback)
 			}
 		}
 	}

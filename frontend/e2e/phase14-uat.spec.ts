@@ -1,5 +1,5 @@
 /**
- * Phase 14 UAT — Soft-Delete to .trash/
+ * Soft-Delete to .trash/
  *
  * Covers TRASH-01 (note delete → gone from UI + present in .trash/ on disk)
  * and TRASH-02 (folder delete → folder subtree present in .trash/ on disk).
@@ -98,8 +98,8 @@ async function apiCreateFolder(
 /**
  * Delete a tree item (note or folder) via the kebab menu and confirm the
  * dialog. Both single-target variants (note/folder) share the SAME
- * "Delete" confirm-button label per Phase 30's universal delete-confirm
- * dialog (D-26, UI-SPEC §7 Copywriting Contract) — the dialog's TITLE
+ * "Delete" confirm-button label per the universal delete-confirm
+ * dialog's locked copy — the dialog's TITLE
  * ("Delete note?" / "Delete folder?") is what disambiguates, not the
  * confirm button.
  */

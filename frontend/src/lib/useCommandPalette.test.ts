@@ -131,14 +131,14 @@ describe("useCommandPalette — execute()", () => {
     act(() => { result.current.execute("new-note"); });
   });
 
-  it("calls onToggleZen when execute('zen.toggle') is called (ZEN-01, Phase 22 Plan 03)", () => {
+  it("calls onToggleZen when execute('zen.toggle') is called (ZEN-01)", () => {
     const onToggleZen = vi.fn();
     const { result } = renderHook(() => useCommandPalette({ onToggleZen }));
     act(() => { result.current.execute("zen.toggle"); });
     expect(onToggleZen).toHaveBeenCalledOnce();
   });
 
-  it("calls onBookmarkCurrent when execute('bookmark.toggle') is called (Phase 27 BOOK-01)", () => {
+  it("calls onBookmarkCurrent when execute('bookmark.toggle') is called (BOOK-01)", () => {
     const onBookmarkCurrent = vi.fn();
     const { result } = renderHook(() => useCommandPalette({ onBookmarkCurrent }));
     act(() => { result.current.execute("bookmark.toggle"); });
@@ -146,7 +146,7 @@ describe("useCommandPalette — execute()", () => {
   });
 });
 
-describe("useCommandPalette — isDisabled() (WR-04)", () => {
+describe("useCommandPalette — isDisabled()", () => {
   it("reports bookmark.toggle disabled when onBookmarkCurrent is not provided (no active note)", () => {
     const { result } = renderHook(() => useCommandPalette({}));
     expect(result.current.isDisabled("bookmark.toggle")).toBe(true);
@@ -207,7 +207,7 @@ describe("useCommandPalette — execute() closeOnExecute verdict (UAT #5)", () =
   });
 });
 
-describe("useCommandPalette — all 8 COMMAND_PALETTE_ENTRIES reachable (Plan 07-27: find removed)", () => {
+describe("useCommandPalette — all 8 COMMAND_PALETTE_ENTRIES reachable (find removed)", () => {
   it("all 8 palette entries are reachable via filtered('')", () => {
     const { result } = renderHook(() => useCommandPalette({}));
     const all = result.current.filtered("");

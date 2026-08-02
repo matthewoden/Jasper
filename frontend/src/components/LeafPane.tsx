@@ -350,7 +350,7 @@ export function LeafPane({
     [findBar.open, handleCloseFindBar],
   );
 
-  // CR-03: re-apply the open bar's query/toggles to whichever tab just
+  // Re-apply the open bar's query/toggles to whichever tab just
   // became active (tab-strip click, Alt+]/Ctrl+Tab cycling, overflow
   // dropdown, or a fresh tab opening after the leaf's last tab was
   // closed) — without this, the bar's own input handlers are the ONLY

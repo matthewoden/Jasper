@@ -1,6 +1,6 @@
 /**
- * TabContextMenu tests (CTX-01, D-11/D-12 — Phase 30 Plan 06):
- *   - all 9 menu items render in the locked UI-SPEC §3 order, with 3 separators
+ * TabContextMenu tests (CTX-01):
+ *   - all 9 menu items render in the locked order, with 3 separators
  *   - the Pin/Unpin item label toggles on `isPinned`
  *   - selecting each item fires its corresponding callback
  */
@@ -51,7 +51,7 @@ async function openMenu() {
 }
 
 describe("<TabContextMenu />", () => {
-  it("CTX-01: renders all 9 items in the locked UI-SPEC order", async () => {
+  it("CTX-01: renders all 9 items in the locked order", async () => {
     renderMenu();
     await openMenu();
     const items = screen.getAllByRole("menuitem");
@@ -82,7 +82,7 @@ describe("<TabContextMenu />", () => {
     expect(sepIdxs[2]).toBeLessThan(idxOf("Rename"));
   });
 
-  it("CTX-01/D-14: shows 'Unpin tab' when isPinned is true", async () => {
+  it("CTX-01: shows 'Unpin tab' when isPinned is true", async () => {
     renderMenu({ isPinned: true });
     await openMenu();
     expect(

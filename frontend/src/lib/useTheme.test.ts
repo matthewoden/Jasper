@@ -1,6 +1,6 @@
 /**
- * useTheme.test — dark-only behavior (Phase 17 D-01).
- * The hook is config-independent (WR-03): it applies data-theme="dark"
+ * useTheme.test — dark-only behavior.
+ * The hook is config-independent: it applies data-theme="dark"
  * once on mount and setTheme always resolves to dark.
  */
 import { describe, it, expect, beforeEach } from "vitest";

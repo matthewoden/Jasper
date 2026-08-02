@@ -76,7 +76,7 @@ func TestLoad_MalformedFile_ReturnsEmptyAndWarns(t *testing.T) {
 	}
 }
 
-// TestLoad_UnknownField_RoundTripsWithoutDataLoss guards CR-01: a
+// TestLoad_UnknownField_RoundTripsWithoutDataLoss: a
 // well-formed bookmarks.json carrying an extra/unrecognized field (e.g.
 // written by a newer binary, or hand-edited) must NOT be treated the same
 // as corrupt JSON. Before the fix, DisallowUnknownFields() rejected this
@@ -176,7 +176,7 @@ func TestLoad_PrunesDeadNoteBookmarks(t *testing.T) {
 		t.Fatalf("Load() bookmarks = %+v, want only bm-live surviving prune", got.Bookmarks)
 	}
 
-	// D-04: the pruned document is re-persisted so the file stays clean.
+	// The pruned document is re-persisted so the file stays clean.
 	reloaded, err := Load(dir, registry, testLogger())
 	if err != nil {
 		t.Fatalf("Load() (reload) error = %v", err)
@@ -402,7 +402,7 @@ func TestService_MoveToFolder_UnknownFolderID_ReturnsErrFolderNotFound(t *testin
 	}
 }
 
-// TestService_Order_RenumberedAcrossFoldersOnMove guards WR-02's
+// TestService_Order_RenumberedAcrossFoldersOnMove guards the
 // MoveToFolder path: moving a bookmark out of a folder must close the
 // gap it leaves behind (source folder renumbered), and moving it in must
 // not carry over its old, now-meaningless Order value (destination
@@ -497,7 +497,7 @@ func TestService_CreateFolder_AppendsAndBroadcasts(t *testing.T) {
 	}
 }
 
-// TestService_Add_ConcurrentCallsDoNotLoseUpdates guards WR-01: without a
+// TestService_Add_ConcurrentCallsDoNotLoseUpdates: without a
 // mutex serializing Load->mutate->Save, two concurrent Add calls can both
 // Load the same pre-mutation document and one Save clobbers the other's
 // bookmark row. With the fix, all N concurrent adds must survive.
@@ -536,7 +536,7 @@ func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
 	}
 }
 
-// TestService_Order_ScopedPerFolderNotGlobal guards WR-02: Order must be
+// TestService_Order_ScopedPerFolderNotGlobal: Order must be
 // computed per-folder, not as a global count across every bookmark. A
 // top-level Add and a same-moment in-folder Add must each independently
 // start at Order 0.
@@ -573,7 +573,7 @@ func TestService_Order_ScopedPerFolderNotGlobal(t *testing.T) {
 	}
 }
 
-// TestService_Order_RenumberedOnRemove guards WR-02: after removing an
+// TestService_Order_RenumberedOnRemove: after removing an
 // earlier sibling, the remaining bookmarks in that folder must be
 // renumbered contiguously so a subsequent Add never collides with an
 // existing Order value.
@@ -607,7 +607,7 @@ func TestService_Order_RenumberedOnRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Add(D) error = %v", err)
 	}
-	// Before the WR-02 fix: len(doc.Bookmarks) == 2 at this point, so D
+	// Before the per-folder-order fix: len(doc.Bookmarks) == 2 at this point, so D
 	// would get Order 2, colliding with C's stale Order 2.
 	if bmD.Order != 2 {
 		t.Fatalf("bmD.Order = %d, want 2 (B and C must have been renumbered to 0,1 on Remove)", bmD.Order)
@@ -735,7 +735,7 @@ func TestService_Reorder_WithinFolderScope(t *testing.T) {
 }
 
 // TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite guards
-// T-JV1-01: an ordered_ids set that is missing a member, includes a
+// An ordered_ids set that is missing a member, includes a
 // foreign id, or both, is rejected wholesale (no partial write) with
 // ErrNotFound.
 func TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite(t *testing.T) {
@@ -786,7 +786,7 @@ func TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite(t *testing
 }
 
 // TestService_Reorder_UnknownFolderID_ReturnsErrFolderNotFound guards
-// T-JV1-02.
+// an unknown folder_id is rejected with 400.
 func TestService_Reorder_UnknownFolderID_ReturnsErrFolderNotFound(t *testing.T) {
 	dir := t.TempDir()
 	registry := newTestRegistry(nil)

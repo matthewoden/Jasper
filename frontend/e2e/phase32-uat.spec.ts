@@ -1,5 +1,5 @@
 /**
- * Phase 32 UAT spec (SET3-01/02/04/06/07): proves every phase-32 success
+ * (SET3-01/02/04/06/07): proves every phase-32 success
  * criterion end-to-end against the real embedded binary, one test per
  * criterion. Each test spawns its OWN `spawnJasper()` instance against an
  * ephemeral vault + port (per-test isolation — the "config leniency" test
@@ -18,7 +18,7 @@
  * Two behaviors this spec deliberately does NOT assert, because they are
  * genuinely un-automatable and are routed to plan 32-11's human-verify
  * checkpoint instead (see ResetConfirmDialog.tsx's own header comment and
- * 32-06-SUMMARY.md's "Known Boundary" section):
+ *'s "Known Boundary" section):
  *   (a) Nested AlertDialog focus-trap return-to-trigger + Escape-key
  *       scoping when opened inside the already-open Settings Dialog —
  *       jsdom/Playwright's own DOM has no assertable focus-trap semantics
@@ -64,7 +64,7 @@ async function apiCreateFolder(
  * i.e. the Go `config.Defaults()` value for an untouched vault — then kills
  * it. This is the ONLY place this spec compares a value against "default":
  * a live value from a fresh boot, never a literal copied from
- * `DEFAULT_CONFIG`/`defaults.go`. Closes T-32-15 (frontend/Go defaults
+ * `DEFAULT_CONFIG`/`defaults.go` (frontend/Go defaults
  * drift risk).
  */
 async function getFreshDefaultConfig(
@@ -92,7 +92,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     }
   });
 
-  test("nav: four sections, no Templates or Server, fixed geometry across a switch, reopen lands on Appearance (SET3-01, D-20)", async ({
+  test("nav: four sections, no Templates or Server, fixed geometry across a switch, reopen lands on Appearance (SET3-01)", async ({
     page,
   }) => {
     jasper = await spawnJasper();
@@ -111,7 +111,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     expect(labels.some((l) => /templates/i.test(l))).toBe(false);
     expect(labels.some((l) => /server/i.test(l))).toBe(false);
 
-    // D-20: Settings always opens on Appearance.
+    // Settings always opens on Appearance.
     await expect(
       dialog.getByRole("button", { name: "Appearance", exact: true }),
     ).toHaveAttribute("aria-current", "page");
@@ -141,7 +141,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     ).toHaveAttribute("aria-current", "page");
   });
 
-  test("reset: Editor Reset behind a confirm; only editor.autosaveMs changes; matches a live GET /config default (SET3-02, T-32-15)", async ({
+  test("reset: Editor Reset behind a confirm; only editor.autosaveMs changes; matches a live GET /config default (SET3-02)", async ({
     page,
   }) => {
     jasper = await spawnJasper();
@@ -192,7 +192,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await autosaveInput.blur();
     await expect(autosaveInput).toHaveValue(nonDefaultAutosaveMs);
 
-    // Reset behind a confirm (D-11): open, read the locked title, Cancel first.
+    // Reset behind a confirm: open, read the locked title, Cancel first.
     await dialog.getByRole("button", { name: "Reset", exact: true }).click();
     const confirmDialog = page.getByRole("alertdialog");
     await expect(confirmDialog).toBeVisible();
@@ -246,7 +246,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL });
 
     // Baseline BEFORE seeding — a fresh vault already carries one seeded
-    // scratchpad note (D-06), so the seeded-count assertion below must add
+    // scratchpad note, so the seeded-count assertion below must add
     // to this baseline rather than assume a pristine zero.
     const baselineResp = await page.request.get(`${baseURL}/api/v1/vault/about`);
     const baseline = await baselineResp.json();
@@ -263,7 +263,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "About", exact: true }).click();
 
-    // Ground truth from the server itself (D-22, server-assembled facts) —
+    // Ground truth from the server itself (server-assembled facts) —
     // self-checked against the seeded shape, then asserted against the UI.
     const aboutResp = await page.request.get(`${baseURL}/api/v1/vault/about`);
     expect(aboutResp.status()).toBe(200);
@@ -292,7 +292,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     expect(clipboardText).toBe(about.path);
   });
 
-  test("config leniency: a hand-edited config.json with a bad field survives a UI save round-trip (SET3-06, T-32-02)", async ({
+  test("config leniency: a hand-edited config.json with a bad field survives a UI save round-trip (SET3-06)", async ({
     page,
   }) => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "jasper-e2e-leniency-"));
@@ -373,7 +373,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-    // Settings always opens on Appearance (D-20) — no nav click needed.
+    // Settings always opens on Appearance — no nav click needed.
     await expect(
       dialog.getByText("Used for links, tags, highlights and selection", { exact: true }),
     ).toBeVisible();
@@ -389,7 +389,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
 
     // Direct guard on the cause, not just the symptom: the slider-parity
     // assertion below only catches a widened label column indirectly. G-02
-    // fixed the column at 160px, so assert that literally (32-REVIEW IN-01).
+    // fixed the column at 160px, so assert that literally (32-REVIEW).
     const labelColumn = dialog
       .getByText("Body text size in the editor · 8–32px", { exact: true })
       .locator("..");
@@ -477,7 +477,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await page.getByTestId("settings-menu-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
-    // Settings always opens on Appearance (D-20) — the font-size slider is
+    // Settings always opens on Appearance — the font-size slider is
     // already the active pane; no extra nav click needed.
 
     const previewFontSizeBefore = await dialog
@@ -489,7 +489,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     if (!box) throw new Error("Font size slider has no bounding box");
 
     // PATCH, not PUT: the slider commit path moved onto saveConfig(patch) in
-    // Phase 32.1. A PUT from this control would itself be a regression.
+    //. A PUT from this control would itself be a regression.
     const configWriteRequests: string[] = [];
     page.on("request", (req) => {
       if (req.method() === "PATCH" && req.url().includes("/api/v1/config")) {
@@ -539,7 +539,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     }).toPass({ timeout: 3_000 });
   });
 
-  test("line height: the slider restyles a rendered prose line in the live editor, not only the Settings preview (SET3-07, UAT-4)", async ({
+  test("line height: the slider restyles a rendered prose line in the live editor, not only the Settings preview (SET3-07)", async ({
     page,
   }) => {
     jasper = await spawnJasper();
@@ -587,7 +587,7 @@ test.describe("@phase32 SET3-01/02/04/06/07: sectioned Settings dialog E2E", () 
     await page.getByTestId("settings-menu-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
-    // Settings always opens on Appearance (D-20) — the line-height slider
+    // Settings always opens on Appearance — the line-height slider
     // is already the active pane; no extra nav click needed.
 
     const slider = dialog.getByRole("slider", { name: "Line height" });

@@ -1,7 +1,7 @@
 /**
  * vaultAboutApi.test — vaultAboutResource.read() resolves to `data` on
  * success and `error` (with HTTP status) on failure, never throwing. The
- * raw fetcher is private (D-17), so read() through the resource is the
+ * raw fetcher is private, so read() through the resource is the
  * module's only public fetch surface.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -59,7 +59,7 @@ describe("vaultAboutResource.read()", () => {
     });
   });
 
-  it("resolves error instead of rejecting when the transport itself throws (32-REVIEW WR-05)", async () => {
+  it("resolves error instead of rejecting when the transport itself throws (32-REVIEW)", async () => {
     mockClient.GET.mockRejectedValue(new TypeError("Failed to fetch"));
     const result = await vaultAboutResource.read();
     expect(result.data).toBeUndefined();
@@ -68,7 +68,7 @@ describe("vaultAboutResource.read()", () => {
     expect(result.error?.message).toContain("Failed to fetch");
   });
 
-  it("caches across repeated read() calls — exactly one client.GET for two reads (D-15)", async () => {
+  it("caches across repeated read() calls — exactly one client.GET for two reads", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleAbout, response: { status: 200 } });
     await vaultAboutResource.read();
     await vaultAboutResource.read();

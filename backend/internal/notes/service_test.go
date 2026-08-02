@@ -353,7 +353,7 @@ func TestRegistry_LookupScratchpad(t *testing.T) {
 	}
 }
 
-// Sanity: ScratchpadWelcome contains the verbatim UI-SPEC content (key
+// Sanity: ScratchpadWelcome contains the verbatim locked content (key
 // phrases). Full byte-for-byte comparison would be brittle if the file
 // is intentionally tweaked later; we test the load-bearing pieces.
 func TestScratchpadWelcome_HasRequiredContent(t *testing.T) {
@@ -1726,7 +1726,7 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 		t.Fatalf("payload is not map[string]any; got %T", bc.calls[0].payload)
 	}
 	if _, hasContent := payload["content"]; hasContent {
-		t.Fatal("T-04-04 violation: broadcast payload must not include note content")
+		t.Fatal("broadcast payload must not include note content")
 	}
 
 	for _, key := range []string{"id", "path", "updated_at"} {
@@ -2228,7 +2228,7 @@ func TestService_RenameRewriteWikilinks_RW1_BasicRename(t *testing.T) {
 		t.Errorf("a.md: expected [[Bar]]; got: %q", sA)
 	}
 	if !strings.Contains(sA, "[[Bar|alias]]") {
-		t.Errorf("a.md: expected [[Bar|alias]] (D-21); got: %q", sA)
+		t.Errorf("a.md: expected [[Bar|alias]]; got: %q", sA)
 	}
 	if strings.Contains(sA, "[[Foo]]") {
 		t.Errorf("a.md: still contains [[Foo]]; got: %q", sA)

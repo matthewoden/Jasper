@@ -153,7 +153,7 @@ func TestUpsert_NoChecksumComputed(t *testing.T) {
 		t.Fatalf("query: %v", err)
 	}
 	if got != "" {
-		t.Errorf("checksum_sha256: got %q, want empty (Phase 2 deferral)", got)
+		t.Errorf("checksum_sha256: got %q, want empty (checksum fallback is not implemented)", got)
 	}
 }
 
@@ -705,7 +705,7 @@ func TestSearchFTS_MultiTagAND(t *testing.T) {
 	}
 }
 
-// TestSearchFTS_TagOnly — D-24: an empty (or whitespace-only) free-text query
+// TestSearchFTS_TagOnly: an empty (or whitespace-only) free-text query
 // with tags present must run a tag-only lookup instead of failing on a
 // `notes_fts MATCH` against an empty match string. (Spelled out in prose
 // because gofmt's doc-comment formatting rewrites a two-single-quote pair
@@ -759,7 +759,7 @@ func TestSearchFTS_TagOnly(t *testing.T) {
 // TestSearchFTS_TagSQLMetacharacter — a tag value containing a SQL
 // metacharacter (attempted injection) must match nothing and must NOT
 // error or return all rows. Proves the tag value is always a positional
-// bind, never string-concatenated into the query (T-19-02).
+// bind, never string-concatenated into the query.
 func TestSearchFTS_TagSQLMetacharacter(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)

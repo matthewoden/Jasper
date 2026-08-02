@@ -1,5 +1,5 @@
 /**
- * FindReplaceBar tests (P26, WS-09/D-01..D-04).
+ * FindReplaceBar tests (P26, WS-09).
  *
  * Coverage: find-only vs replace mode, match-count pluralization, toggle
  * click emits onToggle with the correct kind and flips data-active, Esc
@@ -55,7 +55,7 @@ describe("<FindReplaceBar />", () => {
     expect(screen.getByText("Replace All")).toBeInTheDocument();
   });
 
-  it("WR-04: Replace All button uses the design-token foreground, not a hardcoded hex", () => {
+  it("Replace All button uses the design-token foreground, not a hardcoded hex", () => {
     renderBar({ mode: "replace" });
     const button = screen.getByText("Replace All").closest("button") as HTMLButtonElement;
     expect(button.style.color).toBe("var(--color-fg-title)");
@@ -151,7 +151,7 @@ describe("<FindReplaceBar />", () => {
     expect(onReplaceNext).toHaveBeenCalledTimes(1);
   });
 
-  // --- Phase 27 follow-up item 6: prev/next match chevron buttons ---
+  // --- follow-up item 6: prev/next match chevron buttons ---
 
   it("renders Previous match / Next match chevron buttons", () => {
     renderBar();
@@ -181,7 +181,7 @@ describe("<FindReplaceBar />", () => {
     expect(screen.getByLabelText("Next match")).toBeInTheDocument();
   });
 
-  // --- Phase 27 follow-up fix round, item 6: chevrons no-op / read as
+  // --- follow-up fix round, item 6: chevrons no-op / read as
   // inactive when the query is empty ---
 
   it("Previous match / Next match chevrons are disabled when the query is empty", () => {

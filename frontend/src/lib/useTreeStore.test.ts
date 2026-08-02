@@ -81,7 +81,7 @@ describe("useTreeStore — default + mutators", () => {
     expect(result.current.collapseAllNonce).toBe(before + 1);
   });
 
-  it("TestStore_CollapseAllFolders_SetsAllCollapsed: sets allCollapsed true (Phase 27 follow-up item 1)", () => {
+  it("TestStore_CollapseAllFolders_SetsAllCollapsed: sets allCollapsed true (follow-up item 1)", () => {
     const { result } = renderHook(() => useTreeStore());
     act(() => {
       result.current.toggleExpanded("projects");
@@ -200,7 +200,7 @@ describe("useTreeStore — localStorage hydration on module load", () => {
     expect(s.activeNoteId).toBeNull();
   });
 
-  it("TestStore_LocalStorageKeysExact: the two keys are LITERAL strings expected by UI-SPEC", () => {
+  it("TestStore_LocalStorageKeysExact: the two keys are LITERAL strings", () => {
     expect(LS_KEY_EXPANDED).toBe("jasper.tree.expanded");
     expect(LS_KEY_ACTIVE_NOTE).toBe("jasper.tree.activeNoteId");
   });
@@ -410,12 +410,12 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
   });
 
 
-  it("UX-08: setLiveLabel adds an entry keyed by note id", () => {
+  it("setLiveLabel adds an entry keyed by note id", () => {
     useTreeStore.getState().setLiveLabel("note-a", "Hello");
     expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Hello");
   });
 
-  it("UX-08: clearLiveLabel removes the entry; absent id is a no-op preserving object identity", () => {
+  it("clearLiveLabel removes the entry; absent id is a no-op preserving object identity", () => {
     useTreeStore.getState().setLiveLabel("note-a", "Hello");
     expect(useTreeStore.getState().liveLabels["note-a"]).toBe("Hello");
     useTreeStore.getState().clearLiveLabel("note-a");
@@ -429,7 +429,7 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(stateAfter).toBe(stateBefore);
   });
 
-  it("UX-08: pruneStaleTreeState drops labels whose ids no longer exist in the tree", () => {
+  it("pruneStaleTreeState drops labels whose ids no longer exist in the tree", () => {
     useTreeStore.setState({
       liveLabels: { a: "A", b: "B", c: "C" },
     });
@@ -441,7 +441,7 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(Object.keys(labels)).toEqual(["a"]);
   });
 
-  it("UX-09: setSidebarWidth clamps to SIDEBAR_WIDTH_DEFAULT (MIN)", async () => {
+  it("setSidebarWidth clamps to SIDEBAR_WIDTH_DEFAULT (MIN)", async () => {
     const { setSidebarWidth } = useTreeStore.getState();
     setSidebarWidth(100);
     expect(useTreeStore.getState().sidebarWidth).toBe(260);
@@ -449,7 +449,7 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
     expect(useTreeStore.getState().sidebarWidth).toBe(400);
   });
 
-  it("UX-09: LS_KEY_SIDEBAR_WIDTH is the LITERAL string expected by Plan 05", () => {
+  it("LS_KEY_SIDEBAR_WIDTH is the LITERAL expected string", () => {
     expect(LS_KEY_SIDEBAR_WIDTH).toBe("jasper.sidebar.width");
   });
 
@@ -479,20 +479,20 @@ describe("useTreeStore — selectedRow (Gap R2-4)", () => {
 });
 
 
-describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () => {
+describe("useTreeStore — sidebarWidth LS hydration + persistence", () => {
   afterEach(() => {
     localStorage.clear();
     vi.resetModules();
   });
 
-  it("UX-09: hydrates sidebarWidth from localStorage on module load", async () => {
+  it("hydrates sidebarWidth from localStorage on module load", async () => {
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(420));
     vi.resetModules();
     const mod = await import("./useTreeStore");
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(420);
   });
 
-  it("UX-09: clamps hydrated width below MIN up to MIN (A8)", async () => {
+  it("clamps hydrated width below MIN up to MIN (A8)", async () => {
     localStorage.setItem(LS_KEY_SIDEBAR_WIDTH, JSON.stringify(100));
     vi.resetModules();
     const mod = await import("./useTreeStore");
@@ -558,7 +558,7 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
     expect(mod.useTreeStore.getState().sidebarWidth).toBe(SIDEBAR_WIDTH_DEFAULT);
   });
 
-  it("UX-09: setSidebarWidth triggers debounced LS write", () => {
+  it("setSidebarWidth triggers debounced LS write", () => {
     localStorage.clear();
     vi.useFakeTimers();
     try {
@@ -595,7 +595,7 @@ describe("useTreeStore — UX-09 sidebarWidth LS hydration + persistence", () =>
 });
 
 
-describe("Phase 10 — setActiveTagFilter normalization seam (DEBT-02)", () => {
+describe("setActiveTagFilter normalization seam (DEBT-02)", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState({
@@ -631,7 +631,7 @@ describe("Phase 10 — setActiveTagFilter normalization seam (DEBT-02)", () => {
 });
 
 
-describe("Phase 6 — useTreeStore ADD-only slices", () => {
+describe("useTreeStore ADD-only slices", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState({
@@ -649,7 +649,7 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     vi.resetModules();
   });
 
-  it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=true (D-06 default-visible), backlinksRailWidth=280", async () => {
+  it("S1: fresh store returns tagBrowserExpanded=false, activeTagFilter=null, backlinksRailExpanded=true (default-visible), backlinksRailWidth=280", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
@@ -770,7 +770,7 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
     expect(mod.useTreeStore.getState().activeTagFilter).toBeNull();
   });
 
-  it("S10: existing slices still work correctly after Phase 6 additions (regression guard)", () => {
+  it("S10: existing slices still work correctly after later additions (regression guard)", () => {
     const { result } = renderHook(() => useTreeStore());
     act(() => {
       result.current.toggleExpanded("projects");
@@ -795,7 +795,7 @@ describe("Phase 6 — useTreeStore ADD-only slices", () => {
 });
 
 
-describe("Phase 6.6 chrome slices", () => {
+describe("chrome slices", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState({
@@ -861,7 +861,7 @@ describe("Phase 6.6 chrome slices", () => {
     expect(mod.useTreeStore.getState().notesSidebarVisible).toBe(true);
   });
 
-  it("C6: ADD-ONLY — backlinksRailExpanded defaults true (D-06, Phase 20)", async () => {
+  it("C6: ADD-ONLY — backlinksRailExpanded defaults true", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const s = mod.useTreeStore.getState();
@@ -876,13 +876,13 @@ describe("Phase 6.6 chrome slices", () => {
 });
 
 
-describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Plan 13)", () => {
+describe("pruneStaleTreeState liveLabels rebuild", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState(FULL_DEFAULT_STATE);
   });
 
-  it("WR-07 / Test 1: stale id removed, kept ids preserved, identity changes", () => {
+  it("Test 1: stale id removed, kept ids preserved, identity changes", () => {
     useTreeStore.setState({
       liveLabels: { a: "A", b: "B", c: "C" },
     });
@@ -895,7 +895,7 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
     expect("b" in after).toBe(false);
   });
 
-  it("WR-07 / Test 2: no-op pass preserves liveLabels reference identity", () => {
+  it("Test 2: no-op pass preserves liveLabels reference identity", () => {
     useTreeStore.setState({
       liveLabels: { a: "A" },
     });
@@ -905,7 +905,7 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
     expect(after).toBe(before);
   });
 
-  it("WR-07 / Test 3: empty liveLabels + empty allNoteIds is a no-op (identity preserved)", () => {
+  it("Test 3: empty liveLabels + empty allNoteIds is a no-op (identity preserved)", () => {
     useTreeStore.setState({ liveLabels: {} });
     const before = useTreeStore.getState().liveLabels;
     pruneStaleTreeState(new Set<string>(), new Set<string>());
@@ -913,7 +913,7 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
     expect(after).toBe(before);
   });
 
-  it("WR-07 / Test 4: every id stale → liveLabels becomes {} and identity changes", () => {
+  it("Test 4: every id stale → liveLabels becomes {} and identity changes", () => {
     useTreeStore.setState({
       liveLabels: { a: "A", b: "B" },
     });
@@ -926,7 +926,7 @@ describe("WR-07 pruneStaleTreeState liveLabels rebuild (Phase 5.5 gap-closure Pl
 });
 
 
-describe("Phase 7 ADD-only slices", () => {
+describe("ADD-only slices", () => {
   beforeEach(() => {
     useTreeStore.setState({
       searchQuery: "",
@@ -1000,7 +1000,7 @@ describe("Phase 7 ADD-only slices", () => {
 });
 
 
-describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
+describe("useTreeStore — activeFilePath slice", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState({
@@ -1054,7 +1054,7 @@ describe("useTreeStore — activeFilePath slice (Plan 07-32b)", () => {
 });
 
 
-describe("Phase 19 Plan 04 / Phase 27 Plan 03 — sidebarPanel persisted slice (LSIDE-02, NAV-01)", () => {
+describe("sidebarPanel persisted slice (LSIDE-02, NAV-01)", () => {
   beforeEach(() => {
     localStorage.clear();
     useTreeStore.setState({ sidebarPanel: "notes" });
@@ -1132,7 +1132,7 @@ describe("Phase 19 Plan 04 / Phase 27 Plan 03 — sidebarPanel persisted slice (
     expect(mod.LS_KEY_SIDEBAR_PANEL).toBe("jasper.chrome.sidebar.panel");
   });
 
-  it("SP-6: searchQuery/searchResults remain unpersisted (D-18) — no new LS write for them", async () => {
+  it("SP-6: searchQuery/searchResults remain unpersisted — no new LS write for them", async () => {
     vi.resetModules();
     const mod = await import("./useTreeStore");
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
@@ -1148,7 +1148,7 @@ describe("Phase 19 Plan 04 / Phase 27 Plan 03 — sidebarPanel persisted slice (
 });
 
 
-describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split ratios (RSIDE-01/02, D-06)", () => {
+describe("unified right-rail collapse booleans + split ratios (RSIDE-01/02)", () => {
   afterEach(() => {
     localStorage.clear();
     vi.resetModules();
@@ -1167,21 +1167,21 @@ describe("Phase 20 Plan 03 — unified right-rail collapse booleans + split rati
     expect(mod.useTreeStore.getState().backlinksRailExpanded).toBe(false);
   });
 
-  // RR-3..RR-10 (Phase 20 Plan 03) covered the per-section collapse booleans
+  // RR-3..RR-10 covered the per-section collapse booleans
   // (outlinePanelExpanded/linkedMentionsPanelExpanded/tagsPanelExpanded) and
   // split ratios (outlineHeightRatio/linkedMentionsHeightRatio) — that entire
-  // slice was removed by Plan 05 (D-01 fold onto the single-panel rightPanel
+  // slice was removed when the panels folded onto the single-panel rightPanel
   // tab model, see RightRail.tsx + RightRailTabRow.tsx), so those assertions
   // no longer apply. rightPanel itself is covered in useWorkspace.test.ts
   // (it is backend-persisted via workspace.json, not a localStorage slice).
 
-  // RR-11 (Phase 20 Plan 03) asserted the legacy panel-selector slice was
+  // RR-11 asserted the legacy panel-selector slice was
   // unaffected by the additive-only plan; the slice itself was removed by
-  // Plan 05 (D-01 fold), so that assertion no longer applies.
+  // that fold, so the assertion no longer applies.
 });
 
 
-describe("Phase 22 Plan 01 — ephemeral zen slice (ZEN-01, D-08)", () => {
+describe("ephemeral zen slice (ZEN-01)", () => {
   afterEach(() => {
     localStorage.clear();
     vi.resetModules();

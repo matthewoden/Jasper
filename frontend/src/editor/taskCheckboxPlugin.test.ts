@@ -7,12 +7,12 @@
  * TC-4: nested: child task toggled independently; parent unaffected
  * TC-5: ordered: ordered-list task toggles correctly
  * TC-6: position-stable: widget data-pos equals new absolute TaskMarker.from after line insert above
- * TC-7: (in livePreviewPlugin.test.ts) bullet-on-task-line (D-02 reversed: livePreviewPlugin now renders bullet)
- * TC-8: DELETED — asserted always-widget behavior superseded by D-01 reveal model
+ * TC-7: (in livePreviewPlugin.test.ts) bullet-on-task-line (reversed: livePreviewPlugin now renders bullet)
+ * TC-8: DELETED — asserted always-widget behavior superseded by reveal model
  * TC-9: annotation-present: char-flip transaction carries CheckboxToggleAnnotation
- * TC-10: no-widget-on-active-line (D-01 reveal): cursor on task line → no widget emitted (U2)
- * TC-11: widget-on-off-cursor-line (D-01 reveal): cursor NOT on task line → widget emitted (U2)
- * TC-12: widget-covers-TaskMarker-range (D-02 reversed): widget replace range starts at TaskMarker.from (2), NOT ListMark.from (0)
+ * TC-10: no-widget-on-active-line (reveal): cursor on task line → no widget emitted (U2)
+ * TC-11: widget-on-off-cursor-line (reveal): cursor NOT on task line → widget emitted (U2)
+ * TC-12: widget replace range starts at TaskMarker.from (2), NOT ListMark.from (0)
  * TC-13: no-native-input: widget DOM is a <span> with SVG, no <input type=checkbox>
  *
  * Note on async tests (TC-1..TC-5):
@@ -161,11 +161,11 @@ describe("TC-6: position-stable after line insert above", () => {
     expect(newDoc).toBe("new line above\n- [ ] task");
     // The widget should have been rebuilt with the new position.
     // Cursor is at pos 0 after insert (line 1 = "new line above"), so the task
-    // line (line 2) is off-cursor and a widget is emitted (D-01 reveal model).
+    // line (line 2) is off-cursor and a widget is emitted (reveal model).
     const decos = collectCheckboxDecos(view);
     const widgetDecos = decos.filter(d => d.hasWidget);
     expect(widgetDecos.length).toBeGreaterThan(0);
-    // D-02 REVERSED: widget replace range starts at TaskMarker.from (the '[' position).
+    // REVERSED: widget replace range starts at TaskMarker.from (the '[' position).
     // "new line above\n" = 15 chars, then "- " = 2 more chars, so '[' is at index 17.
     const taskMarkerPos = 17; // "new line above\n- " = 17 chars; '[' is at index 17
     const widgetDeco = widgetDecos.find(d => d.from === taskMarkerPos);
@@ -207,9 +207,9 @@ describe("TC-9: annotation-present", () => {
   });
 });
 
-describe("TC-10: no-widget-on-active-line (D-01 reveal / U2)", () => {
+describe("TC-10: no-widget-on-active-line (reveal / U2)", () => {
   it("no widget decoration emitted when cursor is on the task line (pos 2 inside TaskMarker)", () => {
-    // D-01 reveal model: caret ON the task line → raw text visible, no widget.
+    // reveal model: caret ON the task line → raw text visible, no widget.
     // This test is RED until plan 02 lands (taskCheckboxPlugin gains the cursor-line guard).
     const view = makeView(UNCHECKED_TASK_DOC, 2);
     const decos = collectCheckboxDecos(view);
@@ -218,7 +218,7 @@ describe("TC-10: no-widget-on-active-line (D-01 reveal / U2)", () => {
   });
 });
 
-describe("TC-11: widget-on-off-cursor-line (D-01 reveal / U2)", () => {
+describe("TC-11: widget-on-off-cursor-line (reveal / U2)", () => {
   it("widget decoration IS emitted for a task line when cursor is on a different line", () => {
     // NESTED_TASK_DOC = "- [ ] parent\n  - [ ] child"
     // "- [ ] parent" is 12 chars + '\n' = 13 chars offset to line 2.
@@ -232,9 +232,9 @@ describe("TC-11: widget-on-off-cursor-line (D-01 reveal / U2)", () => {
   });
 });
 
-describe("TC-12: widget-covers-TaskMarker-range (D-02 reversed / U7)", () => {
+describe("TC-12: widget-covers-TaskMarker-range (reversed / U7)", () => {
   it("the replace decoration starts at TaskMarker.from (2) and covers '[ ]' only (not the trailing space)", () => {
-    // D-02 REVERSED: widget replaces ONLY the TaskMarker "[ ]" range. The trailing
+    // REVERSED: widget replaces ONLY the TaskMarker "[ ]" range. The trailing
     // space is left as a literal character so the gap before the text is preserved
     // and the rendered width stays close to the raw "[ ] " (no horizontal jump).
     // For UNCHECKED_TASK_DOC = '- [ ] task':
@@ -248,7 +248,7 @@ describe("TC-12: widget-covers-TaskMarker-range (D-02 reversed / U7)", () => {
     const widgetDecos = decos.filter(d => d.hasWidget);
     expect(widgetDecos.length).toBeGreaterThan(0);
     const widgetDeco = widgetDecos[0];
-    // D-02 reversed: replace range must start at TaskMarker.from (pos 2), NOT ListMark.from (0)
+    // reversed: replace range must start at TaskMarker.from (pos 2), NOT ListMark.from (0)
     expect(widgetDeco.from).toBe(2);
     // Range end covers TaskMarker.to = 5 ('[ ]' only; the trailing space stays literal)
     expect(widgetDeco.to).toBe(5);
@@ -320,7 +320,7 @@ describe("TC-13: no-native-input (lucide SVG widget)", () => {
 
 describe("CHK-02: strikethrough mark on checked task", () => {
   it("checked task emits cm-task-text-checked mark on text range", () => {
-    // Place cursor on a second line so the task line is off-cursor (D-01 reveal model:
+    // Place cursor on a second line so the task line is off-cursor (reveal model:
     // widget + strikethrough only emitted when cursor is NOT on the task line).
     const doc = CHECKED_LOWER_TASK_DOC + "\nanother line";
     const view = makeView(doc, doc.length); // cursor on "another line"
@@ -336,7 +336,7 @@ describe("CHK-02: strikethrough mark on checked task", () => {
   });
 
   it("unchecked task does NOT emit cm-task-text-checked mark", () => {
-    // Place cursor on a second line so the task line is off-cursor (required by D-01).
+    // Place cursor on a second line so the task line is off-cursor (required by).
     const doc = UNCHECKED_TASK_DOC + "\nanother line";
     const view = makeView(doc, doc.length); // cursor on "another line"
     const decos = collectCheckboxDecos(view);
@@ -345,8 +345,8 @@ describe("CHK-02: strikethrough mark on checked task", () => {
   });
 
   it("strikethrough mark range does NOT overlap widget replace range", () => {
-    // Place cursor on a second line so the task line is off-cursor (D-01 reveal model).
-    // D-02: widget covers [ListMark.from..TaskMarker.to+1] = [0..6]
+    // Place cursor on a second line so the task line is off-cursor (reveal model).
+    // widget covers [ListMark.from..TaskMarker.to+1] = [0..6]
     // Strikethrough covers [TaskMarker.to+1..Task.to] = [6..10] — no overlap.
     const doc = CHECKED_LOWER_TASK_DOC + "\nanother line";
     const view = makeView(doc, doc.length); // cursor on "another line"
@@ -355,7 +355,7 @@ describe("CHK-02: strikethrough mark on checked task", () => {
     const strikeDeco = decos.find(d => d.class === "cm-task-text-checked");
     expect(widgetDeco).toBeDefined();
     expect(strikeDeco).toBeDefined();
-    // D-02: widget covers [0..6], strikethrough covers [6..10] - no overlap
+    // widget covers [0..6], strikethrough covers [6..10] - no overlap
     expect(strikeDeco!.from).toBeGreaterThanOrEqual(widgetDeco!.to);
   });
 });

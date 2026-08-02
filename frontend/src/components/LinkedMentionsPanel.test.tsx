@@ -1,9 +1,9 @@
 /**
- * LinkedMentionsPanel tests — body-only card list (Phase 20 rename of
+ * LinkedMentionsPanel tests — body-only card list (formerly
  * BacklinksRail, RSIDE-02).
  *
  * Backlink data is passed as props (RightRail owns the single useBacklinks
- * fetch — WR-07), so tests drive states directly through props.
+ * fetch), so tests drive states directly through props.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";

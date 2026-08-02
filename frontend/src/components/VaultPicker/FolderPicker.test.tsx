@@ -39,7 +39,7 @@ const DOCS_RESP: FsListResponse = {
   entries: [{ name: "Notes", path: "/Users/me/Documents/Notes" }],
 };
 
-describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => {
+describe("<FolderPicker /> breadcrumb edit mode (type-a-path)", () => {
   beforeEach(() => {
     listMock.mockReset();
     mkdirMock.mockReset();
@@ -197,7 +197,7 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     expect(screen.queryByTestId("folder-picker-path-input")).toBeNull();
   });
 
-  describe("is_vault detection + Open Vault / Go up footer (UAT-2 #1e)", () => {
+  describe("is_vault detection + Open Vault / Go up footer", () => {
     const VAULT_RESP: FsListResponse = {
       path: "/Users/me/MyVault",
       parent: "/Users/me",
@@ -263,7 +263,7 @@ describe("<FolderPicker /> breadcrumb edit mode (UAT-2 #1d type-a-path)", () => 
     });
   });
 
-  describe("inline 'New folder' affordance (UAT-2 #1e)", () => {
+  describe("inline 'New folder' affordance", () => {
     const ROOT_RESP: FsListResponse = {
       path: "/Users/me",
       parent: "/Users",

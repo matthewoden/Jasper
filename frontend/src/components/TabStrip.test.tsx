@@ -5,8 +5,8 @@
  *   TAB-11 — Alt+] calls onCycleTab(1); Alt+[ calls onCycleTab(-1);
  *            Ctrl+Tab / Ctrl+Shift+Tab cycle too. Ctrl+Tab preventDefault is guarded.
  *   TAB-05 — Alt+W requests close of the active tab; plain Ctrl+W does NOT.
- *   Phase 25 (25-06) — TabStrip is leaf-scoped: the keydown handler gates on
- *     usePaneStore.getState().activePaneId === leafId (Pitfall 3), so an
+ * TabStrip is leaf-scoped: the keydown handler gates on
+ *     usePaneStore.getState().activePaneId === leafId, so an
  *     inactive leaf's strip is a no-op for every shortcut.
  *
  * All timing is synchronous event dispatch — no sleeps, no fake timers needed.
@@ -21,7 +21,7 @@ import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 
-// TabStrip now calls useToast() (pinned-tab refuse-click toast, D-14) — stub
+// TabStrip now calls useToast() (pinned-tab refuse-click toast) — stub
 // it so every render site in this file doesn't need a real <ToastProvider>.
 vi.mock("./toast.utils", () => ({
   useToast: () => ({ toast: vi.fn() }),
@@ -90,7 +90,7 @@ function renderStrip(overrides?: {
 beforeEach(() => {
   cleanup();
   // The keydown handler gates on usePaneStore's activePaneId matching leafId
-  // (Pitfall 3) — default to "this leaf is active" so existing shortcut
+  // — default to "this leaf is active" so existing shortcut
   // assertions exercise the acting path unless a test explicitly overrides it.
   usePaneStore.setState({ activePaneId: LEAF_ID });
   vi.restoreAllMocks();
@@ -365,7 +365,7 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
     expect(h.onRequestClose).not.toHaveBeenCalled();
   });
 
-  it("D-14 / CR-02: Alt+W on a pinned active tab does NOT call onRequestClose", () => {
+  it("Alt+W on a pinned active tab does NOT call onRequestClose", () => {
     const pinnedTabs: Tab[] = [
       { id: "a", noteId: "a" },
       { id: "b", noteId: "b", pinned: true },
@@ -376,7 +376,7 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
     expect(h.onRequestClose).not.toHaveBeenCalled();
   });
 
-  it("D-14 / CR-02: Alt+W on an UNpinned active tab still calls onRequestClose", () => {
+  it("Alt+W on an UNpinned active tab still calls onRequestClose", () => {
     const pinnedTabs: Tab[] = [
       { id: "a", noteId: "a" },
       { id: "b", noteId: "b", pinned: true },
@@ -409,7 +409,7 @@ describe("<TabStrip /> keyboard shortcuts (Task 2 — TAB-11 / TAB-05)", () => {
   });
 });
 
-describe("<TabStrip /> active-pane gating (25-06 Task 1 — Pitfall 3 / T-25-06-Dup)", () => {
+describe("<TabStrip /> active-pane gating (25-06 Task 1)", () => {
   it("Alt+W in a leaf that is NOT the active pane is a no-op", () => {
     usePaneStore.setState({ activePaneId: "some-other-leaf" });
     const h = renderStrip({ activeTabId: "b" });
@@ -516,7 +516,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(within(ghost).getByRole("button", { name: /^Close/, hidden: true })).toBeInTheDocument();
   });
 
-  it("gap 5 / CR-02: an off-strip release (buttons:0 move) dismisses the drag and does not swallow the next click", () => {
+  it("an off-strip release (buttons:0 move) dismisses the drag and does not swallow the next click", () => {
     const h = renderStrip();
     const strip = screen.getByRole("tablist");
     const wrapper = screen.getByText("Title b").closest("[data-tab-wrapper]") as HTMLElement;
@@ -554,7 +554,7 @@ describe("<TabStrip /> ghost drag (MTR ghost + dim)", () => {
     expect(indicator.closest("[data-tab-wrapper]")).toBeNull();
   });
 
-  it("CR-01: elementFromPoint resolving back to the drag's own source leaf does not publish a self-hover", () => {
+  it("elementFromPoint resolving back to the drag's own source leaf does not publish a self-hover", () => {
     const handlers = {
       onSelectTab: vi.fn(),
       onRequestClose: vi.fn(),
@@ -654,7 +654,7 @@ describe("<TabStrip /> right-hand cluster — state-dependent rail toggle (26072
     expect(screen.queryByTestId("tab-strip-right-cluster")).toBeNull();
   });
 
-  // Phase 27 NAV-03 cleanup: the redundant left-sidebar toggle was removed from
+  // NAV-03 cleanup: the redundant left-sidebar toggle was removed from
   // the tab strip — the sidebar collapses from its own header (SidebarTabRow)
   // and reopens via PaneCornerReopenButton. The tab strip must NOT carry a
   // left-sidebar toggle in EITHER state.
@@ -730,7 +730,7 @@ describe("<TabStrip /> right-hand cluster — state-dependent rail toggle (26072
   });
 });
 
-describe("<TabStrip /> collapsed-sidebar reopen cell (Phase 27 NAV-03)", () => {
+describe("<TabStrip /> collapsed-sidebar reopen cell (NAV-03)", () => {
   const baseProps = {
     leafId: LEAF_ID,
     tabs: [] as Tab[],

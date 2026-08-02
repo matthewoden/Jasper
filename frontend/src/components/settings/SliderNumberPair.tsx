@@ -84,7 +84,7 @@ export function SliderNumberPair({
   // stale closure, and this path only fires while a debounced commit is
   // genuinely pending. Worst case is one redundant PATCH when a user
   // arrow-keys back to the original value and closes Settings within the
-  // debounce window -- a real correctness risk (32-REVIEW CR-01) traded for
+  // debounce window -- a real correctness risk traded for
   // a marginal saving is not worth it.
   useEffect(() => {
     return () => {

@@ -89,7 +89,7 @@ func TestRunServe_JasperDataDirEnvIgnored(t *testing.T) {
 		t.Errorf("JASPER_DATA_DIR should be silently ignored (not recognized at all), but saw it in log:\n%s", buf.String())
 	}
 	if strings.Contains(buf.String(), "deprecated") {
-		t.Errorf("no deprecation warning should be emitted post Plan 08-23; got:\n%s", buf.String())
+		t.Errorf("no deprecation warning should be emitted; got:\n%s", buf.String())
 	}
 }
 

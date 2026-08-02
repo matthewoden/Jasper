@@ -139,7 +139,7 @@ describe("useDeepLink", () => {
     expect(openInActivePaneSpy).not.toHaveBeenCalled();
   });
 
-  it("DL-5: both ?note= and ?path= → ?note wins (D-30)", async () => {
+  it("DL-5: both ?note= and ?path= → ?note wins", async () => {
     setUrl(`note=${NOTE_ID}&path=foo.md`);
     getNoteMock.mockResolvedValue({
       data: { id: NOTE_ID, path: "foo.md", content: "", updated_at: "" },

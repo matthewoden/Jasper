@@ -89,7 +89,7 @@ func TestDiskFullHandler_NoCache(t *testing.T) {
 
 // TestDiskFullHandler_TemplateRendersInlineSVG — the inline SVG icon
 // is part of the static HTML; confirm both the <svg> tag and the
-// literal warning hex (#fbbf24, UI-SPEC §Color) survive into the
+// literal warning hex (#fbbf24) survives into the
 // rendered body.
 func TestDiskFullHandler_TemplateRendersInlineSVG(t *testing.T) {
 	h := newBootErrorHandler("disk-full.html", DiskFullData{})
@@ -102,7 +102,7 @@ func TestDiskFullHandler_TemplateRendersInlineSVG(t *testing.T) {
 		t.Errorf("body did not contain <svg tag")
 	}
 	if !strings.Contains(body, "#fbbf24") {
-		t.Errorf("body did not contain literal warning hex #fbbf24 (UI-SPEC §Color)")
+		t.Errorf("body did not contain literal warning hex #fbbf24")
 	}
 }
 

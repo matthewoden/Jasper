@@ -1,5 +1,5 @@
 /**
- * Phase 3 UAT regression suite.
+ * regression suite.
  *
  * vitest mocks the typed API client / react-arborist's keymap / document
  * focus — this Playwright suite drives the live binary instead.
@@ -59,7 +59,7 @@ test.afterEach(async () => {
 });
 
 
-test.describe("Phase 3 UAT regression suite", () => {
+test.describe("regression suite", () => {
   test("Scenario A: CRUD without manual reload + auto-increment (drag covered manually)", async ({
     page,
   }) => {

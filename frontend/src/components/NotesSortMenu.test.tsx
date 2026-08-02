@@ -1,5 +1,5 @@
 /**
- * NotesSortMenu tests — UI-SPEC §Surface 2 / D-02.
+ * NotesSortMenu tests.
  *
  * Uses the controlled `open` prop (mirrors TreeRowMenu.test.tsx's pattern
  * for TreeRowDropdownMenu) to force the Radix portal content to mount
@@ -99,9 +99,9 @@ describe("<NotesSortMenu /> — item rendering", () => {
   });
 });
 
-describe("<NotesSortMenu /> — constant trigger glyph (D-16 reversed by UAT)", () => {
+describe("<NotesSortMenu /> — constant trigger glyph (reversed by UAT)", () => {
   /**
-   * D-16 (order-reflecting six-glyph trigger) was reversed by owner UAT
+   * The order-reflecting six-glyph trigger was reversed by owner UAT
    * gap-closure: a changing icon read as confusing; consistency was
    * preferred. The trigger renders one constant glyph (`ArrowUpDown`)
    * regardless of the selected order.

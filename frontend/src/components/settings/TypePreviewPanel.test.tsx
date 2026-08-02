@@ -32,7 +32,7 @@ describe("TypePreviewPanel", () => {
     expect(accentSpans).toHaveLength(2);
   });
 
-  it("renders no heading or list elements inside the card (D-25)", () => {
+  it("renders no heading or list elements inside the card", () => {
     const { container } = render(<TypePreviewPanel fontSize={15} lineHeight={1.45} />);
     expect(container.querySelector("h1,h2,h3,h4,h5,h6,ul,ol")).toBeNull();
   });

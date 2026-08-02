@@ -153,7 +153,7 @@ vi.mock("./lib/useTreeCreateActions", async (importActual) => ({
 
 // Mocked with a ref-API-compatible fake (same shape as EditorPane.test.tsx's
 // mock) that renders a real <textarea aria-label="Note content">, so the
-// WR-01 flush-reject test can drive a real onChange → userHasEdited=true
+// flush-reject test can drive a real onChange → userHasEdited=true
 // without depending on real CodeMirror's jsdom contenteditable behavior.
 vi.mock("./components/MarkdownEditor", async () => {
   const React = await import("react");
@@ -262,7 +262,7 @@ import { vaultApi } from "./lib/vaultApi";
 
 const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
 
-// Phase 25: usePaneStore is a module-level singleton (not reset by
+// usePaneStore is a module-level singleton (not reset by
 // useTreeStore.setState), and every test in this file now renders <PaneTree>
 // — reset it before EVERY test so a tab opened in one test never bleeds into
 // the next test's single-empty-leaf assumptions.
@@ -314,12 +314,12 @@ describe("<App /> — shell composition", () => {
     expect(grid).not.toBeNull();
     // Leading 48px track is the ActivityRibbon column; middle track is
     // minmax(0, 1fr) so TabStrip overflow can engage. Trailing 280px track
-    // is the right rail — visible by default on fresh install (D-06, Phase 20).
+    // is the right rail — visible by default on fresh install.
     expect(grid!.style.gridTemplateColumns).toBe(
       "48px 260px minmax(0, 1fr) 280px",
     );
 
-    // Phase 27: the sidebar's 40px header now hosts the SidebarTabRow
+    // the sidebar's 40px header now hosts the SidebarTabRow
     // (icon-only Notes/Search/Bookmarks tabs), replacing the old vault-name
     // text header — assert the Notes tab renders instead of literal text.
     expect(screen.getByRole("button", { name: "Notes" })).toBeInTheDocument();
@@ -334,8 +334,8 @@ describe("<App /> — shell composition", () => {
 
     render(<AppShell />);
     expect(screen.queryByRole("alert")).toBeNull();
-    // Phase 25: the active pane starts with a single EMPTY leaf (no legacy
-    // activeNoteId auto-promotion — D-18); open a tab explicitly to drive
+    // the active pane starts with a single EMPTY leaf (no legacy
+    // activeNoteId auto-promotion); open a tab explicitly to drive
     // the editor, mirroring what Sidebar.onSelectNote does in production.
     act(() => {
       usePaneStore.getState().openInActivePane(SCRATCHPAD);
@@ -458,7 +458,7 @@ describe("<App /> — shell composition", () => {
     );
   });
 
-  it("A6: Toast viewport is rendered exactly once (UI-SPEC §Forward-Compat assert #3)", () => {
+  it("A6: Toast viewport is rendered exactly once", () => {
     getAdminStatusMock.mockResolvedValue({
       data: { state: "ok" },
       error: undefined,
@@ -679,9 +679,9 @@ describe("<App /> — shell composition", () => {
         screen.getByText("Select a note to start editing."),
       ).toBeInTheDocument();
     });
-    // Phase 25: tree selection now opens a tab in the active pane
+    // tree selection now opens a tab in the active pane
     // (usePaneStore.openInActivePane, mirroring Sidebar.onSelectNote) — the
-    // D-07 mirror effect then follows the active pane's active tab BACK onto
+    // mirror effect then follows the active pane's active tab BACK onto
     // useTreeStore.activeNoteId, rather than the other direction.
     await act(async () => {
       usePaneStore.getState().openInActivePane(SCRATCHPAD);
@@ -747,7 +747,7 @@ describe("<App /> — session sync", () => {
     });
   });
 
-  it("CR-01: reindex hides the EditorPane via CSS but keeps it MOUNTED — unsaved edits survive", async () => {
+  it("reindex hides the EditorPane via CSS but keeps it MOUNTED — unsaved edits survive", async () => {
     render(<AppShell />);
     await waitFor(() => expect(capturedSessionSyncHandlers).not.toBeNull());
     act(() => {
@@ -843,7 +843,7 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     });
   });
 
-  it("A6.6-1: App renders the TabStrip directly (no chrome wrapper — D-04)", async () => {
+  it("A6.6-1: App renders the TabStrip directly (no chrome wrapper)", async () => {
     render(<AppShell />);
     expect(screen.getByTestId("tab-strip")).toBeInTheDocument();
   });
@@ -912,7 +912,7 @@ describe("<App /> — two-row grid + chrome mounts", () => {
     expect(grid!.nextElementSibling).toBe(statusBar);
   });
 
-  it("A6.6-8: PaneTree spans gridRow='1 / 3' gridColumn=3 (Phase 25: TabStrip is now nested inside PaneTree's own leaf layout, not a direct grid child)", async () => {
+  it("A6.6-8: PaneTree spans gridRow='1 / 3' gridColumn=3 (TabStrip is now nested inside PaneTree's own leaf layout, not a direct grid child)", async () => {
     render(<AppShell />);
     const paneTree = screen.getByTestId("pane-tree");
     expect(paneTree.style.gridRow).toBe("1 / 3");
@@ -1283,7 +1283,7 @@ describe("commandActions rewire", () => {
 });
 
 
-describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not palette)", () => {
+describe("handleAppCmdShiftF (opens sidebar Search panel, not palette)", () => {
   function makeEvent(
     key: string,
     opts: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
@@ -1357,7 +1357,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05: opens sidebar Search panel, not pal
     expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 
-  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus (D-05)", async () => {
+  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus", async () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
@@ -1455,7 +1455,7 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
 
     render(<AppShell />);
 
-    // Mirror effect syncs activeNoteId to the active pane's active tab (D-07).
+    // Mirror effect syncs activeNoteId to the active pane's active tab.
     await waitFor(() =>
       expect(useTreeStore.getState().activeNoteId).toBe("x"),
     );
@@ -1474,7 +1474,7 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
     });
   });
 
-  it("WR-01: 'Close without saving' on a flush-reject clears activeNoteId on the last tab", async () => {
+  it("'Close without saving' on a flush-reject clears activeNoteId on the last tab", async () => {
     // Non-deleted tab so the close routes through flushAndCloseInLeaf's real
     // flush path (the deletedTabIds shortcut bypasses flush entirely and
     // cannot exercise onCloseWithoutSaving).
@@ -1494,7 +1494,7 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
       usePaneStore.getState().openInActivePane("x");
     });
 
-    // Mirror effect syncs activeNoteId to the newly active tab (D-07).
+    // Mirror effect syncs activeNoteId to the newly active tab.
     await waitFor(() =>
       expect(useTreeStore.getState().activeNoteId).toBe("x"),
     );
@@ -1524,10 +1524,10 @@ describe("close-last-tab clears activeNoteId (BUG 3b)", () => {
 
 
 // Test 2 (30-02): closeOthersInLeaf / closeToRightInLeaf must skip pinned
-// tabs (D-14). Every tab is pre-marked deleted so the close routes straight
+// tabs. Every tab is pre-marked deleted so the close routes straight
 // through closeTabInLeaf (no flush/save round-trip needed) — mirrors the
 // "close-last-tab clears activeNoteId" suite's own deletedTabIds trick.
-describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 30)", () => {
+describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -1626,16 +1626,16 @@ describe("closeOthersInLeaf / closeToRightInLeaf skip pinned tabs (D-14, Phase 3
 });
 
 
-// Test (30-02 Task 2): "New note to the right" pinned-boundary clamp (D-16)
+// Test (30-02 Task 2): "New note to the right" pinned-boundary clamp
 // now lives in frontend/src/lib/openNoteInLeaf.test.ts — openNoteInLeaf was
 // extracted out of App.tsx into its own lib module so App.tsx's exports stay
 // component-only (react-refresh/only-export-components).
 
 
-// IN-04: BootGate (App.tsx) was previously uncovered by any test that renders
+// BootGate (App.tsx) was previously uncovered by any test that renders
 // the default-exported <App /> — every other test renders <AppShell />
 // directly, bypassing the GET /vault/current boot check entirely.
-describe("<App /> — BootGate (IN-04)", () => {
+describe("<App /> — BootGate", () => {
   beforeEach(() => {
     getAdminStatusMock.mockReset();
     postAdminReindexMock.mockReset();
@@ -1681,7 +1681,7 @@ describe("<App /> — BootGate (IN-04)", () => {
     expect(await screen.findByText("Choose a vault")).toBeInTheDocument();
   });
 
-  it("IN-07: StrictMode double-invoke — stale phantom-mount resolution does not clobber the settled boot state", async () => {
+  it("StrictMode double-invoke — stale phantom-mount resolution does not clobber the settled boot state", async () => {
     // React StrictMode (main.tsx wraps <App/> in it) double-invokes effects
     // in dev: mount -> cleanup -> mount again. Without a cancelled guard, a
     // late-resolving promise from the discarded first ("phantom") effect

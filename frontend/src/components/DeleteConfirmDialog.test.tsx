@@ -1,5 +1,5 @@
 /**
- * DeleteConfirmDialog tests — Phase 30 UI-SPEC §7 Copywriting Contract (D-26).
+ * DeleteConfirmDialog tests — the locked copy contract.
  *
  * Verifies the locked trash-based copy variants for note / folder / multi
  * (bulk) / file deletion, the destructive Confirm-button color treatment,
@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 
-describe("<DeleteConfirmDialog /> — note variant (D-26 trash copy)", () => {
+describe("<DeleteConfirmDialog /> — note variant (trash copy)", () => {
   it("TestDialog_NoteVariant_RendersTitle", () => {
     render(
       <DeleteConfirmDialog
@@ -54,7 +54,7 @@ describe("<DeleteConfirmDialog /> — note variant (D-26 trash copy)", () => {
   });
 });
 
-describe("<DeleteConfirmDialog /> — folder variant (D-26 trash copy)", () => {
+describe("<DeleteConfirmDialog /> — folder variant (trash copy)", () => {
   it("TestDialog_FolderVariant_RendersTitleAndBody", () => {
     render(
       <DeleteConfirmDialog
@@ -79,7 +79,7 @@ describe("<DeleteConfirmDialog /> — folder variant (D-26 trash copy)", () => {
   });
 
   it("TestDialog_FolderVariant_CopyIsIdenticalRegardlessOfContentsCount", () => {
-    // D-26: the locked copy is a single generic sentence — it does not
+    // the locked copy is a single generic sentence — it does not
     // vary by noteCount/subfolderCount (unlike the pre-Phase-30 dialog).
     render(
       <DeleteConfirmDialog
@@ -189,7 +189,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("UX-13: multi variant renders 'Delete N notes?' title with the correct count", () => {
+  it("multi variant renders 'Delete N notes?' title with the correct count", () => {
     render(
       <DeleteConfirmDialog
         open={true}
@@ -206,7 +206,7 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
     ).toBeInTheDocument();
   });
 
-  it("UX-13: multi variant onConfirm callback fires when Delete clicked", async () => {
+  it("multi variant onConfirm callback fires when Delete clicked", async () => {
     const onConfirm = vi.fn().mockResolvedValue(undefined);
     render(
       <DeleteConfirmDialog
@@ -248,8 +248,8 @@ describe("<DeleteConfirmDialog /> — interaction", () => {
 });
 
 
-describe("WR-09 — DeleteTarget carries canonical id/path", () => {
-  it("WR-09 / Test 1: note variant requires `id: string`", () => {
+describe("DeleteTarget carries canonical id/path", () => {
+  it("Test 1: note variant requires `id: string`", () => {
     const validNote: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "note",
       name: "foo.md",
@@ -265,7 +265,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     expect(missingId.kind).toBe("note");
   });
 
-  it("WR-09 / Test 2: folder variant requires `path: string`", () => {
+  it("Test 2: folder variant requires `path: string`", () => {
     const validFolder: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "folder",
       name: "projects",
@@ -285,7 +285,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     expect(missingPath.kind).toBe("folder");
   });
 
-  it("WR-09 / Test 3: multi variant is unchanged ({ kind, count } only)", () => {
+  it("Test 3: multi variant is unchanged ({ kind, count } only)", () => {
     const validMulti: import("./deleteConfirmDialog.utils").DeleteTarget = {
       kind: "multi",
       count: 5,
@@ -296,7 +296,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     }
   });
 
-  it("WR-09: note variant `id` field is rendered transparently (dialog still shows the name)", () => {
+  it("note variant `id` field is rendered transparently (dialog still shows the name)", () => {
     render(
       <DeleteConfirmDialog
         open={true}
@@ -313,7 +313,7 @@ describe("WR-09 — DeleteTarget carries canonical id/path", () => {
     expect(screen.queryByText(/uuid-deep/)).toBeNull();
   });
 
-  it("WR-09: folder variant `path` field is rendered transparently (dialog still shows the name)", () => {
+  it("folder variant `path` field is rendered transparently (dialog still shows the name)", () => {
     render(
       <DeleteConfirmDialog
         open={true}

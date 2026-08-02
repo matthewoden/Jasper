@@ -2,7 +2,7 @@
  * TitleElement render/edit tests — locks the 33px/700 title token, the
  * Untitled placeholder, the write-through-only-callback contract (no
  * fetch/second doc-mutation channel), and the Enter/ArrowDown/Tab
- * focus-handoff (D-19/D-20: Enter and ArrowDown carry a measured caret
+ * focus-handoff (Enter and ArrowDown carry a measured caret
  * pixel-X for column-preserving crossover into the body).
  */
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -55,7 +55,7 @@ describe("<TitleElement />", () => {
     expect(typeof onFocusHandoff.mock.calls[0][0]).toBe("number");
   });
 
-  it("C4b: ArrowDown invokes onFocusHandoff with a measured numeric X, with preventDefault (D-19/D-20)", () => {
+  it("C4b: ArrowDown invokes onFocusHandoff with a measured numeric X, with preventDefault", () => {
     const onFocusHandoff = vi.fn();
     render(
       <TitleElement title="My Note" onTitleChange={vi.fn()} onFocusHandoff={onFocusHandoff} />,
@@ -90,7 +90,7 @@ describe("<TitleElement />", () => {
   });
 });
 
-describe("CR-01: ArrowDown visual-row gating", () => {
+describe("ArrowDown visual-row gating", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

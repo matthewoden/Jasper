@@ -1,7 +1,7 @@
 /**
- * Phase 25 UAT — Split-Pane Foundation (WS-03/04/07/08/10).
+ * Split-Pane Foundation (WS-03/04/07/08/10).
  *
- * Implemented in Plan 09 against the integrated split-pane UI (PaneTree /
+ * Runs against the integrated split-pane UI (PaneTree /
  * LeafPane / usePaneStore / sharedDocRegistry landed in Waves 1-6). Covers
  * the end-to-end pane behaviors observable in the browser, matching the 4
  * ROADMAP.md success criteria for this phase:
@@ -10,7 +10,7 @@
  *                affects another pane's tab strip.
  *   WS-04        closing the last tab in a leaf collapses that leaf; the
  *                sibling subtree fills the freed space (rebalance). The
- *                final remaining pane never collapses (D-10).
+ *                final remaining pane never collapses.
  *   WS-07/WS-08  active-pane tracking (keyboard/palette target the active
  *                pane; singletons like RightRail/StatusBar retarget on
  *                pane-focus change) AND the full layout — tree, active pane,
@@ -20,7 +20,7 @@
  *                exactly one save-state machine for the note (not one per
  *                pane).
  *
- * Selector contract (stable across Wave 0 → Plan 09 implementation):
+ * Selector contract (stable across Wave 0 → implementation):
  *   - Leaf pane:        [data-testid="leaf-pane"]
  *   - Per-leaf tab strip (scoped WITHIN a leaf): [data-testid="tab-strip"]
  *   - Active-pane marker: [data-active-pane="true"]
@@ -28,7 +28,7 @@
  *
  * Split/focus-cycle actions are invoked through the command palette (Cmd+P,
  * mode="commands") rather than their raw keyboard shortcuts (Cmd+\ / Cmd+Alt+
- * Arrow, D-14, appShortcuts.ts). appShortcuts.ts's handleAppSplitRight/
+ * Arrow, appShortcuts.ts). appShortcuts.ts's handleAppSplitRight/
  * handleAppSplitDown/handleAppFocusNextPane/handleAppFocusPrevPane share an
  * `isTypingTarget()` do-not-hijack-typing guard that no-ops while a
  * contenteditable (CM6's `.cm-content`) has focus — which it does immediately
@@ -117,7 +117,7 @@ function tabPillsFor(leaf: Locator): Locator {
 }
 
 /**
- * Makes `leaf` the active pane (D-04: click anywhere in a leaf's chrome
+ * Makes `leaf` the active pane (click anywhere in a leaf's chrome
  * focuses it, via LeafPane's onClickCapture). Clicking the CM6 host shell
  * both activates the pane and focuses its editor, which is convenient for
  * the shared-buffer scenario's subsequent typing.
@@ -171,7 +171,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
     await expect(leafPanes(page)).toHaveCount(1);
     await expect(tabPillsFor(leafPanes(page).nth(0))).toHaveCount(1);
 
-    // Split right (D-14/D-15): clones the active note into a new sibling
+    // Split right: clones the active note into a new sibling
     // leaf, which becomes the active pane.
     await runCommand(page, "Split right");
     await expect(leafPanes(page)).toHaveCount(2);
@@ -196,7 +196,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
     // Each leaf's breadcrumb reflects its OWN active tab's note, independent
     // of the other leaf. Scoped to :visible — LeafPane keep-alive mounts an
     // EditorPane (and its own breadcrumb) per open tab, hidden via
-    // display:none for every tab but the active one (D-01 keep-alive).
+    // display:none for every tab but the active one (keep-alive).
     await expect(
       leftLeaf
         .locator('[data-testid="note-breadcrumb"]:visible')
@@ -208,7 +208,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
         .getByTestId("breadcrumb-segment"),
     ).toHaveText(["ws03-beta"]);
 
-    // Re-activate the left leaf (D-04 click-to-focus) and open a third note
+    // Re-activate the left leaf (click-to-focus) and open a third note
     // there — it must NOT add a pill to the right leaf's strip.
     await activatePane(leftLeaf);
     await expect(leftLeaf).toHaveAttribute("data-active-pane", "true");
@@ -221,7 +221,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
   });
 });
 
-// ─── WS-03 (UAT-4) — each pane renders its OWN metadata bar, even when inactive ──
+// ─── WS-03 — each pane renders its OWN metadata bar, even when inactive ──
 //
 // Locks the round-4 fix: the breadcrumb row is sourced from each pane's own
 // note controller (getNotePath, seeded by that pane's getNote load) rather
@@ -236,7 +236,7 @@ test.describe("@phase25 WS-03: independent tab strips", () => {
 // asserts the status bar's count follows whichever pane is active/focused
 // instead of each leaf rendering its own word-count element.
 
-test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
+test.describe("@phase25 WS-03: per-pane metadata bar", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -247,7 +247,7 @@ test.describe("@phase25 WS-03 UAT-4: per-pane metadata bar", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("both panes show their own breadcrumb, including the inactive one; the status bar's word count follows the ACTIVE pane — WS-03/UAT-4, UAT round 3 #6", async ({
+  test("both panes show their own breadcrumb, including the inactive one; the status bar's word count follows the ACTIVE pane — WS-03", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -345,7 +345,7 @@ test.describe("@phase25 WS-04: collapse and rebalance", () => {
     const leftLeaf = leafPanes(page).nth(0);
     const rightLeaf = leafPanes(page).nth(1);
     await expect(tabPillsFor(leftLeaf)).toHaveCount(1);
-    await expect(tabPillsFor(rightLeaf)).toHaveCount(1); // clone of A (D-15)
+    await expect(tabPillsFor(rightLeaf)).toHaveCount(1); // clone of A
 
     // Close the last remaining tab in the right-hand leaf.
     await tabPillsFor(rightLeaf)
@@ -354,7 +354,7 @@ test.describe("@phase25 WS-04: collapse and rebalance", () => {
       .click();
 
     // Collapse: one leaf remains, divider is gone, and the surviving leaf's
-    // tab strip is unchanged (D-09 rebalance).
+    // tab strip is unchanged (rebalance).
     await expect(leafPanes(page)).toHaveCount(1);
     await expect(page.locator(SELECTORS.paneDivider)).toHaveCount(0);
     const survivor = leafPanes(page).nth(0);
@@ -363,7 +363,7 @@ test.describe("@phase25 WS-04: collapse and rebalance", () => {
       tabPillsFor(survivor).filter({ hasText: "ws04-alpha" }),
     ).toHaveAttribute("aria-selected", "true");
 
-    // Single-pane parity (D-10): with ONE pane left, closing its last tab
+    // Single-pane parity: with ONE pane left, closing its last tab
     // shows the "no note open" placeholder and the pane does NOT collapse.
     await tabPillsFor(survivor)
       .first()
@@ -418,7 +418,7 @@ test.describe("@phase25 WS-07/WS-08: active pane tracking and reload restore", (
     await expect(leftLeaf).toHaveAttribute("data-active-pane", "true");
     await expect(rightLeaf).toHaveAttribute("data-active-pane", "false");
 
-    // The keyboard focus-cycle shortcut (D-08) moves the active pane.
+    // The keyboard focus-cycle shortcut moves the active pane.
     await runCommand(page, "Focus next pane");
     await expect(rightLeaf).toHaveAttribute("data-active-pane", "true");
     await expect(leftLeaf).toHaveAttribute("data-active-pane", "false");
@@ -427,7 +427,7 @@ test.describe("@phase25 WS-07/WS-08: active pane tracking and reload restore", (
     await openNoteFromTree(page, idC);
     await expect(tabPillsFor(rightLeaf)).toHaveCount(3);
     await expect(tabPillsFor(leftLeaf)).toHaveCount(1);
-    // Singleton retargeting (D-07): the tree's active-row marker follows the
+    // Singleton retargeting: the tree's active-row marker follows the
     // active pane's active tab.
     await expect(noteRow(page, idC)).toHaveAttribute("data-active", "true");
 
@@ -468,7 +468,7 @@ test.describe("@phase25 WS-07/WS-08: active pane tracking and reload restore", (
     await expect(restoredLeft).toHaveAttribute("data-active-pane", "false");
 
     // RightRail/StatusBar singletons retarget to the reloaded active pane's
-    // active note (D-07): note C's tree row is the marked-active row.
+    // active note: note C's tree row is the marked-active row.
     await expect(noteRow(page, idC)).toHaveAttribute("data-active", "true", {
       timeout: 10_000,
     });
@@ -502,7 +502,7 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
     const idA = await apiCreateNote(page, jasper.baseURL, "ws10-shared");
     await openNoteFromTree(page, idA);
 
-    // Split right clones the active note into the new pane (D-15) — both
+    // Split right clones the active note into the new pane — both
     // leaves show the SAME note from the start.
     await runCommand(page, "Split right");
     await expect(leafPanes(page)).toHaveCount(2);
@@ -522,7 +522,7 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
       .toBe(initialText);
 
     // Typing in the left pane mirrors live into the right pane — no
-    // save/reload round-trip (D-01: one shared per-note document).
+    // save/reload round-trip (one shared per-note document).
     await leftEditor.click();
     await page.keyboard.press("End");
     await page.keyboard.type(" MIRROR-LEFT");
@@ -531,7 +531,7 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
       .toContain("MIRROR-LEFT");
 
     // Mirroring is bidirectional; each pane keeps its OWN cursor/selection
-    // on the shared document (D-02).
+    // on the shared document.
     await rightEditor.click();
     await page.keyboard.press("End");
     await page.keyboard.type(" MIRROR-RIGHT");
@@ -540,7 +540,7 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
       .toContain("MIRROR-RIGHT");
 
     // Exactly ONE save-state machine drives the singleton SaveIndicator
-    // (D-07) regardless of how many panes show the note — not one debounce
+    // regardless of how many panes show the note — not one debounce
     // timer per pane racing another.
     await expect(page.locator("[data-save-state]")).toHaveCount(1);
     await expect
@@ -558,9 +558,9 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
   });
 });
 
-// ─── Gap-closure (25-10) — CR-01: unrelated sibling survives a split elsewhere ──
+// ─── Unrelated sibling survives a split elsewhere ───────────────────────────
 //
-// Locks 25-REVIEW.md CR-01's fix: PaneTree's split-node wrapper is no longer
+// Locks the fix: PaneTree's split-node wrapper is no longer
 // keyed by a content-derived string that flips whenever a child transitions
 // leaf<->split, which previously forced React to unmount+remount the ENTIRE
 // subtree (destroying every descendant pane's CM6 view/cursor/undo) on every
@@ -575,7 +575,7 @@ test.describe("@phase25 WS-10: shared buffer across panes", () => {
 // recreated, CM6's fresh EditorView resets the cursor to start-of-doc and the
 // character lands at the front instead.
 
-test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split elsewhere", () => {
+test.describe("@phase25 uninvolved pane survives a split elsewhere", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -586,7 +586,7 @@ test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split else
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("splitting the right pane again does not remount the left pane's cursor/content — CR-01 (run 3x for flake-proofing)", async ({
+  test("splitting the right pane again does not remount the left pane's cursor/content (run 3x for flake-proofing)", async ({
     page,
   }) => {
     test.slow();
@@ -599,7 +599,7 @@ test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split else
     await runCommand(page, "Split right");
     await expect(leafPanes(page)).toHaveCount(2);
 
-    // Both leaves show the SAME note (D-15's split-clones-active-tab), but
+    // Both leaves show the SAME note ('s split-clones-active-tab), but
     // they are structurally INDEPENDENT leaves/panes — each with its own CM6
     // EditorView/cursor/undo (WS-10: content mirrors, selection never does).
     // leftLeaf is completely uninvolved in the split that's about to happen
@@ -621,7 +621,7 @@ test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split else
     for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowRight");
 
     // Split the RIGHT pane again — leftLeaf is completely uninvolved. This is
-    // the exact CR-01 trigger: rightLeaf transitions leaf -> split, which
+    // the exact trigger: rightLeaf transitions leaf -> split, which
     // (pre-fix) flipped the ROOT split-node wrapper's content-derived key and
     // remounted the whole subtree, including leftLeaf.
     await activatePane(rightLeaf);
@@ -642,9 +642,9 @@ test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split else
   });
 });
 
-// ─── Gap-closure (25-10) — CR-02: primary-first close leaks no state ────────
+// ─── Primary-first close leaks no state ────────────────────────────────────
 //
-// Locks 25-REVIEW.md CR-02's fix: closing the ORIGINALLY-OPENED (primary)
+// Locks the fix: closing the ORIGINALLY-OPENED (primary)
 // pane before its sibling used to leak the detached primary EditorView, its
 // sharedDocRegistry entry, and the note's NoteBufferController forever. The
 // most user-visible symptom: a note fully closed everywhere and then REOPENED
@@ -652,7 +652,7 @@ test.describe("@phase25 CR-01 gap-closure: uninvolved pane survives a split else
 // content-diverged) primary, so Undo/Redo routed to the WRONG view and did
 // nothing visible in the reopened pane.
 
-test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note fully", () => {
+test.describe("@phase25 primary-first close releases the note fully", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -663,7 +663,7 @@ test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("closing the primary pane, then its sibling, then reopening the note leaves Undo fully functional — CR-02 (run 3x for flake-proofing)", async ({
+  test("closing the primary pane, then its sibling, then reopening the note leaves Undo fully functional (run 3x for flake-proofing)", async ({
     page,
   }) => {
     test.slow();
@@ -674,7 +674,7 @@ test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note
     await openNoteFromTree(page, idA);
     await expect(leafPanes(page)).toHaveCount(1);
 
-    // Split right (D-15): clones the active note — the ORIGINAL pane (left)
+    // Split right: clones the active note — the ORIGINAL pane (left)
     // registers as the note's PRIMARY EditorView; the new sibling (right)
     // registers as a SECONDARY.
     await runCommand(page, "Split right");
@@ -683,7 +683,7 @@ test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note
     const leftLeaf = leafPanes(page).nth(0);
 
     // Close the ORIGINALLY-OPENED (primary) pane FIRST — an entirely
-    // ordinary user action, and the exact order CR-02 was broken for.
+    // ordinary user action, and the exact order this was broken for.
     await tabPillsFor(leftLeaf)
       .filter({ hasText: "cr02-note" })
       .locator('button[aria-label^="Close"]')
@@ -691,7 +691,7 @@ test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note
     await expect(leafPanes(page)).toHaveCount(1);
 
     // Close the sole remaining pane's tab too — the note is now closed
-    // EVERYWHERE (D-10: the final pane itself survives, empty).
+    // EVERYWHERE (the final pane itself survives, empty).
     const survivor = leafPanes(page).nth(0);
     await tabPillsFor(survivor)
       .filter({ hasText: "cr02-note" })
@@ -705,7 +705,7 @@ test.describe("@phase25 CR-02 gap-closure: primary-first close releases the note
     const reopenedEditor = reopened.locator(".cm-content:visible");
     await expect(reopenedEditor).toBeVisible({ timeout: 8_000 });
 
-    // Type, then Undo. Before the CR-02 fix, this reopened view was silently
+    // Type, then Undo. Before the fix, this reopened view was silently
     // registered as a SECONDARY against the leaked, stale primary — Undo
     // routed to that invisible, content-diverged view and did nothing to the
     // text actually on screen.

@@ -1,5 +1,5 @@
 /**
- * revealInNavigation tests (D-25).
+ * revealInNavigation tests.
  */
 import { describe, expect, it, vi } from "vitest";
 

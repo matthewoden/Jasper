@@ -1,5 +1,5 @@
 /**
- * Phase 30 gap closure (30-12, CR-03/CTX-02/D-19) — bulk-bookmark
+ * gap closure (30-12 CTX-02) — bulk-bookmark
  * client-store integrity.
  *
  * Root cause (VERIFICATION gap 3): `FileTree.handleBulkBookmark` loops
@@ -49,7 +49,7 @@ function bookmarkRows(page: Page): Locator {
   return page.locator('[data-tree-row-kind="bookmark"]');
 }
 
-test.describe("@bulk-bookmark Phase 30 gap closure: bulk-bookmark client store integrity", () => {
+test.describe("@bulk-bookmark gap closure: bulk-bookmark client store integrity", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -60,7 +60,7 @@ test.describe("@bulk-bookmark Phase 30 gap closure: bulk-bookmark client store i
     if (jasper) await jasper.kill();
   });
 
-  test("CR-03: bulk 'Bookmark 3 notes' from the tree's selection-aware menu leaves all 3 bookmarks visible in the Bookmarks panel without a reload", async ({
+  test("bulk 'Bookmark 3 notes' from the tree's selection-aware menu leaves all 3 bookmarks visible in the Bookmarks panel without a reload", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });

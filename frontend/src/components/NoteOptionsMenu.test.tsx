@@ -1,7 +1,7 @@
 /**
- * NoteOptionsMenu tests (CTX-03, D-21..D-25 — Phase 30 Plan 09).
+ * NoteOptionsMenu tests (CTX-03).
  *
- * Verifies the locked D-22 item order, both split directions, Find/Replace
+ * Verifies the locked item order, both split directions, Find/Replace
  * delegation, the Bookmark label toggle, and Reveal-in-navigation wiring.
  */
 import { render, screen } from "@testing-library/react";
@@ -97,7 +97,7 @@ beforeEach(() => {
 });
 
 describe("<NoteOptionsMenu />", () => {
-  it("renders the locked D-22 item order", () => {
+  it("renders the locked item order", () => {
     renderMenu();
     const items = screen.getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual(LOCKED_ORDER);

@@ -1,12 +1,12 @@
 /**
- * Phase 23 UAT — Design Parity Fixes (P1 sidebar/section-header + note-title
+ * Design Parity Fixes (P1 sidebar/section-header + note-title
  * sweep item).
  *
  * PARITY-02: the right rail (Outline / Linked mentions / Tags) has a 1px
  *   left border separating it from the editor. (The right-rail
  *   section-header uppercase/letter-spacing assertion this file originally
- *   also carried was removed in Phase 31 — sub-headers no longer exist,
- *   D-01.)
+ * also carried was removed — sub-headers no longer exist,
+ * per-panel close buttons.)
  * PARITY-03: the note title has -0.012em letter-spacing (sweep item).
  *
  * Harness mirrors phase21-uat.spec.ts: spawnJasper() per describe block
@@ -73,7 +73,7 @@ test.describe("@phase23 design parity fixes", () => {
     await waitForConnected(page, jasper.baseURL);
 
     // The resize-handle separator is a stable child of the rail <aside>
-    // (only rendered while backlinksRailExpanded, true by default — D-06).
+    // (only rendered while backlinksRailExpanded, true by default).
     // Its parent element IS the rendered rail node the border lives on.
     const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });
     await expect(railHandle).toBeVisible({ timeout: 10_000 });
@@ -89,7 +89,7 @@ test.describe("@phase23 design parity fixes", () => {
 
   // Removed: right-rail sub-headers (RightRailSubHeader, including the
   // uppercase/letter-spacing label this test guarded) were retired entirely
-  // in Phase 31 (D-01) — all three panels are now header-less, identified
+  // — all three panels are now header-less, identified
   // by the icon tab row alone. No sibling assertion survives; the
   // PARITY-02 border-left assertion above and PARITY-03 title-tracking
   // assertion below are unaffected and still cover this file's real scope.

@@ -1,7 +1,7 @@
 /**
  * Tests for tagsApi typed wrappers. Validates that:
  *   - tagsResource.read() routes through client.GET("/tags") correctly and
- *     resolves/rejects per D-16 (there is no exported listTags to call
+ * resolves/rejects (there is no exported listTags to call
  *     directly any more — the resource is the only entry point)
  *   - listTagNotes routes through client.GET("/tags/{name}/notes") correctly
  *   - renameTag routes through client.PUT("/tags/{name}") correctly

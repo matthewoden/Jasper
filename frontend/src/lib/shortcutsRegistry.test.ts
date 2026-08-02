@@ -7,7 +7,7 @@ import {
 } from "./shortcutsRegistry";
 
 describe("shortcutsRegistry", () => {
-  it("registry has all 17 locked Cmd+P palette entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note; Phase 28 Plan 03 relabeled Switch/search notes to Quick switcher)", () => {
+  it("registry has all 17 locked Cmd+P palette entries (added Share/Reveal added Switch vault added Toggle Zen Mode added split/focus-pane commands added Toggle left sidebar added Bookmark current note relabeled Switch/search notes to Quick switcher)", () => {
     const labels = COMMAND_PALETTE_ENTRIES.map((s) => s.label);
     expect(labels).toContain("New note");
     expect(labels).toContain("Save");
@@ -74,19 +74,19 @@ describe("shortcutsRegistry", () => {
 });
 
 
-describe("Plan 07-27 — Cmd+F removal (UAT-2 N6)", () => {
-  it("SR-no-find — shortcutsRegistry does NOT include 'find' after Plan 07-27", () => {
+describe("Cmd+F removal", () => {
+  it("SR-no-find — shortcutsRegistry does NOT include 'find'", () => {
     const found = SHORTCUTS_REGISTRY.find((s) => s.id === "find");
     expect(found).toBeUndefined();
   });
 
-  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 17 entries (Plan 08-06 added Share/Reveal; Plan 08-17c added Switch vault; Phase 22 Plan 03 added Toggle Zen Mode; Phase 25 Plan 08 added split/focus-pane commands; Phase 27 Plan 04 added Toggle left sidebar; Phase 27 Plan 07 added Bookmark current note; Find still removed)", () => {
+  it("SR-palette-count — COMMAND_PALETTE_ENTRIES has 17 entries (added Share/Reveal added Switch vault added Toggle Zen Mode added split/focus-pane commands added Toggle left sidebar added Bookmark current note; Find still removed)", () => {
     expect(COMMAND_PALETTE_ENTRIES.length).toBe(17);
   });
 });
 
 
-describe("Plan 07-36 — Cmd+U underline removed (UAT-3 N7)", () => {
+describe("Cmd+U underline removed", () => {
   it("SR-no-underline — shortcutsRegistry does NOT include 'underline' entry", () => {
     const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "underline");
     expect(entry).toBeUndefined();
@@ -94,7 +94,7 @@ describe("Plan 07-36 — Cmd+U underline removed (UAT-3 N7)", () => {
 });
 
 
-describe("Plan 13-02 — DEBT-05: vault.switch has no keybinding (palette-only lock)", () => {
+describe("DEBT-05: vault.switch has no keybinding (palette-only lock)", () => {
   it("vault.switch entry exists in the registry", () => {
     const entry = SHORTCUTS_REGISTRY.find((s) => s.id === "vault.switch");
     expect(entry).toBeDefined();

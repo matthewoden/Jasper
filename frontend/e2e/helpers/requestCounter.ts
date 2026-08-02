@@ -1,6 +1,6 @@
 /**
  * requestCounter.ts — reusable wire-request counting for the request-budget
- * assertions across Phase 32.2's DoD spec (and any future request-count E2E).
+ * assertions across the DoD spec (and any future request-count E2E).
  *
  * CRITICAL (memory e2e-needs-make-build): Playwright here runs against the
  * EMBEDDED Go binary — run `make build` (NOT `npm run build`) at the repo
@@ -8,7 +8,7 @@
  * page is stale and every assertion below is meaningless.
  *
  * Reuses the `page.on("request", ...)` URL-filter mechanism already proven
- * in `phase5_5-uat.spec.ts` (UX-14/UX-14b) — no new counting mechanism.
+ * in `phase5_5-uat.spec.ts` (UX-14b) — no new counting mechanism.
  */
 import { expect, type Page } from "@playwright/test";
 

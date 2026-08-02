@@ -1,5 +1,5 @@
 /**
- * Tooltip tests (D-06..D-09) — shared wrapper + provider.
+ * Tooltip tests — shared wrapper + provider.
  *
  * Radix opens the tooltip immediately on trigger `focus` (no delayDuration
  * applied to keyboard/focus triggering, only pointer hover) — fireEvent.focus

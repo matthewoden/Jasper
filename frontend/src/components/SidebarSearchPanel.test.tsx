@@ -231,7 +231,7 @@ describe("SidebarSearchPanel", () => {
     expect(selectSpy).toHaveBeenCalled();
   });
 
-  it("persists query + results in the store across unmount/remount (D-18)", async () => {
+  it("persists query + results in the store across unmount/remount", async () => {
     vi.spyOn(searchApi, "searchNotes").mockResolvedValue([mkResult("1", "Hello")]);
     const { unmount } = renderPanel();
     const input = screen.getByPlaceholderText("Search notes… (tag:name to filter)");
@@ -309,7 +309,7 @@ describe("SidebarSearchPanel", () => {
       expect(getHistory()[0]).toBe("hello world");
     });
 
-    it("Enter-committing a result closes the hints layer instead of reopening it over the results (WR-02)", async () => {
+    it("Enter-committing a result closes the hints layer instead of reopening it over the results", async () => {
       vi.spyOn(searchApi, "searchNotes").mockResolvedValue([
         mkResult("1", "Hello"),
         mkResult("2", "World"),
@@ -342,7 +342,7 @@ describe("SidebarSearchPanel", () => {
       expect(openInActivePane).toHaveBeenLastCalledWith("2");
     });
 
-    // CR-02: replay the real browser event order for a mouse click on the
+    // replay the real browser event order for a mouse click on the
     // dropdown — mousedown (focus leaves the input unless default-prevented,
     // firing blur and queueing the 0ms close timer) … mouseup → click. jsdom's
     // bare fireEvent.click skips the focus cycle and false-passes, so these
@@ -360,7 +360,7 @@ describe("SidebarSearchPanel", () => {
       fireEvent.click(target);
     }
 
-    it("clicking a hint row survives the mousedown→blur→click browser sequence (CR-02)", () => {
+    it("clicking a hint row survives the mousedown→blur→click browser sequence", () => {
       recordSearchHistory("hello world");
       renderPanel();
       const input = screen.getByPlaceholderText(
@@ -374,7 +374,7 @@ describe("SidebarSearchPanel", () => {
       expect(useTreeStore.getState().searchQuery).toBe("hello world");
     });
 
-    it("clicking a hint's remove-X survives the mousedown→blur→click browser sequence (D-21)", () => {
+    it("clicking a hint's remove-X survives the mousedown→blur→click browser sequence", () => {
       recordSearchHistory("hello world");
       renderPanel();
       const input = screen.getByPlaceholderText(

@@ -1,5 +1,5 @@
 /**
- * Phase 31 D-07/D-08/D-09 tooltip UAT: proves the shared Radix Tooltip
+ * Tooltip UAT: proves the shared Radix Tooltip
  * system against a real embedded binary + real hover (never synthetic
  * events, memory verify-dnd-with-real-mouse's broader lesson).
  *
@@ -21,7 +21,7 @@ import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { waitForConnected } from "./helpers/phase7Helpers";
 
-test.describe("@phase31 D-07/D-08/D-09: shared Tooltip system (ribbon)", () => {
+test.describe("@phase31 shared Tooltip system (ribbon)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -42,7 +42,7 @@ test.describe("@phase31 D-07/D-08/D-09: shared Tooltip system (ribbon)", () => {
     const quickSwitcher = page.getByRole("button", { name: "Quick switcher" });
     await expect(quickSwitcher).toBeVisible({ timeout: 10_000 });
 
-    // Native title= is removed by the D-07 migration — the tooltip is the
+    // Native title= is removed by the Tooltip migration — the tooltip is the
     // only affordance now.
     await expect(quickSwitcher).not.toHaveAttribute("title", /.+/);
 

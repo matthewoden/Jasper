@@ -53,7 +53,7 @@ beforeEach(() => {
   mockClient.GET.mockReset();
   mockClient.PUT.mockReset();
   mockClient.PATCH.mockReset();
-  // configResource is a module-level, boot-scoped singleton (D-15) shared
+  // configResource is a module-level, boot-scoped singleton shared
   // by every useAccent()/useConfig() instance — without this reset, a
   // later test's mount reads the PRIOR test's cached (possibly mutated)
   // config instead of issuing its own GET.

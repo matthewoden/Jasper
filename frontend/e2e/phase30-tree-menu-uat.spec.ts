@@ -1,16 +1,16 @@
 /**
- * Phase 30 UAT — Right-Rail Tags & Context Menus: tree row context menu
- * (CTX-02, WS-06 tree-split entry point, bulk menu, D-26 universal
+ * Right-Rail Tags & Context Menus: tree row context menu
+ * (CTX-02, WS-06 tree-split entry point, bulk menu, the universal
  * delete-confirm dialog).
  *
- * Wave-0 scaffold (Plan 30-03) filled by Plan 07:
+ * Covers:
  *   CTX-02  Note-row menu adds Open in split, Bookmark/Remove bookmark;
  *           folder-row menu adds Show in file manager below New folder.
  *   WS-06   "Open in split" opens the row's note in a new right/row
  *           split.
  *   Bulk    A multi-select bulk variant (Open N tabs / Open in split /
  *           Bookmark N notes / Delete N notes) when selectionCount > 1.
- *   D-26    The trash-based delete-confirm dialog gates both the
+ * The trash-based delete-confirm dialog gates both the
  *           single-target and bulk delete paths.
  *
  * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
@@ -54,7 +54,7 @@ function leafPanes(page: Page) {
   return page.locator('[data-testid="leaf-pane"]');
 }
 
-test.describe("@tree-menu Phase 30: tree row context menu", () => {
+test.describe("@tree-menu: tree row context menu", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -74,7 +74,7 @@ test.describe("@tree-menu Phase 30: tree row context menu", () => {
       jasper.baseURL,
       "tree-menu-smoke.md",
       "",
-      "# tree-menu-smoke\n\nBody text for the Phase 30 Wave-0 tree-menu smoke test.\n",
+      "# tree-menu-smoke\n\nBody text for the tree-menu smoke test.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -186,7 +186,7 @@ test.describe("@tree-menu Phase 30: tree row context menu", () => {
       })
       .toBe(2);
 
-    // D-20 / event-bubbling defense: right-clicking an already-selected row
+    // Event-bubbling defense: right-clicking an already-selected row
     // must NOT collapse the multi-selection (react-arborist's DefaultRow
     // wrapper independently calls node.handleClick on a bubbled click —
     // TreeRowMenu's bulk items call event.stopPropagation() to prevent

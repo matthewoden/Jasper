@@ -129,7 +129,7 @@ describe("inlineTagPlugin", () => {
     expect(decos.length).toBe(0);
   });
 
-  it("IT6: ## todo (Pitfall 5 — lowercase heading) → NO decoration", () => {
+  it("IT6: ## todo (lowercase heading) → NO decoration", () => {
     const doc = "## todo\nother line";
     const view = makeView(doc, doc.lastIndexOf("other"));
     views.push(view);
@@ -243,7 +243,7 @@ describe("inlineTagPlugin", () => {
     expect(decos[0].dataTag).toBe("my-tag-123");
   });
 
-  it("IT14: decorations are mark decorations, not replace decorations (Pitfall 2)", () => {
+  it("IT14: decorations are mark decorations, not replace decorations", () => {
     const doc = "#foo\nother line";
     const view = makeView(doc, doc.lastIndexOf("other"));
     views.push(view);

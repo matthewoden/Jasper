@@ -63,7 +63,7 @@ describe("<ConnectionStatusDot />", () => {
     );
   });
 
-  it("has a 24x24/padding-4 icon-like footprint (Phase 31 UAT #2)", () => {
+  it("has a 24x24/padding-4 icon-like footprint (UAT #2)", () => {
     (useTreeStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       (sel: (s: { connectionStatus: string }) => unknown) =>
         sel({ connectionStatus: "connected" }),
@@ -76,7 +76,7 @@ describe("<ConnectionStatusDot />", () => {
     expect(footprint.style.padding).toBe("4px");
   });
 
-  it("shows a Tooltip describing the connection state instead of a native title (Phase 31 UAT #2)", () => {
+  it("shows a Tooltip describing the connection state instead of a native title (UAT #2)", () => {
     (useTreeStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       (sel: (s: { connectionStatus: string }) => unknown) =>
         sel({ connectionStatus: "reconnecting" }),

@@ -206,7 +206,7 @@ describe("wikilinkPlugin", () => {
     expect(decos[0].widget?.rawTitle).toBe("Alpha");
   });
 
-  it("P10: doc with 3 wikilinks off-cursor decorates all 3 correctly", () => {
+  it("doc with 3 wikilinks off-cursor decorates all 3 correctly", () => {
     const doc = [
       "[[Alpha]] first",
       "[[Beta]] second",
@@ -224,7 +224,7 @@ describe("wikilinkPlugin", () => {
     expect(decos.every((d) => d.widget?.isResolved)).toBe(true);
   });
 
-  it("P11: resolved-state change via setResolvedTitlesSnapshot — after doc change, decoration updates", () => {
+  it("resolved-state change via setResolvedTitlesSnapshot — after doc change, decoration updates", () => {
     const twoLine = "see [[Foo]] here \ncursor on line 2";
     const cursorPos = twoLine.indexOf("\ncursor") + 1;
     const view = makeView(twoLine, cursorPos, new Set([]));
@@ -247,31 +247,31 @@ describe("wikilinkPlugin", () => {
     expect(decos[0].widget?.targetId).toBe("uuid-foo");
   });
 
-  it("P12: WikiLinkWidget.eq returns true for identical (displayText + state + targetId)", () => {
+  it("WikiLinkWidget.eq returns true for identical (displayText + state + targetId)", () => {
     const w1 = new WikiLinkWidget("Foo", true, "uuid-1", "Foo");
     const w2 = new WikiLinkWidget("Foo", true, "uuid-1", "Foo");
     expect(w1.eq(w2)).toBe(true);
   });
 
-  it("P12: WikiLinkWidget.eq returns false when displayText differs", () => {
+  it("WikiLinkWidget.eq returns false when displayText differs", () => {
     const w1 = new WikiLinkWidget("Foo", true, "uuid-1", "Foo");
     const w2 = new WikiLinkWidget("Bar", true, "uuid-1", "Bar");
     expect(w1.eq(w2)).toBe(false);
   });
 
-  it("P12: WikiLinkWidget.eq returns false when isResolved differs", () => {
+  it("WikiLinkWidget.eq returns false when isResolved differs", () => {
     const w1 = new WikiLinkWidget("Foo", true, null, "Foo");
     const w2 = new WikiLinkWidget("Foo", false, null, "Foo");
     expect(w1.eq(w2)).toBe(false);
   });
 
-  it("P12: WikiLinkWidget.eq returns false when targetId differs", () => {
+  it("WikiLinkWidget.eq returns false when targetId differs", () => {
     const w1 = new WikiLinkWidget("Foo", true, "uuid-1", "Foo");
     const w2 = new WikiLinkWidget("Foo", true, "uuid-2", "Foo");
     expect(w1.eq(w2)).toBe(false);
   });
 
-  it("WikiLinkWidget.toDOM uses textContent not innerHTML (T-06-09-01 XSS safety)", () => {
+  it("WikiLinkWidget.toDOM uses textContent not innerHTML (XSS safety)", () => {
     const w = new WikiLinkWidget("<script>alert(1)</script>", false, null, "safe");
     const dom = w.toDOM();
     expect(dom.innerHTML).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");

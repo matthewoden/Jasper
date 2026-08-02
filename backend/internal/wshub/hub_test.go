@@ -175,7 +175,7 @@ func TestHub_DisconnectCleanup(t *testing.T) {
 	t.Errorf("expected 0 clients after disconnect, got %d", hub.ClientCount())
 }
 
-// TestHub_BroadcastMarshalFailureBumpsCounter (WR-05) verifies that a
+// TestHub_BroadcastMarshalFailureBumpsCounter verifies that a
 // payload that fails json.Marshal increments MarshalFailureCount.
 // Disciplined callers should never produce this — the counter exists
 // so silent drops are observable in tests + ops.
@@ -197,7 +197,7 @@ func TestHub_BroadcastMarshalFailureBumpsCounter(t *testing.T) {
 	}
 }
 
-// TestHub_RejectsEmptyOrigin (WR-01 defense-in-depth) verifies that
+// TestHub_RejectsEmptyOrigin (defense-in-depth) verifies that
 // a request with no Origin header is rejected with 403, even though
 // coder/websocket's authenticateOrigin would otherwise return nil for
 // the empty-Origin case. This guards against a future bind-to-LAN
@@ -227,7 +227,7 @@ func TestHub_RejectsEmptyOrigin(t *testing.T) {
 // TestHub_LANBoundOriginPatterns verifies that WsOriginPatterns derives the
 // correct wildcard port pattern for a 0.0.0.0 all-interfaces bind, and that
 // a Hub constructed for that bind still rejects upgrades with empty Origin
-// (WR-01 preserved). The empty-Origin check runs before websocket.Accept, so
+// The empty-Origin check runs before websocket.Accept, so
 // we can test it without a real network listener using httptest.NewRecorder.
 func TestHub_LANBoundOriginPatterns(t *testing.T) {
 	// Derive patterns for a 0.0.0.0:6683 bind.

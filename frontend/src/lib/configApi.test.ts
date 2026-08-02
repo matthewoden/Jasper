@@ -1,6 +1,6 @@
 /**
  * configApi.test — the fetch/mutation wrappers configApi.ts owns:
- * configResource's boot-scoped coalescing (D-15) and lastPersisted's
+ * configResource's boot-scoped coalescing and lastPersisted's
  * update-on-success / untouched-on-failure contract (the base saveConfig's
  * rollback reads).
  */
@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 describe("configApi", () => {
-  it("D-15: three configResource.read() calls resolve from one client.GET (boot-scoped)", async () => {
+  it("three configResource.read() calls resolve from one client.GET (boot-scoped)", async () => {
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
 
     const [a, b, c] = await Promise.all([

@@ -1,7 +1,6 @@
 /**
- * fileTree.utils.test.ts — sortTree folder-grouping comparator (SORT-01,
- * D-01/D-02). Covers the six sort orders + nested recursion + tie-break
- * behavior specified in 29-04-PLAN.md's <behavior> block.
+ * fileTree.utils.test.ts — sortTree folder-grouping comparator (SORT-01).
+ * Covers the six sort orders + nested recursion + tie-break behavior.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -58,7 +57,7 @@ describe("sortTree", () => {
     ]);
   });
 
-  it("name-desc: folders STILL A→Z first (D-01), notes Z→A", () => {
+  it("name-desc: folders STILL A→Z first, notes Z→A", () => {
     const nodes = [note("Alpha"), folder("Zebra"), note("Charlie"), folder("Apple")];
     const sorted = sortTree(nodes, "name-desc");
     expect(sorted.map((n) => n.name)).toEqual([

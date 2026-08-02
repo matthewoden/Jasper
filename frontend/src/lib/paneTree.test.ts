@@ -1,9 +1,9 @@
 /**
  * Tests for paneTree — pure split/collapse/rebalance/clone tree operations.
  *
- * Covers WS-04 (collapse + rebalance), D-10 (never-null final pane), D-16
+ * Covers WS-04 (collapse + rebalance), the never-null final pane
  * (tab id decoupled from noteId), and the explicit-split-direction resolution
- * (RESEARCH.md Open Question 2).
+ * regardless of any ancestor split's direction.
  */
 import { describe, expect, it } from "vitest";
 
@@ -66,7 +66,7 @@ describe("splitPane", () => {
   });
 
   it("splitting an empty leaf (active=null) is safe: two empty leaves, no phantom tab, no throw", () => {
-    const leaf = newLeaf("root"); // no tabs, active=null (D-10 empty-pane state)
+    const leaf = newLeaf("root"); // no tabs, active=null (empty-pane state)
     expect(() => splitPane(leaf, "root", "col", true)).not.toThrow();
     const tree = splitPane(leaf, "root", "col", true);
     if (tree.t !== "split") throw new Error("expected split");
@@ -109,7 +109,7 @@ describe("_removeLeaf — collapse + rebalance (WS-04)", () => {
     expect(asLeaf(collapsed).id).toBe(siblingId);
   });
 
-  it("removing the only remaining leaf returns a single empty leaf, never null (D-10)", () => {
+  it("removing the only remaining leaf returns a single empty leaf, never null", () => {
     const leaf = newLeaf("only", [{ id: "t1", noteId: "n1" }], "t1");
     const result = _removeLeaf(leaf, "only");
     expect(result).not.toBeNull();
@@ -214,7 +214,7 @@ describe("tabsOf helper sanity", () => {
   });
 });
 
-describe("splitWithTab (WS-01, D-05)", () => {
+describe("splitWithTab (WS-01)", () => {
   it("placement 'first' puts the new sibling (holding the dragged tab) as `a`", () => {
     const leaf = newLeaf("root");
     const tab = { id: newTabId(), noteId: "note-1" };
@@ -261,7 +261,7 @@ describe("splitWithTab (WS-01, D-05)", () => {
   });
 });
 
-describe("moveTab (WS-02, D-07)", () => {
+describe("moveTab (WS-02)", () => {
   it("appends the tab to the target leaf's tabs and activates it", () => {
     const leaf = newLeaf("root");
     const tab = { id: newTabId(), noteId: "note-1" };
@@ -270,7 +270,7 @@ describe("moveTab (WS-02, D-07)", () => {
     expect(result.active).toBe(tab.id);
   });
 
-  it("dedup (D-07): activates the existing tab with the same noteId instead of duplicating", () => {
+  it("dedup: activates the existing tab with the same noteId instead of duplicating", () => {
     const existingTab = { id: newTabId(), noteId: "note-1" };
     const leaf = newLeaf("root", [existingTab], null);
     const draggedTab = { id: newTabId(), noteId: "note-1" };
@@ -286,7 +286,7 @@ describe("moveTab (WS-02, D-07)", () => {
     expect(result).toBe(leaf);
   });
 
-  it("D-15: a PINNED dragged tab lands at the END of the target leaf's pinned group, not appended past its unpinned tabs", () => {
+  it("a PINNED dragged tab lands at the END of the target leaf's pinned group, not appended past its unpinned tabs", () => {
     const p1 = { id: "p1", noteId: "note-p1", pinned: true };
     const u1 = { id: "u1", noteId: "note-u1" };
     const leaf = newLeaf("root", [p1, u1], u1.id);
@@ -349,7 +349,7 @@ describe("moveTabToIndex (P26 polish — positional cross-leaf insert)", () => {
     expect(result.tabs.map((t) => t.noteId)).toEqual(["note-1", "note-2"]);
   });
 
-  it("dedup (D-07): activates the existing same-noteId tab instead of inserting a duplicate", () => {
+  it("dedup: activates the existing same-noteId tab instead of inserting a duplicate", () => {
     const existing = { id: newTabId(), noteId: "note-1" };
     const leaf = newLeaf("root", [existing], null);
     const dragged = { id: newTabId(), noteId: "note-1" };
@@ -394,7 +394,7 @@ describe("depthAtLeaf (P28 QUICK-03 max-depth guard)", () => {
   });
 });
 
-describe("setRatioAtPath (WS-05, D-13)", () => {
+describe("setRatioAtPath (WS-05)", () => {
   it("writes the ratio at the root split when path is empty", () => {
     const tree = asSplit(splitPane(newLeaf("root"), "root", "row", false));
     const result = asSplit(setRatioAtPath(tree, [], 0.35));
@@ -430,7 +430,7 @@ describe("setRatioAtPath (WS-05, D-13)", () => {
   });
 });
 
-describe("togglePinInTabs (D-14 — pin toggle + left-grouping)", () => {
+describe("togglePinInTabs (pin toggle + left-grouping)", () => {
   it("pins an unpinned tab (pinned: undefined -> true)", () => {
     const a = { id: "a", noteId: "note-a" };
     const b = { id: "b", noteId: "note-b" };
@@ -445,7 +445,7 @@ describe("togglePinInTabs (D-14 — pin toggle + left-grouping)", () => {
     expect(result.find((t) => t.id === "a")?.pinned).toBe(false);
   });
 
-  it("pinning moves the tab to the END of the existing pinned group (left-grouped, D-14)", () => {
+  it("pinning moves the tab to the END of the existing pinned group (left-grouped)", () => {
     const p1 = { id: "p1", noteId: "note-p1", pinned: true };
     const p2 = { id: "p2", noteId: "note-p2", pinned: true };
     const u1 = { id: "u1", noteId: "note-u1" };

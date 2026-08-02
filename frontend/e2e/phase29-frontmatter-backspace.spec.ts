@@ -1,5 +1,5 @@
 /**
- * D-23 regression: "Backspace at note top edits hidden frontmatter."
+ * regression: "Backspace at note top edits hidden frontmatter."
  *
  * Proves frontmatterBackspaceGuardKeymap (frontmatterHidePlugin.ts) against a
  * real embedded binary + real keyboard input: with the YAML frontmatter
@@ -7,7 +7,7 @@
  * position and pressing Backspace must NOT delete into, reveal, or corrupt
  * the hidden frontmatter block.
  *
- * Separate spec file from phase29-uat.spec.ts (D-23 is an independent,
+ * Separate spec file from phase29-uat.spec.ts (this is an independent,
  * self-contained editor-correctness fix per 29-CONTEXT.md, unrelated to
  * sort/history) to avoid a file conflict with the sibling 29-09 plan.
  *
@@ -50,7 +50,7 @@ async function getNoteContent(page: Page, baseURL: string, noteId: string): Prom
   return data.content ?? "";
 }
 
-test.describe("@phase29 D-23: frontmatter Backspace-at-top guard", () => {
+test.describe("@phase29 frontmatter Backspace-at-top guard", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -94,7 +94,7 @@ test.describe("@phase29 D-23: frontmatter Backspace-at-top guard", () => {
     const contentBeforeBackspace = await getNoteContent(page, jasper.baseURL, noteId);
     expect(contentBeforeBackspace).toBe(NOTE_CONTENT);
 
-    // Real key press — the D-23 repro step.
+    // Real key press — the repro step.
     await page.keyboard.press("Backspace");
     await page.keyboard.press("Backspace");
     await page.keyboard.press("Backspace");

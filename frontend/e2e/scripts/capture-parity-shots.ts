@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 /**
- * capture-parity-shots.ts — Phase 23 Plan 03 Task 1 (PARITY-03).
+ * capture-parity-shots.ts — PARITY-03.
  *
  * Ad hoc (non-CI-gating) Playwright capture script. Reuses spawnJasper()
  * (never hand-rolls a new spawn path) against a freshly `make build`-rebuilt
- * binary and walks every surface in the Plan 03 re-verify checklist
- * (23-03-PLAN.md <interfaces> "Surface re-verify checklist", D-07),
+ * binary and walks every surface in the re-verify checklist
  * screenshotting each to `.parity-shots/` with a stable center-column-first
- * ordering prefix (per 23-UI-SPEC.md "Visual Hierarchy") for the owner's
- * side-by-side review against the canonical Vault.dc.html mock
- * (D-02/D-04/D-07/D-08).
+ * ordering prefix for the owner's side-by-side review against the
+ * canonical Vault.dc.html mock.
  *
- * This does NOT build a pixel-diff/visual-regression pipeline (D-01) — these
+ * This does NOT build a pixel-diff/visual-regression pipeline — these
  * images are for human review only, never an automated pass/fail gate.
  *
- * Pitfall 3 (23-RESEARCH.md): a stale bin/jasper silently screenshots the
+ * NOTE: a stale bin/jasper silently screenshots the
  * pre-fix UI. Always run `make build` immediately before this script.
  *
  * Usage: cd frontend && make build && npx tsx e2e/scripts/capture-parity-shots.ts
@@ -64,7 +62,7 @@ async function openNoteFromTree(page: Page, id: string): Promise<void> {
   const row = noteRow(page, id);
   await row.waitFor({ state: "visible", timeout: 10_000 });
   await row.click();
-  // Tabs keep prior editors mounted-but-hidden (Phase 22 tab model), so
+  // Tabs keep prior editors mounted-but-hidden (tab model), so
   // `.cm-content` can resolve to >1 element — scope to the one actually
   // visible (the active tab's pane).
   await page.locator(".cm-content:visible").waitFor({ state: "visible", timeout: 10_000 });
@@ -95,7 +93,7 @@ async function shoot(page: Page, name: string): Promise<void> {
 
 async function shootLocator(page: Page, selector: string, name: string): Promise<void> {
   const dest = path.join(SHOTS_DIR, name);
-  // Tabs keep prior editors mounted-but-hidden (Phase 22 tab model); scope to
+  // Tabs keep prior editors mounted-but-hidden (tab model); scope to
   // the visible instance so a stale/hidden duplicate never wins the race.
   const locator = page.locator(`${selector}:visible`).first();
   await locator.waitFor({ state: "visible", timeout: 10_000 });
@@ -230,7 +228,7 @@ async function main(): Promise<void> {
     // ── 11. Breadcrumb + word count (same nav element). ─────────────────────
     await shootLocator(page, '[data-testid="note-breadcrumb"]', "11-breadcrumb-word-count.png");
 
-    // ── 12. Command palette (unified Cmd/Ctrl+K, Phase 22; mode="all" has
+    // ── 12. Command palette (unified Cmd/Ctrl+K; mode="all" has
     //         aria-label "Search everything" — Cmd+P/"Command palette" is
     //         the commands-only mode). ────────────────────────────────────
     await page.keyboard.press(`${MOD}+k`);

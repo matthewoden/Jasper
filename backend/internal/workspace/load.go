@@ -17,7 +17,7 @@ import (
 //   - File present and valid — including a well-formed document carrying an
 //     extra/unrecognized field (e.g. written by a newer binary, or
 //     hand-edited): unknown fields are ignored, matching normal Go JSON
-//     decode semantics (mirrors the SET-05 / bookmarks CR-01 forward-compat
+//     decode semantics (mirrors the SET-05 / bookmarks forward-compat
 //     lesson — an unknown field must never be treated the same as corrupt
 //     JSON and coerced to a default document).
 //

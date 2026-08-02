@@ -1,5 +1,5 @@
 /**
- * Phase 12 UAT — Interactive Checkboxes.
+ * Interactive Checkboxes.
  *
  * All synchronization uses deterministic assertion-based waits.
  *

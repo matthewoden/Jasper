@@ -1,5 +1,5 @@
 /**
- * TreeRowMenu tests — UI-SPEC §Surface 2.
+ * TreeRowMenu tests — the tree row's context and kebab menus.
  *
  * Verifies that both <TreeRowContextMenu> and <TreeRowDropdownMenu>
  * variants render the same item set per rowKind, with locked copy +
@@ -217,8 +217,8 @@ describe("<TreeRowDropdownMenu /> — item rendering by rowKind", () => {
 });
 
 
-describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => {
-  it("UX-12: New note onSelect calls event.stopPropagation()", () => {
+describe("<TreeRowMenu /> — stopPropagation defense", () => {
+  it("New note onSelect calls event.stopPropagation()", () => {
     const onNewNote = vi.fn();
     render(
       <TreeRowDropdownMenu
@@ -245,7 +245,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     }
   });
 
-  it("UX-12: New folder onSelect calls event.stopPropagation()", () => {
+  it("New folder onSelect calls event.stopPropagation()", () => {
     const onNewFolder = vi.fn();
     render(
       <TreeRowDropdownMenu
@@ -272,7 +272,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     }
   });
 
-  it("UX-12: Rename onSelect does NOT call stopPropagation (existing behavior preserved)", () => {
+  it("Rename onSelect does NOT call stopPropagation (existing behavior preserved)", () => {
     const onRename = vi.fn();
     render(
       <TreeRowDropdownMenu
@@ -300,7 +300,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     }
   });
 
-  it("Phase 30: Open in split onSelect calls event.stopPropagation() (note rows)", () => {
+  it("Open in split onSelect calls event.stopPropagation() (note rows)", () => {
     const onOpenInSplit = vi.fn();
     render(
       <TreeRowDropdownMenu
@@ -329,7 +329,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     }
   });
 
-  it("Phase 30: Bookmark onSelect calls event.stopPropagation() (note rows)", () => {
+  it("Bookmark onSelect calls event.stopPropagation() (note rows)", () => {
     const onToggleBookmark = vi.fn();
     render(
       <TreeRowDropdownMenu
@@ -359,7 +359,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     }
   });
 
-  // D-19/D-20 regression guard: every bulk-menu item's onSelect must call
+  // regression guard: every bulk-menu item's onSelect must call
   // event.stopPropagation() — react-arborist's DefaultRow wrapper listens
   // for a bubbled click (React portals bubble through the REACT tree, not
   // the DOM tree) and calls node.handleClick -> node.select(), which would
@@ -372,7 +372,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
     ["Bookmark 3 notes", "onBulkBookmark"],
     ["Delete 3 notes", "onBulkDelete"],
   ] as const)(
-    "Phase 30: bulk item %s calls event.stopPropagation()",
+    "bulk item %s calls event.stopPropagation()",
     (label, handlerKey) => {
       const handler = vi.fn();
       render(
@@ -404,7 +404,7 @@ describe("<TreeRowMenu /> — UX-12 stopPropagation defense (Pitfall 7)", () => 
 });
 
 
-describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
+describe("<TreeRowDropdownMenu /> — file rowKind", () => {
   it("TestMenu_FileRow_HasRename", () => {
     render(
       <TreeRowDropdownMenu
@@ -509,7 +509,7 @@ describe("<TreeRowDropdownMenu /> — file rowKind (Plan 07-38 R7b)", () => {
   });
 });
 
-describe("<TreeRowDropdownMenu /> — note-row locked order + Open in split + Bookmark (CTX-02, D-13/D-17)", () => {
+describe("<TreeRowDropdownMenu /> — note-row locked order + Open in split + Bookmark (CTX-02)", () => {
   it("TestMenu_NoteRow_LockedOrder_OpenSplitRevealNewNoteBookmarkRenameDelete", () => {
     render(
       <TreeRowDropdownMenu
@@ -650,7 +650,7 @@ describe("<TreeRowDropdownMenu /> — note-row locked order + Open in split + Bo
   });
 });
 
-describe("<TreeRowContextMenu /> — bulk-selection variant (D-19, selectionCount > 1)", () => {
+describe("<TreeRowContextMenu /> — bulk-selection variant (selectionCount > 1)", () => {
   it("TestMenu_Bulk_RendersExactlyFourItems_HidesRenameAndReveal", () => {
     render(
       <TreeRowContextMenu

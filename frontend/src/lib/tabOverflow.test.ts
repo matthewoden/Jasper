@@ -94,7 +94,7 @@ describe("computeHiddenTabIds", () => {
     expect(hidden).toEqual(new Set(["c"]));
   });
 
-  it("(e3) drift guard: OVERFLOW_BTN matches TabStrip's exported constant (32 — D-14 square 24x24 + '0 4px' L/R margin)", () => {
+  it("(e3) drift guard: OVERFLOW_BTN matches TabStrip's exported constant (32 square 24x24 + '0 4px' L/R margin)", () => {
     expect(OVERFLOW_BTN).toBe(32);
   });
 
@@ -155,13 +155,13 @@ describe("computeHiddenTabIds", () => {
 });
 
 describe("computeDropIndex", () => {
-  it("(h) WR-03 interleaved trace: tabs=[a,b,c,d,e], drag 'a' before 'e' with c,d hidden between b and e — 'a' lands adjacent to the visible window, not swallowed into overflow", () => {
+  it("(h) interleaved trace: tabs=[a,b,c,d,e], drag 'a' before 'e' with c,d hidden between b and e — 'a' lands adjacent to the visible window, not swallowed into overflow", () => {
     const tabIds = ["a", "b", "c", "d", "e"];
     const activeTabId = "e";
     const availableWidth = 400;
     // visibleCount = floor((400-28)/120) = 3; front window [a,b,c], active 'e'
     // falls outside it, evicts 'c' -> visible=[a,b,e], hidden={c,d}. Matches
-    // the review's exact repro (18.1-REVIEW.md WR-03).
+    // the review's exact repro.
     const hidden = computeHiddenTabIds({ ...base, tabIds, activeTabId, availableWidth });
     expect(hidden).toEqual(new Set(["c", "d"]));
     const visibleTabIds = tabIds.filter((id) => !hidden.has(id));
@@ -172,7 +172,7 @@ describe("computeDropIndex", () => {
     const toIdx = computeDropIndex({ tabIds, visibleTabIds, targetId: "e" });
     expect(toIdx).toBe(2);
 
-    // Splice-first compensation (mirrors TabStrip.handleStripPointerUp, gap 6 / WR-01):
+    // Splice-first compensation (mirrors TabStrip.handleStripPointerUp, gap 6):
     // fromIndex(0) < toIdx(2) -> adjusted = toIdx - 1 = 1.
     const adjusted = 0 < toIdx ? toIdx - 1 : toIdx;
     const reordered = [...tabIds];
@@ -190,7 +190,7 @@ describe("computeDropIndex", () => {
     expect(hiddenAfter.has("a")).toBe(false);
   });
 
-  it("(i) WR-03 end-of-strip fallback: dropping past the last visible tab lands the dragged tab immediately after it, not swallowed among interleaved hidden tabs", () => {
+  it("(i) end-of-strip fallback: dropping past the last visible tab lands the dragged tab immediately after it, not swallowed among interleaved hidden tabs", () => {
     const tabIds = ["a", "b", "c", "d", "e"];
     const visibleTabIds = ["a", "b", "e"]; // c,d hidden and interleaved before 'e'
 
@@ -239,7 +239,7 @@ describe("computeDropIndex", () => {
   });
 });
 
-describe("clampIndexToPinnedBoundary (D-15/D-16 pinned-region drag/insert clamp)", () => {
+describe("clampIndexToPinnedBoundary (pinned-region drag/insert clamp)", () => {
   it("an UNPINNED mover's index is clamped to >= pinnedCount (never lands inside the pinned region)", () => {
     // Wants to land at index 1 (inside a 3-tab pinned group) — must clamp up to 3.
     expect(clampIndexToPinnedBoundary(1, 3, false)).toBe(3);

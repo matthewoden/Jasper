@@ -2,7 +2,7 @@
  * Tests for useMcpGrants hook.
  * Covers mount (fetch-once via the shared resource cache), WS-triggered
  * refresh, levelFor ancestor walk, directLevelFor direct-only match, toast
- * copy for grant/upgrade/downgrade/revoke/error, and the D-11/D-14 fetch-once
+ * copy for grant/upgrade/downgrade/revoke/error, and the fetch-once
  * property across multiple mounted consumers.
  *
  * `mcpGrantsResource` is built with the REAL `createResource` (not mocked)
@@ -241,7 +241,7 @@ describe("useMcpGrants", () => {
     );
   });
 
-  it("M9: three mounted consumers call the fetcher exactly once (D-11/D-14 fetch-once)", async () => {
+  it("M9: three mounted consumers call the fetcher exactly once (fetch-once)", async () => {
     listGrantsMock.mockResolvedValue([grantProjects]);
 
     const { result: r1 } = renderHook(() => useMcpGrants(), { wrapper });

@@ -1,7 +1,7 @@
 /**
  * firstH1HidePlugin.test.ts — vitest suite for the first-H1 hide plugin.
  *
- * Regression coverage for two real Phase 31 UAT bugs (see
+ * Regression coverage for two real UAT bugs (see
  * firstH1HidePlugin.ts's header comment for the full investigation):
  *
  * 1. "ArrowUp from the top of the body doesn't reach the title" (round 2) —
@@ -204,7 +204,7 @@ describe("firstH1HideExtension — the hidden H1's own line is collapsed to zero
 // (jsdom has no real text layout, so `view.dispatch()` here never exercises
 // that code path) — the authoritative regression guard for this bug is the
 // real-browser E2E suite (phase3-uat.spec.ts Scenario G, phase5_5-uat.spec.ts
-// UX-08). These jsdom tests only guard the model-level contract (state.doc
+// the H1-rename flow). These jsdom tests only guard the model-level contract (state.doc
 // matches what was typed via direct transactions); keep them as a basic
 // sanity check, not a substitute for the E2E coverage.
 describe("firstH1HideExtension — live typing does not desync DOM from state (regression: widget-based replace corrupted this)", () => {
@@ -368,7 +368,7 @@ describe("firstH1SelectionClamp — snaps an absolute selection landing inside t
     expect(view.state.selection.main.head).toBe(target!.from);
   });
 
-  it("frontmatter + H1 + blank line: a selection at position 0 clamps past BOTH hidden regions to the real first body line (D-21 compose)", () => {
+  it("frontmatter + H1 + blank line: a selection at position 0 clamps past BOTH hidden regions to the real first body line (compose)", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -421,7 +421,7 @@ describe("firstH1SelectionClamp — snaps an absolute selection landing inside t
     expect(view.state.selection.main.head).toBe(0);
   });
 
-  // Phase 31 UAT round 5 regression: a note with frontmatter but NO H1 has a
+  // Regression: a note with frontmatter but NO H1 has a
   // real, user-authored blank line right after the frontmatter's closing
   // "---". Without the `findFirstH1Range` gate, firstH1SelectionClamp used
   // firstVisibleBodyLine() unconditionally — which (via its "resolved line is
@@ -572,7 +572,7 @@ describe("firstH1BackspaceGuardKeymap — UAT round 4 boundary guard", () => {
     expect(view.state.doc.toString()).toBe(docBefore);
   });
 
-  // Phase 31 UAT round 5 regression: a non-empty selection whose far edge
+  // Regression: a non-empty selection whose far edge
   // extends PAST the boundary (e.g. Cmd/Ctrl-A select-all) must be allowed
   // through even though its near edge starts before the boundary — mirrors
   // firstH1SelectionClamp's own "extends past it (select-all) pass through
@@ -594,7 +594,7 @@ describe("firstH1BackspaceGuardKeymap — UAT round 4 boundary guard", () => {
     expect(view.state.doc.toString()).toBe("");
   });
 
-  it("frontmatter + H1 + blank line: Backspace at the combined boundary is guarded by firstH1's guard even when frontmatter's own guard also fires first (D-21 compose)", () => {
+  it("frontmatter + H1 + blank line: Backspace at the combined boundary is guarded by firstH1's guard even when frontmatter's own guard also fires first (compose)", () => {
     const view = makeViewWithGuards(DOC_WITH_FRONTMATTER, true);
     views.push(view);
 

@@ -1,5 +1,5 @@
 /**
- * Phase 26 UAT — Drag-to-Split-Pane (WS-01/WS-02, D-05..D-11).
+ * Drag-to-Split-Pane (WS-01/WS-02).
  *
  * Every drag in this file is driven with real `page.mouse.move/down/up`
  * (multiple intermediate moves so pointermove fires and crosses TabStrip's
@@ -10,20 +10,20 @@
  * discipline.
  *
  * Scenarios (Task 3 acceptance criteria):
- *   1. Drag-to-split RIGHT (WS-01, D-05): overlay right half → release →
+ *   1. Drag-to-split RIGHT (WS-01): overlay right half → release →
  *      leaf-pane count 1→2, dragged tab lands in the new right pane and is
  *      removed from the source.
  *   2. Drag-to-split BOTTOM: same but a col split (top/bottom).
- *   3. Drag-to-move CENTER (WS-02, D-08): overlay full-pane → release → NO
+ *   3. Drag-to-move CENTER (WS-02): overlay full-pane → release → NO
  *      new pane, tab relocates into the target pane's strip.
- *   4. Last-tab-out collapse (D-06): dragging a pane's only tab elsewhere
+ *   4. Last-tab-out collapse: dragging a pane's only tab elsewhere
  *      collapses the now-empty source pane (leaf-pane count 2→1).
- *   5. Ghost floats across panes (D-11): the reused TabStrip ghost pill is
+ *   5. Ghost floats across panes: the reused TabStrip ghost pill is
  *      visible mid-drag while the cursor is over a DIFFERENT pane's body.
  *
- * Selector contract (new in this plan, alongside the Phase 25 contract):
+ * Selector contract (new in this plan, alongside the contract):
  *   - Drop-region overlay:   [data-testid="drop-overlay"][data-drop-region="…"]
- *   - Cross-pane drag ghost: [data-testid="tab-drag-ghost"] (Phase 25, reused)
+ *   - Cross-pane drag ghost: [data-testid="tab-drag-ghost"] (reused)
  *   - Droppane hit-test root: [data-droppane]
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
@@ -149,7 +149,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("drag a tab to the RIGHT edge-band splits the pane and MOVES the tab (WS-01, D-05)", async ({
+  test("drag a tab to the RIGHT edge-band splits the pane and MOVES the tab (WS-01)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -172,7 +172,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
 
     const fromX = pillBox.x + pillBox.width / 2;
     const fromY = pillBox.y + pillBox.height / 2;
-    // px > 0.78 fraction of the pane rect → right edge band (UI-SPEC).
+    // px > 0.78 fraction of the pane rect → right edge band.
     const toX = leafBox.x + leafBox.width * 0.92;
     const toY = leafBox.y + leafBox.height * 0.5;
 
@@ -182,7 +182,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await expect(overlay).toBeVisible({ timeout: 3_000 });
     await expect(overlay).toHaveAttribute("data-drop-region", "right");
     const overlayBox = await stableBox(overlay);
-    // Split overlay covers roughly HALF the pane (UI-SPEC: width 50%).
+    // Split overlay covers roughly HALF the pane (width 50%).
     expect(overlayBox.width).toBeGreaterThan(leafBox.width * 0.35);
     expect(overlayBox.width).toBeLessThan(leafBox.width * 0.65);
 
@@ -208,7 +208,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     ).toHaveCount(1);
   });
 
-  test("drag a tab to the BOTTOM edge-band splits the pane into a column layout (WS-01, D-05)", async ({
+  test("drag a tab to the BOTTOM edge-band splits the pane into a column layout (WS-01)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -229,7 +229,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
 
     const fromX = pillBox.x + pillBox.width / 2;
     const fromY = pillBox.y + pillBox.height / 2;
-    // py > 0.78 fraction of the pane rect → bottom edge band (UI-SPEC).
+    // py > 0.78 fraction of the pane rect → bottom edge band.
     const toX = leafBox.x + leafBox.width * 0.5;
     const toY = leafBox.y + leafBox.height * 0.92;
 
@@ -263,7 +263,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     expect(bottomBox.y).toBeGreaterThan(topBox.y + topBox.height - 5);
   });
 
-  test("drag a tab to another pane's CENTER moves it without splitting (WS-02, D-08)", async ({
+  test("drag a tab to another pane's CENTER moves it without splitting (WS-02)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -333,7 +333,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await expect(tabPillsFor(rightLeaf)).toHaveCount(3);
   });
 
-  test("dragging a pane's last tab elsewhere collapses the source pane (D-06)", async ({
+  test("dragging a pane's last tab elsewhere collapses the source pane", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -383,7 +383,7 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await expect(tabPillsFor(survivor).filter({ hasText: "collapse-beta" })).toHaveCount(1);
   });
 
-  test("the reused drag ghost is visible over a DIFFERENT pane's body mid-drag (D-11)", async ({
+  test("the reused drag ghost is visible over a DIFFERENT pane's body mid-drag", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 900 });

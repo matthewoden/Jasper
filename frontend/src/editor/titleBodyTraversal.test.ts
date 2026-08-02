@@ -1,8 +1,8 @@
 /**
  * titleBodyTraversal.test.ts — vitest suite for firstVisibleBodyLine() and
- * makeTitleBodyTraversalKeymap() (D-18 through D-21).
+ * makeTitleBodyTraversalKeymap() (through).
  *
- * The load-bearing case (RESEARCH Pitfall 2): a doc with BOTH hidden
+ * The load-bearing case (RESEARCH): a doc with BOTH hidden
  * frontmatter AND a hidden first-H1 must skip past both — landing on the
  * first real body line, never the invisible H1 line.
  */
@@ -163,7 +163,7 @@ describe("makeTitleBodyTraversalKeymap — ArrowUp handoff", () => {
     expect(onCrossToTitle).not.toHaveBeenCalled();
   });
 
-  describe("CR-01: wrapped first visible line — visual row gating", () => {
+  describe("wrapped first visible line — visual row gating", () => {
     // jsdom has no real text-layout engine, so EditorView.moveVertically
     // throws internally (it depends on coordsAtPos -> Range.getClientRects,
     // unimplemented in jsdom). Mocking EditorView.prototype.moveVertically
@@ -179,7 +179,7 @@ describe("makeTitleBodyTraversalKeymap — ArrowUp handoff", () => {
       moveVerticallySpy = undefined;
     });
 
-    it("caret on the SECOND visual row of a wrapped first line: run() returns false, does NOT cross (fails before CR-01 fix)", () => {
+    it("caret on the SECOND visual row of a wrapped first line: run() returns false, does NOT cross (fails before fix)", () => {
       const onCrossToTitle = vi.fn();
       const parent = document.createElement("div");
       document.body.append(parent);

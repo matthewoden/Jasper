@@ -1,17 +1,17 @@
 /**
- * Phase 30 UAT — Right-Rail Tags & Context Menus: note-options menu
+ * Right-Rail Tags & Context Menus: note-options menu
  * (CTX-03, WS-06 note-options-split entry point, active-pane cue).
  *
- * Filled in by Plan 09 from the Wave-0 scaffold (Plan 30-03):
+ * Covers:
  *   CTX-03  Each pane's breadcrumb row grows a 3-dot note-options button
  *           opening: Rename, Move to…, Bookmark/Remove bookmark, Split
  *           right, Split down, Find, Replace, Reveal in navigation, Show
- *           in file manager, Delete (locked order, UI-SPEC §5).
+ *           in file manager, Delete (locked order).
  *   WS-06   "Split right"/"Split down" open the note in a new split from
  *           the note-options entry point, alongside the tree menu, tab
  *           menu, and quick-switcher entry points already proven in
- *           earlier Phase 30 plans.
- *   D-27/D-28  The active-pane inset accent cue (Plan 02) is present in a
+ * earlier plans.
+ * The active-pane inset accent cue is present in a
  *           split layout and absent in a single-pane layout.
  *
  * All tests in this file share ONE spawned binary/vault (beforeAll/afterAll)
@@ -103,13 +103,13 @@ async function openNoteAsTab(
     baseURL,
     `${title}.md`,
     "",
-    `# ${title}\n\nBody text for the Phase 30 note-options UAT.\n`,
+    `# ${title}\n\nBody text for the earlier note-options UAT.\n`,
   );
   await openNoteFromTree(page, noteId);
   return noteId;
 }
 
-test.describe("@note-options Phase 30: note-options menu", () => {
+test.describe("@note-options: note-options menu", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -129,7 +129,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
       jasper.baseURL,
       "note-options-smoke.md",
       "",
-      "# note-options-smoke\n\nBody text for the Phase 30 Wave-0 note-options smoke test.\n",
+      "# note-options-smoke\n\nBody text for the note-options smoke test.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -140,7 +140,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     });
   });
 
-  test("CTX-03: the breadcrumb row's 3-dot note-options button opens the locked D-22 item set in order", async ({
+  test("CTX-03: the breadcrumb row's 3-dot note-options button opens the locked item set in order", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -154,7 +154,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     await expect(items).toHaveText(LOCKED_ORDER);
   });
 
-  test("CTX-03/D-24/WS-06: Split right and Split down each open the note in a new split", async ({
+  test("CTX-03/WS-06: Split right and Split down each open the note in a new split", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -181,7 +181,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     });
   });
 
-  test("D-23: Move to… opens the fuzzy folder modal; Enter moves the note into the chosen folder", async ({
+  test("Move to… opens the fuzzy folder modal; Enter moves the note into the chosen folder", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -210,7 +210,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("D-25: Reveal in navigation switches the left sidebar to Notes and pulses the row", async ({
+  test("Reveal in navigation switches the left sidebar to Notes and pulses the row", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -241,7 +241,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     await expect(row).toHaveClass(/jasper-pulse-target/, { timeout: 5_000 });
   });
 
-  test("D-26: Delete opens the shared trash-based confirm dialog", async ({
+  test("Delete opens the shared trash-based confirm dialog", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -346,7 +346,7 @@ test.describe("@note-options Phase 30: note-options menu", () => {
     });
   });
 
-  test("D-27/D-28: the active pane's inset accent cue is present in a split and absent in a single-pane layout", async ({
+  test("the active pane's inset accent cue is present in a split and absent in a single-pane layout", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });

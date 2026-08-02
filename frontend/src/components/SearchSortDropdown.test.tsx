@@ -1,5 +1,5 @@
 /**
- * SearchSortDropdown tests — UI-SPEC D-15.
+ * SearchSortDropdown tests.
  *
  * Uses the controlled `open` prop (same pattern as TreeRowMenu.test.tsx) to
  * mount Radix DropdownMenu.Content immediately for assertions, avoiding
@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SearchSortDropdown } from "./SearchSortDropdown";
 
 describe("<SearchSortDropdown />", () => {
-  it("renders exactly three D-15 labeled items", () => {
+  it("renders exactly three labeled items", () => {
     render(<SearchSortDropdown value="relevance" onSelect={vi.fn()} open={true} />);
     expect(screen.getByText("Relevance")).toBeInTheDocument();
     expect(screen.getByText("Modified (new → old)")).toBeInTheDocument();

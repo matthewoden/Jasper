@@ -108,7 +108,7 @@ function canonVaultPath(p: string): string {
   return process.platform === "darwin" ? real.toLowerCase() : real;
 }
 
-test.describe("Phase 8 R4-1 — --vault on serve", () => {
+test.describe("--vault on serve", () => {
   test("bin/jasper serve --vault <path> boots and serves /admin/status", async () => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-1-app-"));
     const vault = canonVaultPath(

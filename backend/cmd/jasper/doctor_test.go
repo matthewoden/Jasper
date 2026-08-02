@@ -336,7 +336,7 @@ func TestCheckMigrationState_MissingDB(t *testing.T) {
 	}
 }
 
-// TestMcpPortCheck_NeverSkips pins Phase 24 D-06: the MCP listener always
+// TestMcpPortCheck_NeverSkips pins the contract: the MCP listener always
 // starts, so mcpPortCheck has no skip branch and always checks the port.
 func TestMcpPortCheck_NeverSkips(t *testing.T) {
 	cfg := config.Config{MCP: config.MCPConfig{Port: 6684}}
@@ -573,7 +573,7 @@ func TestCheckWslSystemd_NonMicrosoftOsrelease_Skips(t *testing.T) {
 	}
 }
 
-// TestOsreleasePath_DefaultsToProc verifies the T-16-03 mitigation: when
+// TestOsreleasePath_DefaultsToProc verifies the mitigation: when
 // JASPER_OSRELEASE_PATH is not set in the environment, platform.OsreleasePath
 // defaults to /proc/sys/kernel/osrelease so production behavior is unaffected.
 func TestOsreleasePath_DefaultsToProc(t *testing.T) {

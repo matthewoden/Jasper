@@ -62,7 +62,7 @@ describe("SearchResultRow", () => {
     expect(rowDiv.style.background).toContain("var(--color-accent)");
   });
 
-  describe("SRR-N11-LEGIB — excerpt legibility (Plan 07-39 / UAT-5 N11)", () => {
+  describe("SRR-N11-LEGIB — excerpt legibility", () => {
     it("SRR-N11-LEGIB-1: excerpt container scoped style sets color to var(--color-muted)", () => {
       const { container } = render(<SearchResultRow result={mockResult} />);
       const styleEl = container.querySelector("style");
@@ -79,7 +79,7 @@ describe("SearchResultRow", () => {
       expect(css).toMatch(/\.search-result-excerpt\s+mark\s*{[^}]*font-weight:\s*600/);
     });
 
-    it("SRR-N11-LEGIB-3 (superseded by READ-04/D-12): <mark> rule uses the same 28% accent-tint fill as the editor's ==highlight==, not a plain yellow fill", () => {
+    it("SRR-N11-LEGIB-3 (superseded by READ-04): <mark> rule uses the same 28% accent-tint fill as the editor's ==highlight==, not a plain yellow fill", () => {
       const { container } = render(<SearchResultRow result={mockResult} />);
       const styleEl = container.querySelector("style");
       const css = styleEl?.textContent ?? "";

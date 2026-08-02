@@ -5,8 +5,8 @@
  * a whole document rebased on the freshest persisted config.
  *
  * Mocks the openapi-fetch client at the module level via vi.mock, same
- * boundary as before the D-04 extraction — configApi.ts and the resource
- * layer run for real underneath so CR-01/CR-02's overlapping-save
+ * boundary as before the extraction — configApi.ts and the resource
+ * layer run for real underneath so the overlapping-save
  * interleaving exercises the actual mutate()/rollback machinery, not a
  * hand-rolled stand-in for it. Resource-layer state is module-global, so
  * every test resets both createResource's registry and configApi's
@@ -135,7 +135,7 @@ describe("useConfig", () => {
     expect(saveResult?.error?.code).toBe("invalid_request");
   });
 
-  it("CR-02: failed save rolls back to last persisted config, not an optimistic intermediate", async () => {
+  it("failed save rolls back to last persisted config, not an optimistic intermediate", async () => {
     // Setup: GET returns the original sampleConfig (theme: dark).
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });
     // First PATCH succeeds (changes fontSize to 18).
@@ -162,13 +162,13 @@ describe("useConfig", () => {
     });
 
     // After rollback, config must be afterFirstSave (last persisted), NOT sampleConfig.
-    // The stale-closure bug (CR-02) would have rolled back to sampleConfig (theme: dark,
+    // The stale-closure bug would have rolled back to sampleConfig (theme: dark,
     // fontSize: 15) because prev was captured from the first optimistic update.
     expect(result.current.config?.editor.fontSize).toBe(18);
   });
 
-  it("CR-01: a failing save does not revert an overlapping save that already succeeded", async () => {
-    // The CR-02 test above awaits each save, so the two never overlap. This one
+  it("a failing save does not revert an overlapping save that already succeeded", async () => {
+    // The test above awaits each save, so the two never overlap. This one
     // holds the first PATCH open, lets a second PATCH confirm while it is still
     // in flight, and only then fails the first.
     mockClient.GET.mockResolvedValue({ data: sampleConfig, response: { status: 200 } });

@@ -1,7 +1,7 @@
 /**
- * Phase 5 UAT — Live Preview editor + theme + security headers.
+ * Live Preview editor + theme + security headers.
  *
- * Scenarios (each maps to one or more Phase 5 requirements):
+ * Scenarios (each maps to one or more requirements):
  *   1. Editor mount + cursor stability (EDIT-01)
  *   2. Autosave indicator transitions (EDIT-09)
  *   3. Cmd+S explicit save (EDIT-10)
@@ -77,7 +77,7 @@ async function typeIntoEditor(page: Page, text: string): Promise<void> {
 }
 
 
-test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
+test.describe("CodeMirror editor + theme + security", () => {
   test("EDIT-01: typing produces stable cursor — no jump on parent state changes", async ({ page }) => {
     await openEditor(page);
 
@@ -131,7 +131,7 @@ test.describe("Phase 5 — CodeMirror editor + theme + security", () => {
   test("EDIT-12: app always boots dark-only; default accent is purple (#a78bfa)", async ({ page }) => {
     await openEditor(page);
 
-    // D-01: light theme removed — html[data-theme] is always "dark".
+    // light theme removed — html[data-theme] is always "dark".
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark', { timeout: 5_000 });
 
     // Default accent (purple) applied by theme-bootstrap.js before React mounts.

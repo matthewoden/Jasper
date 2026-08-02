@@ -240,7 +240,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Errorf("admin/status state: got %q, want ok", statusOut.State)
 	}
 
-	putBody, _ := json.Marshal(map[string]string{"content": "# Phase 2 smoke"})
+	putBody, _ := json.Marshal(map[string]string{"content": "# smoke"})
 	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String(), putBody)
 	if status != 200 {
 		t.Fatalf("PUT scratchpad status: got %d; body=%s", status, body)
@@ -250,7 +250,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("re-GET scratchpad status: got %d; body=%s", status, body)
 	}
-	if !bytes.Contains(body, []byte("Phase 2 smoke")) {
+	if !bytes.Contains(body, []byte("smoke")) {
 		t.Errorf("scratchpad body did not reflect update: %s", body)
 	}
 }
@@ -261,7 +261,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 
 	overrideDir := t.TempDir()
 	// Baseline mirrors the full shipped migration set (through 006_birthtime,
-	// Phase 29) so the post-rollback schema matches a real deployment's
+	// so the post-rollback schema matches a real deployment's
 	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
 	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
@@ -851,7 +851,7 @@ func TestSmoke_Phase3_FolderCRUD(t *testing.T) {
 		t.Errorf("expected work/design.md after move, stat err=%v", err)
 	}
 
-	// Phase 14 (A4 soft-delete): deleting a non-empty folder moves the whole
+	// Soft delete: deleting a non-empty folder moves the whole
 	// subtree into <dataDir>/.trash/ and returns 204 regardless of the recursive
 	// flag — the prior 409 folder_not_empty guard is gone.
 	status, body = httpDelete(t, base+"/folders?path=work&recursive=false")

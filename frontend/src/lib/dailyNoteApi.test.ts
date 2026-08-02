@@ -1,6 +1,6 @@
 /**
  * Tests for dailyNoteApi — typed GET /daily-notes/{date} wrapper, backed by
- * a pass-through keyed resource (D-05: never cached, still coalesced).
+ * a pass-through keyed resource (never cached, still coalesced).
  *
  * The client module is mocked so tests can spy on .GET calls without
  * a real network connection. Coverage:
@@ -84,7 +84,7 @@ describe("openTodayDailyNote", () => {
     );
   });
 
-  it("DN-API-5: two concurrent calls for the same date coalesce into one client.GET (D-05)", async () => {
+  it("DN-API-5: two concurrent calls for the same date coalesce into one client.GET", async () => {
     let resolveGet!: (v: {
       data: typeof fakeNote;
       error: undefined;

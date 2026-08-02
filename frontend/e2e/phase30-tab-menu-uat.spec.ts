@@ -1,11 +1,11 @@
 /**
- * Phase 30 UAT — Right-Rail Tags & Context Menus: tab context menu
+ * Right-Rail Tags & Context Menus: tab context menu
  * (CTX-01, WS-06 tab-split entry point, pin drag).
  *
- * Plan 06 fills in the Wave-0 scaffold (Plan 30-03):
+ * fills in the Wave-0 scaffold:
  *   CTX-01  Tab menu adds Close all, Open in split, New note to the
  *           right, Pin/Unpin, Rename, Show in file manager (locked
- *           UI-SPEC §3 order); close-others/to-right/all skip pinned
+ *           locked order); close-others/to-right/all skip pinned
  *           tabs.
  *   WS-06   "Open in split" opens the tab's note in a new right/row
  *           split.
@@ -124,13 +124,13 @@ async function openNoteAsTab(
     baseURL,
     `${title}.md`,
     "",
-    `# ${title}\n\nBody text for the Phase 30 tab-menu UAT.\n`,
+    `# ${title}\n\nBody text for the earlier tab-menu UAT.\n`,
   );
   await openNoteFromTree(page, noteId);
   return noteId;
 }
 
-test.describe("@tab-menu Phase 30: tab context menu", () => {
+test.describe("@tab-menu: tab context menu", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -266,7 +266,7 @@ test.describe("@tab-menu Phase 30: tab context menu", () => {
     const bBox = await stableBox(pillB);
 
     // Drag "b" (last, unpinned) all the way to BEFORE "p" (the pinned tab) —
-    // without the D-15/D-16 boundary clamp this would land "b" at index 0,
+    // without the boundary clamp this would land "b" at index 0,
     // ahead of the pinned tab. The clamp must hold it to index 1 (right
     // after "p"), landing the final order as [p, b, a].
     const fromX = bBox.x + bBox.width / 2;

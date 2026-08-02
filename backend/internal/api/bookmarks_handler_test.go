@@ -22,7 +22,7 @@ import (
 // bookmarks.Service backed by a real <dataDir>/.jasper/bookmarks.json —
 // unlike setupRealFSServer, dataDir must be non-empty and its .jasper/
 // directory must already exist (fsstore.AtomicWrite's caller-must-mkdir
-// contract, per 27-01-SUMMARY.md).
+// contract).
 func setupBookmarksTestServer(t *testing.T) (*httptest.Server, *apiBroadcaster) {
 	t.Helper()
 	dataDir := t.TempDir()
@@ -103,7 +103,7 @@ func TestPostBookmark_HappyPath_201(t *testing.T) {
 	}
 }
 
-// TestPostBookmark_UnregisteredNoteId_404 — T-27-01: a forged/unknown
+// TestPostBookmark_UnregisteredNoteId_404: a forged/unknown
 // note_id (never created, never in the registry) is rejected with 404,
 // not silently persisted.
 func TestPostBookmark_UnregisteredNoteId_404(t *testing.T) {
@@ -352,7 +352,7 @@ func TestCreateBookmarkFolder_EmptyName_400(t *testing.T) {
 	}
 }
 
-// TestGetBookmarks_NilNotesService_DoesNotPanic guards WR-03:
+// TestGetBookmarks_NilNotesService_DoesNotPanic:
 // NewServerWithIndex(nil, ...) is a supported, tested pattern elsewhere in
 // this package (Server's doc comment promises handlers degrade gracefully
 // when notes is nil). Before the fix, GetBookmarks called

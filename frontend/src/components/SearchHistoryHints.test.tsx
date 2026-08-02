@@ -88,7 +88,7 @@ describe("SearchHistoryHints", () => {
     expect(onSelectHint).not.toHaveBeenCalled();
   });
 
-  it("default-prevents mousedown anywhere in the listbox so the input never blurs (CR-02)", () => {
+  it("default-prevents mousedown anywhere in the listbox so the input never blurs", () => {
     recordSearchHistory("hello world");
     render(
       <SearchHistoryHints query="" activeIndex={-1} onSelectHint={() => {}} onRemoveHint={() => {}} />,

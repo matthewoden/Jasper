@@ -1,8 +1,8 @@
 /**
- * Phase 30 gap closure (30-10, CR-01/TAGS-02) — right-rail Tags tab
+ * gap closure (30-10 TAGS-02) — right-rail Tags tab
  * note-tags-on-tab-switch regression coverage.
  *
- * Removed in Phase 31 (D-03/D-05): the note-tags concept (the active-note
+ * Removed: the note-tags concept (the active-note
  * live-CM6 tag section this file's single test exercised, plus its
  * useNoteTagsStore/latestTagsRef become-active-flush machinery) was
  * deleted entirely — the Tags tab is now a single vault-wide list with no

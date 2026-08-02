@@ -456,7 +456,7 @@ function pressKey(view: EditorView, key: string, keyCode: number): boolean {
   return event.defaultPrevented;
 }
 
-describe("frontmatterBackspaceGuardKeymap — D-23 boundary guard", () => {
+describe("frontmatterBackspaceGuardKeymap — boundary guard", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -530,7 +530,7 @@ describe("frontmatterBackspaceGuardKeymap — D-23 boundary guard", () => {
 });
 
 
-describe("frontmatter hidden-block edit protection — WR-03", () => {
+describe("frontmatter hidden-block edit protection", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {

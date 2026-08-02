@@ -1,28 +1,28 @@
 /**
- * Phase 29 UAT — Sort Orders & Search History (SORT-01..03, HIST-01..02).
+ * Sort Orders & Search History (SORT-01..03, HIST-01..02).
  *
  * The phase acceptance gate: aggregates the per-plan unit-test guarantees
  * (29-05 NotesSortMenu/sortTree, 29-06 backend `sort` param + workspace.json,
  * 29-07 SearchHistoryHints/searchHistory) into user-observable, real-binary
  * E2E flows.
  *
- *   SORT-01/03  Notes-panel sort menu (D-01/D-02/D-05/D-06): folders always
+ *   SORT-01/03  Notes-panel sort menu: folders always
  *               precede notes and stay A→Z regardless of the active order;
- *               notes reorder per the six D-02 options; the chosen order
+ * notes reorder per the six sort options; the chosen order
  *               persists per vault across reload (workspace.json GET/PUT,
- *               D-09..D-12).
- *   SORT-02     Search-result sort (D-14/D-15): switching the sidebar
+ * removable per row).
+ *   SORT-02     Search-result sort: switching the sidebar
  *               Search panel's sort dropdown between Relevance/Modified/
  *               Created re-orders results via the real backend `sort`
  *               query param — SQLite orders before the LIMIT, not a
  *               client-side reshuffle.
- *   HIST-01/02  Recent-searches hints dropdown (D-16..D-21): committed
+ *   HIST-01/02  Recent-searches hints dropdown: committed
  *               searches (Enter) build an MRU, deduped, vault-namespaced
  *               localStorage history; the hints layer is keyboard-navigable
  *               (ArrowUp/Down + Enter re-runs a hint, which re-dedupes it to
  *               the top); history survives a full page reload.
  *
- * The D-23 backspace-at-frontmatter-top fix has its own spec
+ * The backspace-at-frontmatter-top fix has its own spec
  * (phase29-frontmatter-backspace.spec.ts) — not duplicated here.
  *
  * Selector contract (current, post-Phase-27 sidebar redesign):
@@ -230,7 +230,7 @@ test.describe("@phase29 @sort SORT-01/03: notes sort menu reorders + persists pe
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
 
-    // D-01: folders always precede notes and stay A→Z regardless of order.
+    // folders always precede notes and stay A→Z regardless of order.
     const deltaPath = await apiCreateFolder(page, jasper.baseURL, "delta");
     const zuluPath = await apiCreateFolder(page, jasper.baseURL, "zulu");
     await apiCreateNote(page, jasper.baseURL, "inner-delta.md", deltaPath, "# inner-delta\n");
@@ -305,7 +305,7 @@ test.describe("@phase29 @sort SORT-01/03: notes sort menu reorders + persists pe
     await expect.poll(() => getRootRowOrder(page), { timeout: 5_000 }).toEqual(expectedModifiedOrder);
 
     // SORT-03: reload — the choice is persisted per vault in
-    // <vault>/.jasper/workspace.json (D-09/D-10), restored via GET on mount.
+    // <vault>/.jasper/workspace.json, restored via GET on mount.
     await page.reload();
     await waitForConnected(page);
     await expect
@@ -327,7 +327,7 @@ test.describe("@phase29 @search-sort SORT-02: search-result sort re-orders via t
     if (jasper) await jasper.kill();
   });
 
-  test("switching Relevance → Modified → Created changes the result order to match D-14's SQL ORDER BY", async ({
+  test("switching Relevance → Modified → Created changes the result order to match the SQL ORDER BY", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -396,13 +396,13 @@ test.describe("@phase29 @search-sort SORT-02: search-result sort re-orders via t
     await tabRow(page).getByRole("button", { name: "Search", exact: true }).click();
 
     const input = searchPanelInput(page);
-    // The Phase 27 sidebar tab row (unlike the old ribbon Search toggle) does
+    // The earlier sidebar tab row (unlike the old ribbon Search toggle) does
     // NOT auto-focus the input on panel switch — a real click is required.
     await input.click();
     await input.fill("zephyrus");
 
     // Relevance (default): highest keyword-density note ranks first
-    // (bm25 + recency blend, D-14 default branch).
+    // (bm25 + recency blend default branch).
     await expect
       .poll(() => getSearchResultTitlesInOrder(page), { timeout: 5_000 })
       .toEqual(["zephcharlie", "zephbravo", "zephalpha"]);
@@ -415,7 +415,7 @@ test.describe("@phase29 @search-sort SORT-02: search-result sort re-orders via t
       .toEqual(["zephalpha", "zephbravo", "zephcharlie"]);
 
     // Created (new → old): true FS birthtime/created_at DESC — charlie
-    // (created last) first, independent of the re-save order above (D-14
+    // (created last) first, independent of the re-save order above (the
     // uses COALESCE(NULLIF(birthtime_unix,0), created_at), never mtime).
     await page.getByRole("button", { name: "Sort search results" }).click();
     await page.getByRole("menuitem", { name: "Created (new → old)" }).click();
@@ -463,12 +463,12 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     await tabRow(page).getByRole("button", { name: "Search", exact: true }).click();
 
     const input = searchPanelInput(page);
-    // The Phase 27 sidebar tab row (unlike the old ribbon Search toggle) does
+    // The earlier sidebar tab row (unlike the old ribbon Search toggle) does
     // NOT auto-focus the input on panel switch — a real click is required
-    // (it also fires the onFocus handler that opens the hints layer, D-19).
+    // (it also fires the onFocus handler that opens the hints layer).
     await input.click();
 
-    // D-16: Enter-committed searches only. Commit #1 — "meeting".
+    // Enter-committed searches only. Commit #1 — "meeting".
     await input.fill("meeting");
     await expect(page.getByRole("button", { name: "Open note: meetingroom" })).toBeVisible({
       timeout: 5_000,
@@ -483,7 +483,7 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     });
     await page.keyboard.press("Enter");
 
-    // D-19: clearing the query (prefix "" matches everything) + refocusing
+    // clearing the query (prefix "" matches everything) + refocusing
     // shows both entries, MRU order (most-recent commit first).
     await input.fill("");
     await input.click();
@@ -493,14 +493,14 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     await expect(hintOptions).toHaveCount(2);
     await expect.poll(() => hintOptions.allTextContents()).toEqual(["budget", "meeting"]);
 
-    // D-20: ArrowDown moves the keyboard highlight to the next hint; Enter
+    // ArrowDown moves the keyboard highlight to the next hint; Enter
     // re-runs the selected hint (sets the query, closes the hints layer).
     await page.keyboard.press("ArrowDown");
     await expect(hintOptions.nth(1)).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("Enter");
     await expect(input).toHaveValue("meeting");
 
-    // D-18: re-running an existing query moves it back to the MRU top.
+    // re-running an existing query moves it back to the MRU top.
     // Real blur (Tab away) + refocus (click) so the hints layer re-mounts;
     // clear the query again (the re-run left "meeting" in the input, which
     // would prefix-filter the hints layer down to just that one entry).
@@ -511,7 +511,7 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     await expect.poll(() => hintOptions.allTextContents()).toEqual(["meeting", "budget"]);
 
     // HIST-02: history survives a full page reload (durable localStorage,
-    // vault-namespaced — D-17).
+    // vault-namespaced).
     await page.reload();
     await waitForConnected(page);
     await expect(searchPanelInput(page)).toBeVisible({ timeout: 8_000 });
@@ -523,7 +523,7 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
       .toEqual(["meeting", "budget"]);
   });
 
-  test("mouse-only: clicking a hint row re-runs it; clicking a row's X removes it (CR-02, D-21)", async ({
+  test("mouse-only: clicking a hint row re-runs it; clicking a row's X removes it", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -568,7 +568,7 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     const listbox = recentSearchesListbox(page);
     await expect(listbox).toBeVisible({ timeout: 5_000 });
 
-    // CR-02: a REAL mouse press fires mousedown (which blurs the input and
+    // a REAL mouse press fires mousedown (which blurs the input and
     // unmounts the dropdown unless default-prevented) before click ever
     // lands. Synthetic unit-test clicks skip that focus cycle and
     // false-pass, so this must stay a real-mouse assertion.
@@ -584,7 +584,7 @@ test.describe("@phase29 @history HIST-01/02: search history hints — MRU, keybo
     const hintOptions = listbox.getByRole("option");
     await expect.poll(() => hintOptions.allTextContents()).toEqual(["clickone", "clicktwo"]);
 
-    // D-21: hover reveals the row's X; a real mouse click on it removes just
+    // hover reveals the row's X; a real mouse click on it removes just
     // that entry while the dropdown stays open and the input keeps focus.
     await hintOptions.filter({ hasText: "clicktwo" }).hover();
     await listbox.getByRole("button", { name: 'Remove "clicktwo" from search history' }).click();

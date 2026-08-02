@@ -137,7 +137,7 @@ async function waitForExit(proc: ChildProcess, deadlineMs: number): Promise<void
   throw new Error("jasper process did not exit after SIGTERM");
 }
 
-test.describe("Phase 8 R4-2 — WS forceReconnect on cloud-icon click", () => {
+test.describe("WS forceReconnect on cloud-icon click", () => {
   test("after server kill + restart, clicking the SaveIndicator restores WS without a page refresh", async ({
     page,
   }) => {

@@ -92,8 +92,8 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 }
 
 // TestSyncBacklinks_MultipleOccurrencesCollapse — [[Foo]] three times on the
-// SAME line collapses to ONE excerpt row for that line (D-16 per-line
-// tie-break, RESEARCH.md Assumption A1).
+// SAME line collapses to ONE excerpt row for that line (the per-line
+// tie-break).
 func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -129,7 +129,7 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 }
 
 // TestSyncBacklinks_MultipleLines_ProducesOneExcerptPerLine — [[Foo]] on 3
-// SEPARATE lines produces 3 distinct excerpt rows (D-16), unlike the
+// SEPARATE lines produces 3 distinct excerpt rows, unlike the
 // same-line collapse above.
 func TestSyncBacklinks_MultipleLines_ProducesOneExcerptPerLine(t *testing.T) {
 	t.Parallel()
@@ -290,7 +290,7 @@ func TestSyncBacklinks_AmbiguousResolution(t *testing.T) {
 	}
 }
 
-// TestSyncBacklinks_ExcerptHTML — excerpt matches UI-SPEC contract (F7).
+// TestSyncBacklinks_ExcerptHTML — excerpt matches the locked HTML contract.
 func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTagTestIndexer(t)
@@ -556,7 +556,7 @@ func TestReconcileBacklinks_TAGS05_WipeAndRebuildBacklinks(t *testing.T) {
 	}
 }
 
-// TestBuildExcerpts_BasicContract verifies the UI-SPEC HTML contract.
+// TestBuildExcerpts_BasicContract verifies the locked HTML contract.
 func TestBuildExcerpts_BasicContract(t *testing.T) {
 	t.Parallel()
 	content := []byte("prefix [[Foo]] suffix\n")
@@ -638,7 +638,7 @@ func TestBuildExcerpts_CaseInsensitive(t *testing.T) {
 }
 
 // TestBuildExcerpts_MultipleLines verifies one excerpt per matching line, in
-// document order (D-16).
+// document order.
 func TestBuildExcerpts_MultipleLines(t *testing.T) {
 	t.Parallel()
 	content := []byte("first [[Foo]] line\nsecond [[Foo]] line\nno match here\nthird [[Foo]] line\n")

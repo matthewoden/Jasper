@@ -190,7 +190,7 @@ describe("useQuickSwitcher — non-empty query (fuzzysort)", () => {
   });
 });
 
-describe("useQuickSwitcher — matchIndexes (D-15 highlight primitive)", () => {
+describe("useQuickSwitcher — matchIndexes (highlight primitive)", () => {
   it("a non-empty query yields hits with matchIndexes as a non-empty array of numbers", () => {
     const notes = [{ id: "a", title: "Alpha Notes", path: "alpha.md" }];
     mockUseFileTree.mockReturnValue({ tree: makeTree(notes), loading: false, error: null });

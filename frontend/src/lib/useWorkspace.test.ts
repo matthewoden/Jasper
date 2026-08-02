@@ -118,7 +118,7 @@ describe("useWorkspace — rightPanel", () => {
     expect(useTreeStore.getState().rightPanel).toBe(RIGHT_PANEL_DEFAULT);
   });
 
-  it("W5: three mounted consumers produce exactly one fetcher call (D-11/D-14 fetch-once)", async () => {
+  it("W5: three mounted consumers produce exactly one fetcher call (fetch-once)", async () => {
     getWorkspaceMock.mockResolvedValue({ rightPanel: "tags" });
 
     renderHook(() => useWorkspace(), { wrapper });

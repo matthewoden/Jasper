@@ -81,7 +81,7 @@ describe("adaptBookmarks", () => {
     expect(nodes[1].id).toBe("bookmark:bm-top");
   });
 
-  it("drops bookmarks whose note no longer resolves (D-04 prune)", () => {
+  it("drops bookmarks whose note no longer resolves (prune)", () => {
     const bookmarks: Bookmark[] = [
       { id: "bm-live", note_id: "note-live", folder_id: null, order: 0 },
       { id: "bm-dead", note_id: "note-dead", folder_id: null, order: 1 },

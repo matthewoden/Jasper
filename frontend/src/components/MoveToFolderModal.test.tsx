@@ -1,5 +1,5 @@
 /**
- * MoveToFolderModal tests (D-23):
+ * MoveToFolderModal tests:
  *   - typing a query fuzzy-filters the vault folder list; "No matching
  *     folders" shows when nothing matches
  *   - a "Vault root" row is present and selectable (moves to the vault root)

@@ -1,5 +1,5 @@
 /**
- * Phase 30 gap closure (30-11) — VERIFICATION gap 2 (CR-02, CTX-01 / D-14):
+ * gap closure (30-11) — VERIFICATION gap 2 (CTX-01):
  * pinned tabs must refuse to close via EVERY close path, not just the x
  * button. This spec proves the two remaining paths (Alt+W, middle-click)
  * now refuse a pinned tab exactly like the x-path/pin-glyph does, and that
@@ -43,7 +43,7 @@ async function openNoteAsTab(
     baseURL,
     `${title}.md`,
     "",
-    `# ${title}\n\nBody text for the Phase 30 pinned-close gap-closure spec.\n`,
+    `# ${title}\n\nBody text for the earlier pinned-close gap-closure spec.\n`,
   );
   await openNoteFromTree(page, noteId);
   return noteId;
@@ -58,7 +58,7 @@ async function middleClick(page: Page, locator: Locator): Promise<void> {
   await page.mouse.up({ button: "middle" });
 }
 
-test.describe("@pinned-close Phase 30 gap closure: pinned tabs survive Alt+W and middle-click", () => {
+test.describe("@pinned-close gap closure: pinned tabs survive Alt+W and middle-click", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {

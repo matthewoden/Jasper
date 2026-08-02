@@ -287,7 +287,7 @@ func TestACL_NextCallRevocation(t *testing.T) {
 	}
 
 	if a.CanCreate(ctx, notePath) {
-		t.Error("post-revoke CanCreate should be FALSE (D-24)")
+		t.Error("post-revoke CanCreate should be FALSE")
 	}
 	if _, ok := a.Resolve(ctx, notePath); ok {
 		t.Error("post-revoke Resolve should report no grant")

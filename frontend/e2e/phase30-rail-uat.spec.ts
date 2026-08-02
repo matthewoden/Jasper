@@ -1,35 +1,34 @@
 /**
- * Phase 30 UAT — Right-Rail Tags & Context Menus: right rail Tags tab
+ * Right-Rail Tags & Context Menus: right rail Tags tab
  * (TAGS-01, TAGS-02).
  *
- * Wave-0 scaffold (Plan 30-03) — this file is the substrate feature plans
+ * Wave-0 scaffold — this file is the substrate feature plans
  * fill in later waves:
  *   TAGS-01  30x30 icon-tab row (Outline / Linked mentions / Tags), one
  *            panel mounted at a time, active tab persisted to
- *            workspace.json.                          -> filled by Plan 05
+ * workspace.json.
  *   TAGS-02  Tags tab: active-note tags above the vault tag list,
- *            count-desc ordered, live CM6 doc sync.    -> filled by Plan 08
+ * count-desc ordered, live CM6 doc sync.
  *
  * The smoke assertion below is a REAL, currently-passing check: the right
- * rail's <aside> shell + left-edge resize handle, which 30-PATTERNS.md's
- * Plan 05 rewrite explicitly preserves ("Only the outer <aside> shell
- * ... survives"). It proves the Wave-0 harness (spawn + tree open) works
+ * rail's <aside> shell + left-edge resize handle, which the tab-row
+ * rewrite explicitly preserves. It proves the harness (spawn + tree open) works
  * end-to-end before the tab-row markup exists.
  *
- * TAGS-01 is a real, passing test (Plan 05): clicks each icon tab,
+ * TAGS-01 is a real, passing test: clicks each icon tab,
  * asserts exactly one panel is mounted (role-scoped locators, not just
  * visual visibility), waits for the PUT /vault/workspace persist request,
  * then reloads and re-asserts the same tab survives. Its Tags-tab empty
  * state locator uses the LOWER (vault-wide) section's "No tags in this
- * vault" copy (D-10, mock-literal — replaces the pre-Plan-08 "No tags
- * yet..." copy) since Plan 08 upgraded the Tags tab to two sections.
+ * vault" copy (mock-literal — replaced the earlier "No tags
+ * yet..." copy when the Tags tab grew to two sections).
  *
- * TAGS-02 (Plan 08, reworked Phase 31 D-03/D-05): the Tags tab is now a
+ * TAGS-02 (reworked): the Tags tab is now a
  * single vault-wide tag list — the upper active-note "Note tags" section
  * and its live-CM6 parse machinery (useNoteTagsStore) are fully deleted.
  * The test creates a note with a tag in its body, asserts the vault-list
  * row renders, then clicks it and asserts the left sidebar switches to the
- * Search panel with a `tag:livetag` query seeded (D-07, unchanged).
+ * Search panel with a `tag:livetag` query seeded (unchanged).
  *
  * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
  * build`) before Playwright — the spec runs against the EMBEDDED binary.
@@ -42,7 +41,7 @@ import { spawnJasper, type JasperHandle } from "./helpers/binary";
 import { waitForConnected, apiCreateNote } from "./helpers/phase7Helpers";
 import { openNoteFromTree } from "./helpers/openNoteFromTree";
 
-test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
+test.describe("@tags-rail: right rail Tags tab", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -60,7 +59,7 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
       jasper.baseURL,
       "rail-smoke.md",
       "",
-      "# rail-smoke\n\nBody text for the Phase 30 Wave-0 rail smoke test.\n",
+      "# rail-smoke\n\nBody text for the rail smoke test.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -80,7 +79,7 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
       jasper.baseURL,
       "rail-tabs.md",
       "",
-      "# rail-tabs\n\nBody text for the Phase 30 tab-row UAT.\n",
+      "# rail-tabs\n\nBody text for the earlier tab-row UAT.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -135,13 +134,13 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
   test("TAGS-02: the Tags tab is a single vault-wide tag list; a tag click filters the file tree", async ({
     page,
   }) => {
-    // Phase 31 D-03/D-05 collapsed the Phase 30 two-section Tags tab (an
+    // A later trim collapsed the earlier two-section Tags tab (an
     // upper active-note "Note tags" live-CM6 section + a lower vault-wide
     // list) into a single vault-wide list — the note-tags concept (and its
     // live-parse machinery, useNoteTagsStore) is fully deleted. This test
     // originally asserted the removed upper section and a "left Search
     // panel with tag: query" that doesn't exist as a distinct UI — the
-    // actual (and unchanged, D-07) shipped mechanism is activeTagFilter:
+    // actual (and unchanged) shipped mechanism is activeTagFilter:
     // clicking a tag row filters the file tree and shows the
     // ActiveTagFilterChip ("Filtered by: #name"), same contract phase6-uat
     // S5 already covers for the left-sidebar tag browser.
@@ -151,7 +150,7 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
       jasper.baseURL,
       "rail-tags-live.md",
       "",
-      "# rail-tags-live\n\nBody text with a #livetag for the Phase 31 TAGS-02 UAT.\n",
+      "# rail-tags-live\n\nBody text with a #livetag for the TAGS-02 UAT.\n",
     );
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
@@ -167,7 +166,7 @@ test.describe("@tags-rail Phase 30: right rail Tags tab", () => {
     await expect(tagRow).toBeVisible({ timeout: 5_000 });
     await expect(tagRow).toContainText("#livetag");
 
-    // Tag click (D-07, unchanged): sets activeTagFilter, filtering the file
+    // Tag click (unchanged): sets activeTagFilter, filtering the file
     // tree and surfacing the dismissible "Filtered by: #livetag" chip.
     await tagRow.click();
     const chip = page.locator('[aria-label="Remove tag filter: #livetag"]');

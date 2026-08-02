@@ -94,17 +94,17 @@ describe("sanitizeHtml — benign HTML preserved", () => {
     expect(out).toContain('alt="alt text"');
   });
 
-  it("preserves class attributes (CSS hook for Phase 6+ render surfaces)", () => {
+  it("preserves class attributes (CSS hook for render surfaces)", () => {
     const out = sanitizeHtml('<span class="cm-keyword">if</span>');
     expect(out).toContain('class="cm-keyword"');
   });
 
-  it("preserves blob: URLs (paired with the external-image widget from Plan 05-08)", () => {
+  it("preserves blob: URLs (paired with the external-image widget from)", () => {
     const out = sanitizeHtml('<img src="blob:https://app.local/abc-123" alt="">');
     expect(out).toContain("blob:");
   });
 
-  it("preserves relative URLs (Phase 6 wiki-links may render relative hrefs)", () => {
+  it("preserves relative URLs (wiki-links may render relative hrefs)", () => {
     const out = sanitizeHtml('<a href="/notes/foo.md">foo</a>');
     expect(out).toContain('href="/notes/foo.md"');
   });
@@ -122,7 +122,7 @@ describe("sanitizeHtml — benign HTML preserved", () => {
     expect(out).toContain("const x = 1;");
   });
 
-  it("preserves <mark> for FTS5 search highlights (Phase 7 SEARCH-04)", () => {
+  it("preserves <mark> for FTS5 search highlights (SEARCH-04)", () => {
     const out = sanitizeHtml("<p>foo <mark>bar</mark></p>");
     expect(out).toContain("<mark>bar</mark>");
   });

@@ -14,9 +14,9 @@ import (
 
 // TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent verifies both full
 // and incremental reconcile paths persist a real filesystem birthtime (or
-// the deterministic D-04 zero-sentinel) into notes.birthtime_unix, and
+// the deterministic zero-sentinel) into notes.birthtime_unix, and
 // that a second reconcile pass does not change the stored value — the
-// whole point of D-03 surviving an index wipe/rebuild.
+// whole point: a true birthtime survives an index wipe/rebuild.
 func TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)
@@ -46,7 +46,7 @@ func TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent(t *testing.T) {
 		t.Errorf("expected birthtime_unix=0 (platform cannot report btime), got %d", first)
 	}
 
-	// Pitfall 3: newly-added notes on the INCREMENTAL path must also
+	// Newly-added notes on the INCREMENTAL path must also
 	// capture a real birthtime, not be left at the 0 sentinel forever.
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
 	if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
@@ -75,7 +75,7 @@ func TestReconcile_BirthtimeUnix_PersistsAndIsIdempotent(t *testing.T) {
 }
 
 // TestReconcileIncremental_BackfillsZeroBirthtime_ForUpToDateRows is the
-// WR-04 regression: migration 006 leaves every pre-existing row at the 0
+// Regression: migration 006 leaves every pre-existing row at the 0
 // sentinel, and the startup incremental reconcile used to skip any file
 // whose mtime matched the index — so upgraded vaults never captured a
 // birthtime and the "created" sort silently ran on first-seen timestamps.
@@ -124,7 +124,7 @@ func TestReconcileIncremental_BackfillsZeroBirthtime_ForUpToDateRows(t *testing.
 	}
 }
 
-// TestUpsert_ZeroBirthtime_DoesNotClobberStored is the CR-01 regression:
+// TestUpsert_ZeroBirthtime_DoesNotClobberStored is a regression guard:
 // Service.Update builds its NoteRecord with BirthtimeUnix left at the zero
 // sentinel (the API save path has no cheap access to the on-disk birthtime).
 // Upsert's ON CONFLICT clause must therefore treat excluded.birthtime_unix=0

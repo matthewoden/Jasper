@@ -1,14 +1,14 @@
 /**
- * D-18 through D-22: seamless title <-> body keyboard traversal.
+ * Seamless title <-> body keyboard traversal.
  *
  * Proves, against a real embedded binary + real keyboard/mouse input:
  *  - ArrowDown from the title lands the caret on the first VISIBLE body
  *    line — skipping BOTH the hidden frontmatter block AND the separately-
- *    hidden first ATX H1 line (31-RESEARCH.md Pitfall 2). A sentinel
+ *    hidden first ATX H1 line. A sentinel
  *    character typed immediately after crossing must land in the body only,
  *    never mutate the frontmatter or the H1 line.
  *  - Enter from the title moves focus into the body WITHOUT inserting
- *    anything into the document (D-19) — the persisted note content is
+ *    anything into the document — the persisted note content is
  *    byte-identical before and after.
  *  - ArrowUp from the body's first visible line returns focus to the title.
  *
@@ -34,7 +34,7 @@ Body line one.
 Body line two.
 `;
 
-// UAT round-2 regression repro shape (Phase 31): H1 directly after the
+// UAT round-2 regression repro shape: H1 directly after the
 // frontmatter's closing "---" (no blank line — failure mode 2), followed by
 // a BLANK line before the first real paragraph (failure mode 1 — also the
 // exact default new-note scaffold shape, backend/internal/markdown/newnote.go's
@@ -58,7 +58,7 @@ tags: [alpha]
 Some real paragraph here.
 `;
 
-// CR-01 (31-REVIEW.md): a title long enough to wrap the H1 across multiple
+// A title long enough to wrap the H1 across multiple
 // visual rows at 33px/700 (pre-wrap) inside the ~648px title column
 // (760px max-width - 2*56px padding), and a first body line long enough to
 // wrap across multiple visual rows at the 15px/1.45 body font inside the
@@ -76,7 +76,7 @@ ${WRAPPED_BODY_LINE}
 Body line two.
 `;
 
-// Phase 31 UAT round 3 — owner gesture repro shapes (#1): the user CLICKS in
+// round 3 — owner gesture repro shapes (#1): the user CLICKS in
 // the visual empty gap between the title and the first body text (not
 // typing, not arrow-navigating), landing the caret at the top of the body,
 // then presses ArrowUp expecting the title to focus. Three doc shapes, since
@@ -185,7 +185,7 @@ async function getVisualRowRects(locator: ReturnType<Page["locator"]>): Promise<
   });
 }
 
-/** Clicks the FIRST or LAST wrapped visual row of the title element (CR-01). */
+/** Clicks the FIRST or LAST wrapped visual row of the title element. */
 async function clickTitleRow(page: Page, which: "first" | "last"): Promise<void> {
   const titleEl = page.getByTestId("editor-title-element");
   const rows = await getVisualRowRects(titleEl);
@@ -196,7 +196,7 @@ async function clickTitleRow(page: Page, which: "first" | "last"): Promise<void>
 
 /** Clicks the FIRST or LAST wrapped visual row of a `.cm-line` (matched by
  *  contained text) — a single logical body line wrapped across multiple
- *  visual rows (CR-01). */
+ *  visual rows. */
 async function clickBodyLineRow(page: Page, lineText: string, which: "first" | "last"): Promise<void> {
   const lineLocator = page.locator(".cm-content:visible .cm-line", { hasText: lineText }).first();
   await expect(lineLocator).toBeVisible({ timeout: 5_000 });
@@ -208,8 +208,8 @@ async function clickBodyLineRow(page: Page, lineText: string, which: "first" | "
 
 /** Reads the current collapsed caret's own on-screen rect via the live
  *  Selection API (reflects CM6's rendered cursor accurately while the body
- *  has focus) — used to prove real vertical motion happened WITHIN the body
- *  (CR-01), independent of which element currently holds DOM focus. */
+ *  has focus) — used to prove real vertical motion happened WITHIN the
+ *  body, independent of which element currently holds DOM focus. */
 async function getCaretRect(page: Page): Promise<{ top: number; left: number } | null> {
   return page.evaluate(() => {
     const sel = window.getSelection();
@@ -221,7 +221,7 @@ async function getCaretRect(page: Page): Promise<{ top: number; left: number } |
   });
 }
 
-test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
+test.describe("@phase31 title <-> body traversal", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -343,7 +343,7 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
       .toBe(NOTE_CONTENT);
   });
 
-  test("CR-01: ArrowDown from a non-last title visual row stays in the title; from the last row crosses to the body", async ({
+  test("ArrowDown from a non-last title visual row stays in the title; from the last row crosses to the body", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -374,14 +374,14 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     await expect(titleEl).toBeFocused();
     await expect(page.locator(".cm-content:visible")).not.toBeFocused();
 
-    // Last row (bottom): ArrowDown now crosses to the body (D-19).
+    // Last row (bottom): ArrowDown now crosses to the body.
     await clickTitleRow(page, "last");
     await expect(titleEl).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(page.locator(".cm-content:visible")).toBeFocused();
   });
 
-  test("CR-01: ArrowUp from a non-first body visual row stays in the body; from the first row crosses to the title", async ({
+  test("ArrowUp from a non-first body visual row stays in the body; from the first row crosses to the title", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1512, height: 944 });
@@ -449,7 +449,7 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
     expect(titleFocusEvents).toBe(0);
 
     // The first visual row of the wrapped line: ArrowUp now crosses to the
-    // title (D-19).
+    // title.
     await clickBodyLineRow(page, wrappedLineText, "first");
     await expect(page.locator(".cm-content:visible")).toBeFocused();
     await page.keyboard.press("ArrowUp");
@@ -663,7 +663,7 @@ test.describe("@phase31 D-18..D-22: title <-> body traversal", () => {
 
       await page.keyboard.press("Backspace");
 
-      // D-19: Backspace at body-start does NOT cross to the title — it is a
+      // Backspace at body-start does NOT cross to the title — it is a
       // guarded no-op. Focus stays in the body; nothing changes anywhere.
       await expect(page.locator(".cm-content:visible")).toBeFocused();
       const bodyTextAfter = await page.locator(".cm-content:visible").innerText();

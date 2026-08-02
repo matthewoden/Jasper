@@ -1,5 +1,5 @@
 /**
- * BookmarksPanel tests — Phase 27 Plan 06.
+ * BookmarksPanel tests.
  *
  * Task 1: empty state, live-titled rows, open-in-active-pane, folder collapse.
  * Task 2 (appended below): "…" menu Remove/Move-to-folder, inline
@@ -269,9 +269,9 @@ describe("BookmarksPanel", () => {
     expect(postBookmarkFolderMock).not.toHaveBeenCalled();
   });
 
-  // --- Phase 27 follow-up item 5: Notes-panel chrome parity ---
+  // --- follow-up item 5: Notes-panel chrome parity ---
 
-  describe("Notes-panel chrome parity (Phase 27 follow-up item 5)", () => {
+  describe("Notes-panel chrome parity (follow-up item 5)", () => {
     it("renders a bordered 40px toolbar row hosting the New-bookmark-folder action", async () => {
       getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
       await renderPanel(<BookmarksPanel />);

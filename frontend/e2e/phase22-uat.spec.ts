@@ -1,10 +1,10 @@
 /**
- * Phase 22 UAT — Zen Mode.
+ * Zen Mode.
  *
  * PALETTE-01/02's old shortcut-K unified-palette mode this suite originally
- * also covered was retired outright by Phase 28 (D-02): the merged-results
+ * also covered was retired outright: the merged-results
  * mode no longer exists and its shortcut is unbound. That coverage was
- * removed here — Phase 28's own `phase28-uat.spec.ts` is now the
+ * removed here — `phase28-uat.spec.ts` is now the
  * switcher/palette E2E gate, and the durable Esc-closes/arrow-nav/shortcut-P-
  * scoping assertions this block also exercised were already independently
  * covered by `phase7-uat.spec.ts` (shortcut-O ArrowDown/Enter/Escape) —
@@ -16,7 +16,7 @@
  *   palette remains fully operational while zen is active; toggling off
  *   restores the exact prior layout.
  *
- * Occlusion note: per Plan 22-03, the ribbon / left sidebar / right sidebar
+ * Occlusion note: the ribbon / left sidebar / right sidebar
  * stay MOUNTED in zen (their grid track collapses to 0px, but each component
  * keeps its own explicit CSS width) rather than unmounting — confirmed by a
  * pre-flight diagnostic showing `document.elementFromPoint` at each

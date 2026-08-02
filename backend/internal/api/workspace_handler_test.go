@@ -146,7 +146,7 @@ func TestPutVaultWorkspace_SearchSortOnly_LeavesNotesSortUntouched(t *testing.T)
 	}
 }
 
-// TestPutVaultWorkspace_MixedValidInvalid_400_NothingPersisted (WR-01) —
+// TestPutVaultWorkspace_MixedValidInvalid_400_NothingPersisted —
 // a body mixing a valid notesSort with an invalid searchSort must be
 // rejected atomically: 400, NEITHER field persisted, no broadcast. The
 // per-field-setter shape would otherwise persist+broadcast notesSort and

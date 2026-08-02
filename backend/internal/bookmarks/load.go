@@ -22,7 +22,7 @@ import (
 //   - File present and valid — including a well-formed document carrying an
 //     extra/unrecognized field (e.g. written by a newer binary, or hand-
 //     edited): unknown fields are ignored, matching normal Go JSON decode
-//     semantics (CR-01 / mirrors the SET-05 forward-compat lesson —
+//     semantics (mirrors the SET-05 forward-compat lesson —
 //     an unknown field must never be treated the same as corrupt JSON and
 //     coerced to an empty document, which would silently wipe every
 //     bookmark and folder on the next write).
@@ -34,7 +34,7 @@ import (
 //     contract when notesSvc is nil): auto-prune is skipped entirely — a
 //     nil registry cannot legitimately resolve anything, so pruning against
 //     it would wipe every valid row and re-Save that empty result, which
-//     would be a real data-loss bug of the exact CR-01 shape. The document
+//     would be a real data-loss bug of exactly that shape. The document
 //     is returned as-is, unpruned.
 //
 // Returns an error ONLY when the disk is unreadable for non-not-exist
@@ -52,7 +52,7 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 	var doc Bookmarks
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	// No DisallowUnknownFields(): an unrecognized field must not be treated
-	// the same as corrupt JSON — see CR-01 doc comment above.
+	// the same as corrupt JSON — see the doc comment above.
 	if err := dec.Decode(&doc); err != nil {
 		log.Warn("bookmarks: malformed; falling back to empty set",
 			"path", path, "err", err)

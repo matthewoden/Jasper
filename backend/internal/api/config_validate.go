@@ -227,7 +227,7 @@ type strictConfigPatchValidator struct {
 // applies one guard here per constraint in the PUT block above, wrapped in the
 // non-nil guards the sparse shape requires. The two lists MUST stay in
 // lockstep: a constraint deleted from one and not the other is a silent
-// validation hole — CR-01 was exactly that, a presence guard that vanished
+// validation hole — that has happened: a presence guard vanished
 // from PUT when dailyNotes.folder was retired. Deliberately stated
 // structurally rather than as a count, which goes stale and then reassures
 // nobody. An absent field is never an

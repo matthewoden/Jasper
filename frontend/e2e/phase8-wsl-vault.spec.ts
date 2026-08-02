@@ -1,5 +1,5 @@
 /**
- * Phase 8 vault picker — fake-WSL E2E (Docker harness).
+ * vault picker — fake-WSL E2E (Docker harness).
  *
  * Connects Playwright to the compose/wsl-validation jasper container, which
  * boots with JASPER_OSRELEASE_PATH pointing at a fake file containing
@@ -23,7 +23,7 @@ import { test, expect } from "@playwright/test";
 const HOST_PORT = process.env.JASPER_WSL_HOST_PORT ?? "6684";
 const BASE_URL = `http://127.0.0.1:${HOST_PORT}`;
 
-test.describe("Phase 8 vault picker — Docker fake-WSL parity", () => {
+test.describe("vault picker — Docker fake-WSL parity", () => {
   test.skip(
     process.env.JASPER_WSL_E2E !== "1",
     "Set JASPER_WSL_E2E=1 (or run `make test-wsl-e2e`) — requires compose/wsl-validation up",

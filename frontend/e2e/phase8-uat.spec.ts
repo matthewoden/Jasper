@@ -1,5 +1,5 @@
 /**
- * Phase 8 UAT — install + first-run wizard + reveal + deep links + MCP grants.
+ * install + first-run wizard + reveal + deep links + MCP grants.
  *
  * Scenarios (tagged for selective runs via --grep):
  *
@@ -54,7 +54,7 @@ import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
 
-test.describe("Phase 8 — first-run wizard (@first-run)", () => {
+test.describe("first-run wizard (@first-run)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -94,7 +94,7 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   });
 
   test.fixme(
-    "renders refusal copy for two of the four D-08 invalid-path cases",
+    "renders refusal copy for two of the four invalid-path cases",
     async ({ page }) => {
       await page.goto(jasper.baseURL + "/setup");
       const input = page.getByLabel("Data directory path");
@@ -110,7 +110,7 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   );
 
   test(
-    "UAT-1: tilde-prefixed data-dir paths are expanded against $HOME (not literal)",
+    "tilde-prefixed data-dir paths are expanded against $HOME (not literal)",
     async () => {
       const os = await import("node:os");
       const path = await import("node:path");
@@ -174,7 +174,7 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
   );
 
   test(
-    "UAT-1: relative paths are refused with the not_absolute code",
+    "relative paths are refused with the not_absolute code",
     async () => {
       const resp = await fetch(
         jasper.baseURL + "/api/v1/setup/validate-data-dir",
@@ -198,7 +198,7 @@ test.describe("Phase 8 — first-run wizard (@first-run)", () => {
 });
 
 
-test.describe("Phase 8 — deep link routes (@deep-link)", () => {
+test.describe("deep link routes (@deep-link)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -233,7 +233,7 @@ test.describe("Phase 8 — deep link routes (@deep-link)", () => {
 });
 
 
-test.describe("Phase 8 — reveal in file manager (@reveal)", () => {
+test.describe("reveal in file manager (@reveal)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -263,7 +263,7 @@ test.describe("Phase 8 — reveal in file manager (@reveal)", () => {
 });
 
 
-test.describe("Phase 8 — grant toast contract (@grant)", () => {
+test.describe("grant toast contract (@grant)", () => {
   test("Tier-1 grant toast strings match the 08-10 LOCKED two-line shape", () => {
     const GRANT_TITLE = "AI access granted";
     const GRANT_DESC_TIER1 = "Edit only in projects";
@@ -289,7 +289,7 @@ test.describe("Phase 8 — grant toast contract (@grant)", () => {
 });
 
 
-test.describe("Phase 8 — sparkles indicator contract (@sparkles)", () => {
+test.describe("sparkles indicator contract (@sparkles)", () => {
   test("the McpGrantIndicator selector contract is pinned: testid + data-grant-tier", () => {
     const TESTID = "mcp-grant-indicator";
     const ATTR_TIER1 = 'data-grant-tier="1"';
@@ -301,7 +301,7 @@ test.describe("Phase 8 — sparkles indicator contract (@sparkles)", () => {
 });
 
 
-test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
+test.describe("install follow-up (@uat-1-followup)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -313,7 +313,7 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
   });
 
   test(
-    "UAT-1 N8: duplicate grant flashes error and submits with single DB row",
+    "duplicate grant flashes error and submits with single DB row",
     async () => {
       const os = await import("node:os");
       const path = await import("node:path");
@@ -401,7 +401,7 @@ test.describe("Phase 8 — UAT-1 follow-up (@uat-1-followup)", () => {
 });
 
 
-test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
+test.describe("R4-11 (@r4-11) stack-overflow regression", () => {
   let jasper: JasperHandle;
   let dataDir: string;
 
@@ -470,7 +470,7 @@ test.describe("Phase 8 — R4-11 (@r4-11) stack-overflow regression", () => {
 });
 
 
-test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
+test.describe("R4-1 (@r4-1) create_note atomic regression", () => {
   test.describe.configure({ mode: "serial" });
   let jasper: JasperHandle;
 
@@ -701,7 +701,7 @@ test.describe("Phase 8 — R4-1 (@r4-1) create_note atomic regression", () => {
 });
 
 
-test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () => {
+test.describe("08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -932,7 +932,7 @@ test.describe("Phase 8 — 08-20 menu + AI-folder CSS (@r4-7-r4-8-r4-10)", () =>
 });
 
 
-test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
+test.describe("R4-15 (@r4-15) --data-dir flag removed", () => {
   test("R4-15 — --data-dir flag is removed (unknown flag)", async () => {
     const { spawn } = await import("node:child_process");
     const path = await import("node:path");
@@ -1102,7 +1102,7 @@ test.describe("Phase 8 — R4-15 (@r4-15) --data-dir flag removed", () => {
 });
 
 
-test.describe("Phase 8 — 08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
+test.describe("08-21 MCP tooling (@r4-3-r4-4-r4-6)", () => {
   test.describe.configure({ mode: "serial" });
   let jasper: JasperHandle;
 
@@ -1491,7 +1491,7 @@ async function spawnAndBootstrapVault(opts: {
   };
 }
 
-test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", () => {
+test.describe("08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", () => {
   test("R4-9 — child folder shows inherited grant, no separate Grant AI access action", async ({
     page,
   }) => {
@@ -1726,7 +1726,7 @@ test.describe("Phase 8 — 08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", ()
 });
 
 
-test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
+test.describe("sb5 menu vertical spacing (@sb5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1785,7 +1785,7 @@ test.describe("Phase 8 — sb5 menu vertical spacing (@sb5)", () => {
 });
 
 
-test.describe("Phase 8 — 260603-six kebab opens right (@six-kebab-right)", () => {
+test.describe("260603-six kebab opens right (@six-kebab-right)", () => {
   test("kebab DropdownMenu opens to the right of the trigger with top-aligned edge", async ({
     page,
   }) => {

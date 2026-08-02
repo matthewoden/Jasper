@@ -1,7 +1,7 @@
 /**
- * Phase 18 UAT — Activity Ribbon & Chrome Shell.
+ * Activity Ribbon & Chrome Shell.
  *
- * D-05 (regression gate): the tab-bar restyle (TABUI-01) touches every pixel
+ * Regression gate: the tab-bar restyle (TABUI-01) touches every pixel
  *   value the pointer-drag math (`computeDropTarget`, wrapper
  *   `getBoundingClientRect`) depends on indirectly via layout. This spec
  *   proves — with real `page.mouse` against a rebuilt binary, never synthetic
@@ -14,15 +14,15 @@
  *   badge, and its daily-note/command-palette buttons drive their
  *   already-shipped actions. RIBBON-02/03/04 (button-wiring describe block
  *   below) originally also covered standalone ribbon Files/Search TOGGLE
- *   buttons; those were removed in Phase 27 NAV-02 (D-09/D-10) — panel
+ *   buttons; those were removed by NAV-02 — panel
  *   selection now lives entirely in the sidebar's SidebarTabRow, and the
  *   two rewritten tests below guard that current equivalent instead.
  * TABUI-02: each sidebar owns its own toggle placement — the left sidebar's
  *   collapse control lives in its header row (SidebarTabRow) with reopen via
- *   a pane-corner button (Phase 27 NAV-03); the right rail's collapse
+ *   a pane-corner button (NAV-03); the right rail's collapse
  *   control lives in its own tab row (RightRailTabRow) with reopen via the
  *   tab strip's right cluster, rendered only while collapsed AND on the
- *   rightmost leaf (Phase 30-13 / quick task 260721-cjt). Each toggle only
+ *   rightmost leaf. Each toggle only
  *   affects its own sidebar.
  *
  * Harness mirrors phase17-uat.spec.ts: spawnJasper per describe block,
@@ -69,9 +69,9 @@ function tabPills(page: Page) {
   return tabStrip(page).getByRole("tab");
 }
 
-// ─── D-05: DnD regression — drag-reorder, ghost, drop indicator ─────────────
+// ─── DnD regression — drag-reorder, ghost, drop indicator ──────────────────
 
-test.describe("@phase18 D-05: DnD regression — drag/ghost/drop-indicator survive the restyle", () => {
+test.describe("@phase18 DnD regression — drag/ghost/drop-indicator survive the restyle", () => {
   let jasper: JasperHandle;
   let idAlpha: string;
   let idBeta: string;
@@ -174,9 +174,9 @@ test.describe("@phase18 D-05: DnD regression — drag/ghost/drop-indicator survi
   });
 });
 
-// ─── WR-03: interleaved-hidden-tabs drag stays visible-adjacent ────────────
+// ─── Interleaved-hidden-tabs drag stays visible-adjacent ───────────────────
 
-test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not swallow the tab into overflow", () => {
+test.describe("@phase18 interleaved-hidden-tabs real-mouse drag does not swallow the tab into overflow", () => {
   let jasper: JasperHandle;
   let ids: string[];
 
@@ -196,13 +196,13 @@ test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not 
     page,
   }) => {
     // Force the strip's available width into [388,507) so 5 tabs overflow to
-    // exactly 3 visible pills (RESEARCH.md Pattern 2 window arithmetic:
+    // exactly 3 visible pills (window arithmetic:
     // RESERVED=112, MIN_TAB_WIDTH=120, OVERFLOW_BTN=28 -> visibleCount=3 for
     // a strip content-box width in this range). RESERVED dropped from 136 to
-    // 112 in Phase 20 (D-01, the panel-selector dropdown trigger's removal
+    // 112 (the panel-selector dropdown trigger's removal
     // recomputed TabStrip's right-cluster arithmetic — see tabOverflow.test.ts's
-    // drift-guard test). Separately, Phase 20 D-06 flips the right rail to
-    // open-by-default (was collapsed by default here in Phase 18), so the
+    // drift-guard test). Separately, the right rail is now
+    // open-by-default (it used to be collapsed by default here), so the
     // middle grid column (== strip clientWidth) is now viewportWidth - 588
     // (48 ribbon + 260 notes sidebar + 280 open right rail), not the old
     // viewportWidth - 308 (collapsed rail). A 1150px viewport lands the
@@ -230,7 +230,7 @@ test.describe("@phase18 WR-03: interleaved-hidden-tabs real-mouse drag does not 
     expect(visibleBefore).toEqual(["wr03-a", "wr03-b", "wr03-e"]);
 
     // Drag the first VISIBLE tab ('wr03-a') to just before the last visible
-    // tab ('wr03-e') — the interleaved-hidden scenario WR-03 regresses on:
+    // tab ('wr03-e') — the interleaved-hidden scenario this regresses on:
     // the naive full-array target index used to span the hidden {c,d} tabs
     // and land the drop in the wrong place / swallow it into overflow.
     let fromBox = await tabPills(page).nth(0).boundingBox();
@@ -375,11 +375,11 @@ test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () =
     await expect(badge).toBeVisible();
     const badgeLetter = ((await badge.textContent()) ?? "").trim();
 
-    // Same display_name source the StatusBar's vault label reads (D-06).
+    // Same display_name source the StatusBar's vault label reads.
     const vaultLabel = page.getByTestId("status-bar-vault");
     await expect(vaultLabel).toBeVisible({ timeout: 10_000 });
     const vaultName = ((await vaultLabel.textContent()) ?? "").trim();
-    // Surrogate-safe first-character extraction (IN-05) — matches production
+    // Surrogate-safe first-character extraction — matches production
     // (ActivityRibbon.tsx: `[...trimmedDisplayName][0]?.toUpperCase() ?? "J"`),
     // not `charAt(0)` which would split a surrogate pair in half.
     const expectedLetter =
@@ -394,7 +394,7 @@ test.describe("@phase18 RIBBON-01: activity ribbon presence + vault badge", () =
 // ─── RIBBON-02/03/04: ribbon button wiring ───────────────────────────────────
 //
 // The ribbon's standalone Files/Search TOGGLE buttons this describe block
-// originally guarded were REMOVED entirely in Phase 27 NAV-02 (D-09/D-10) —
+// originally guarded were REMOVED entirely by NAV-02 —
 // see ActivityRibbon.tsx's header comment: "panel selection now lives
 // entirely in the sidebar's SidebarTabRow." The Activity ribbon today has
 // exactly one quick-switcher button plus daily-note/command-palette/
@@ -430,7 +430,7 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     const notesTab = tabRow.getByRole("button", { name: "Notes", exact: true });
     const searchTab = tabRow.getByRole("button", { name: "Search", exact: true });
 
-    // The ribbon's Files toggle is gone (Phase 27 NAV-02) — no such button
+    // The ribbon's Files toggle is gone (NAV-02) — no such button
     // exists anywhere on the page anymore.
     await expect(ribbon.getByRole("button", { name: "Files", exact: true })).toHaveCount(0);
 
@@ -461,16 +461,16 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
   test("Search tab (SidebarTabRow) opens the sidebar Search panel (not the command palette) and is accent-colored while active", async ({
     page,
   }) => {
-    // Phase 27 NAV-02 re-point: the standalone ribbon Search TOGGLE this
+    // NAV-02 re-point: the standalone ribbon Search TOGGLE this
     // test originally guarded was removed; SidebarTabRow's "Search" tab is
-    // its current equivalent for OPENING the panel (Phase 19 D-01/D-02/D-07's
+    // its current equivalent for OPENING the panel (the
     // in-sidebar Search panel is still the current design — only the
     // entry-point button moved). FOCUSING the input, however, is no longer
     // wired to the tab click at all (SidebarTabRow.tsx's selectPanel() only
     // calls setSidebarPanel + setNotesSidebarVisible — no focus dispatch);
     // that concern moved entirely to the Cmd+Shift+F shortcut
     // (appShortcuts.ts's handleAppCmdShiftF, whose own docstring says
-    // "opens the sidebar Search panel + focuses its input (D-05)") — the
+    // "opens the sidebar Search panel + focuses its input") — the
     // literal current-code equivalent of "opens Search focused" this test
     // originally asserted via the ribbon button.
     await waitForConnected(page, jasper.baseURL);
@@ -482,7 +482,7 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
       "Search notes… (tag:name to filter)",
     );
 
-    // The ribbon's Search toggle is gone (Phase 27 NAV-02) — no such button
+    // The ribbon's Search toggle is gone (NAV-02) — no such button
     // exists anywhere on the page anymore.
     await expect(ribbon.locator('button[aria-label="Search notes"]')).toHaveCount(0);
 
@@ -535,7 +535,7 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
 
     await expect(dailyBtn).toBeVisible({ timeout: 10_000 });
 
-    // IN-04: capture the local-calendar date BEFORE and AFTER the click so
+    // capture the local-calendar date BEFORE and AFTER the click so
     // this test cannot race local midnight — a click landing exactly on the
     // local day boundary must still match one of the two straddling dates,
     // not whichever single sample happened to be read.
@@ -562,7 +562,7 @@ test.describe("@phase18 RIBBON-02/03/04: ribbon button wiring", () => {
     const activeTabText = ((await activeTab.textContent()) ?? "").trim();
     expect([todayBefore, todayAfter]).toContain(activeTabText);
     // Two EditorPanes are keep-alive-mounted at this point (one per open tab,
-    // D-01); scope to the visible one to avoid a strict-mode violation.
+    // sidebar Search tab); scope to the visible one to avoid a strict-mode violation.
     await expect(page.locator(".cm-content:visible")).toBeVisible({
       timeout: 10_000,
     });
@@ -597,7 +597,7 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
     page,
   }) => {
     // Match the 1512x944 measurement context the pins were empirically
-    // derived from (18-09-SUMMARY.md) so these pins are stable across CI
+    // derived so these pins are stable across CI
     // runners regardless of the suite's default Desktop Chrome viewport.
     await page.setViewportSize({ width: 1512, height: 944 });
 
@@ -638,8 +638,8 @@ test.describe("@phase18 POLISH-09: center-column vertical geometry pin", () => {
     expect(stripBox.height).toBe(40);
     // Relational flush pins (survive benign breadcrumb-padding restyles).
     expect(breadcrumbBox.y).toBe(stripBox.y + stripBox.height);
-    // Phase 21 (READ-01, RESEARCH Pitfall 6): .cm-content gained a 44px top
-    // padding as part of the 760px centered reading column, and Plan 03's
+    // READ-01: .cm-content gained a 44px top
+    // padding as part of the 760px centered reading column, and the
     // TitleElement now mounts between the breadcrumb and cm-content, so
     // cm-content is no longer flush against the breadcrumb — it now sits at
     // or below the breadcrumb PLUS the title element's own height. Additive
@@ -668,7 +668,7 @@ test.describe("@phase18 TABUI-02: sidebar toggle placement", () => {
   }) => {
     await waitForConnected(page, jasper.baseURL);
 
-    // LEFT sidebar (Phase 27 NAV-03): default notesSidebarVisible=true.
+    // LEFT sidebar (NAV-03): default notesSidebarVisible=true.
     const sidebarNav = page.locator('nav[aria-label="Notes navigation"]');
     await expect(sidebarNav).toBeVisible({ timeout: 10_000 });
 
@@ -680,7 +680,7 @@ test.describe("@phase18 TABUI-02: sidebar toggle placement", () => {
     await reopenLeftBtn.click();
     await expect(sidebarNav).toBeVisible();
 
-    // RIGHT rail (Phase 30-13 / 260721-cjt): expanded by default — the
+    // RIGHT rail: expanded by default — the
     // rail's own tab row owns the sole collapse control; no reopen cluster
     // renders while expanded.
     const railHandle = page.getByRole("separator", { name: "Resize backlinks panel" });

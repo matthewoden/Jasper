@@ -16,7 +16,7 @@ import (
 )
 
 // TestAtomicWrite_KillNineSubprocess is the strict-mode crash-during-write
-// gate from PITFALLS.md Pitfall 3 + the success-criterion enumerated in the
+// durability gate + the success criterion enumerated in the
 // PLAN's must_haves: "kill -9 mid-write under the AtomicWrite test loop
 // NEVER produces a zero-byte target file."
 //

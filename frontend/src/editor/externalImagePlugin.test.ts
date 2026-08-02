@@ -222,7 +222,7 @@ describe("externalImagePlugin / ExternalImageWidget", () => {
     expect(errEl?.textContent).toBe("Could not load image from example.com.");
   });
 
-  it("destroy() calls URL.revokeObjectURL on the blob URL it created (Pitfall 4)", async () => {
+  it("destroy() calls URL.revokeObjectURL on the blob URL it created", async () => {
     writeAllowlist(new Set([EXTERNAL_URL]));
 
     const mockBlob = new Blob(["x"], { type: "image/png" });

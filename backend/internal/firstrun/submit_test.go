@@ -105,12 +105,12 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	if cfg.Server.DataDir != wantDataDir {
 		t.Fatalf("Server.DataDir: got %q want %q", cfg.Server.DataDir, wantDataDir)
 	}
-	// D-02 (Phase 17): config.Load pins Theme to "dark" regardless of the
+	// config.Load pins Theme to "dark" regardless of the
 	// wizard-submitted value ("light" above), so the loaded config coerces to dark.
 	if cfg.Theme != "dark" {
 		t.Fatalf("Theme: got %q want %q", cfg.Theme, "dark")
 	}
-	// CR-01 (Phase 17): the wizard's accent/reading-font choices must persist
+	// The wizard's accent/reading-font choices must persist
 	// through RunSetup → CreateVault into config.json.
 	if cfg.Accent != "sky" {
 		t.Fatalf("Accent: got %q want %q", cfg.Accent, "sky")
@@ -136,7 +136,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 	// the seed_grants.json queue file is also absent (writeSeedGrants
 	// short-circuits on empty input).
 	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
-		t.Fatalf("RunSetup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
+		t.Fatalf("RunSetup should NOT create app.db; got file at %s", vault.AppDBPath(target))
 	}
 	canonical, err := vault.Canonicalize(target)
 	if err != nil {
@@ -163,7 +163,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 }
 
 // TestRunSetup_McpAlwaysConfigured verifies that RunSetup no longer
-// accepts or persists an mcp_enabled toggle (Phase 24 D-06): the MCP
+// accepts or persists an mcp_enabled toggle: the MCP
 // listener config (port/bind) is always written regardless of any
 // wizard input, since the listener always starts on boot.
 func TestRunSetup_McpAlwaysConfigured(t *testing.T) {

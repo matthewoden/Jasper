@@ -1,6 +1,6 @@
 /**
  * SettingsDialogShell tests — the composed dialog frame, nav/pane wiring,
- * D-19 fixed geometry, D-20 always-opens-on-Appearance, and the shared
+ * fixed geometry, always-opens-on-Appearance, and the shared
  * save-error banner. Per-section Reset orchestration is covered separately
  * once wired (a later commit in this plan).
  */
@@ -72,7 +72,7 @@ const { mockVaultAboutFetcher } = vi.hoisted(() => ({
 // Built on the REAL createResource primitive (like AboutSection.test.tsx)
 // so the shell's nav-footer subscription and a later About-pane
 // subscription share the same cache entry for real — that sharing IS the
-// D-07 double-fetch fix under test below.
+// double-fetch fix under test below.
 vi.mock("../../lib/vaultAboutApi", async () => {
   const { createResource } = await import("../../lib/resources");
   return {
@@ -125,7 +125,7 @@ function Harness() {
   );
 }
 
-// PaneHeader's Close button is Tooltip-wrapped (Phase 31 convention); the
+// PaneHeader's Close button is Tooltip-wrapped (convention); the
 // shell relies on App.tsx's app-root TooltipProvider in production, so tests
 // supply their own ancestor.
 function renderShell(props: Partial<React.ComponentProps<typeof SettingsDialogShell>> = {}) {
@@ -138,7 +138,7 @@ function renderShell(props: Partial<React.ComponentProps<typeof SettingsDialogSh
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // configResource is a module-level, boot-scoped singleton (D-15) shared
+  // configResource is a module-level, boot-scoped singleton shared
   // by every useConfig() instance in this file's tests — without this
   // reset, a later test's mount reads a prior test's cached config instead
   // of issuing its own GET, breaking assertions like "GET still fires".
@@ -181,13 +181,13 @@ describe("<SettingsDialogShell />", () => {
     expect(screen.getByText("Accent and typography")).toBeInTheDocument();
   });
 
-  it("renders the NavColumn footer caption using GET /vault/about data (WR-01)", async () => {
+  it("renders the NavColumn footer caption using GET /vault/about data", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("my-vault · v1.4.0")).toBeInTheDocument());
   });
 
-  it("mounting the shell (open) and then opening About produces exactly one GET /vault/about fetch (D-07 double-fetch closed)", async () => {
+  it("mounting the shell (open) and then opening About produces exactly one GET /vault/about fetch (double-fetch closed)", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("my-vault · v1.4.0")).toBeInTheDocument());
     expect(mockVaultAboutFetcher).toHaveBeenCalledTimes(1);
@@ -216,7 +216,7 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.getByText("Vault name")).toBeInTheDocument());
   });
 
-  it("About renders no Reset button while Editor renders one (D-08)", async () => {
+  it("About renders no Reset button while Editor renders one", async () => {
     renderShell();
     await waitFor(() => expect(screen.getByText("Accent and typography")).toBeInTheDocument());
 
@@ -258,7 +258,7 @@ describe("<SettingsDialogShell />", () => {
     expect(dialogEl).toHaveStyle({ width: "920px", height: "628px" });
   });
 
-  it("opening Settings logs no console warning, and the description resolves to a real element (32-REVIEW WR-04)", async () => {
+  it("opening Settings logs no console warning, and the description resolves to a real element (32-REVIEW)", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       renderShell();
@@ -285,7 +285,7 @@ describe("<SettingsDialogShell />", () => {
   });
 
   it("renders exactly one save-error banner when a pane reports an error, and it dismisses", async () => {
-    // Panes call saveConfig -> PATCH (D-05); Reset is the only PUT caller.
+    // Panes call saveConfig -> PATCH; Reset is the only PUT caller.
     mockClient.PATCH.mockResolvedValueOnce({
       error: { code: "invalid_request", message: "offline" },
       response: { status: 400 },
@@ -308,8 +308,8 @@ describe("<SettingsDialogShell />", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
-  it("clears a stale save-error banner on close so a still-mounted reopen starts clean (32-REVIEW IN-03)", async () => {
-    // Panes call saveConfig -> PATCH (D-05); Reset is the only PUT caller.
+  it("clears a stale save-error banner on close so a still-mounted reopen starts clean (32-REVIEW)", async () => {
+    // Panes call saveConfig -> PATCH; Reset is the only PUT caller.
     mockClient.PATCH.mockResolvedValueOnce({
       error: { code: "invalid_request", message: "offline" },
       response: { status: 400 },
@@ -366,12 +366,12 @@ describe("<SettingsDialogShell />", () => {
       expect(saved.accent).toBe(mockConfig.accent);
       expect(saved.dailyNotes).toEqual(mockConfig.dailyNotes);
       expect(saved.server).toEqual(mockConfig.server);
-      // Reset must not fan out into a PATCH — it stays on the PUT verb (D-07).
+      // Reset must not fan out into a PATCH — it stays on the PUT verb.
       expect(mockClient.PATCH).not.toHaveBeenCalled();
     });
 
     // The pane-header Reset is the ONLY reset affordance for this pane since
-    // the inline "Reset to default" link was dropped (IN-02), so this is the
+    // the inline "Reset to default" link was dropped, so this is the
     // sole assertion that a dailyNotes reset writes the exact default string.
     it("Daily notes: confirming resets only dailyNotes.template to the exact default", async () => {
       renderShell();

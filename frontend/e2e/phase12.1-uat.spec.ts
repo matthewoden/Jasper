@@ -1,5 +1,5 @@
 /**
- * Phase 12.1 UAT — Checkbox Editing UAT Fixes.
+ * Checkbox Editing UAT Fixes.
  *
  * RED-first test scaffolding: these tests encode the target post-fix behavior
  * for requirements U1-U7 + W1. They are EXPECTED TO FAIL until plans 02/03 land.
@@ -7,7 +7,7 @@
  *
  * Run a single tagged test: npx playwright test e2e/phase12.1-uat.spec.ts -g "U3"
  *
- * U1 — visual: checkbox widget matches 12-UI-SPEC.md styling (screenshot; human review)
+ * U1 — visual: checkbox widget matches styling (screenshot; human review)
  * U2 — reveal: caret onto task line shows raw '- [ ] ' text, no widget
  * U3 — Enter on empty '- [ ] ' exits the list (marker removed, line NOT deleted)
  * U4 — Enter behavior is position-independent (same result after caret leave+return)
@@ -115,11 +115,11 @@ async function getNoteContent(page: Page, noteId: string): Promise<string> {
 }
 
 /**
- * U1-visual: checkbox widget matches 12-UI-SPEC.md styling.
+ * U1-visual: checkbox widget matches styling.
  * Automated assertions: lucide SVG icon (no native input), bullet + checkbox layout.
  * Screenshot written to e2e/.artifacts/ for human visual review.
  */
-test("U1-visual: checkbox widget matches UI-SPEC styling @phase12.1", async ({ page }) => {
+test("U1-visual: checkbox widget matches the locked styling @phase12.1", async ({ page }) => {
   const noteId = await apiCreateNote(
     page,
     "u1-visual-styling",
@@ -148,7 +148,7 @@ test("U1-visual: checkbox widget matches UI-SPEC styling @phase12.1", async ({ p
 
   // 4. Bullet widget must be present for task lines (• replaces -)
   // Each task line should have a .cm-list-bullet span (from livePreviewPlugin)
-  // alongside the checkbox widget (D-02 reversed: bullet + checkbox layout)
+  // alongside the checkbox widget (reversed: bullet + checkbox layout)
   const bulletWidgets = page.locator(".cm-content .cm-list-bullet");
   // Should have at least 3 bullets (plain + unchecked task + checked task)
   await expect(bulletWidgets).toHaveCount(3, { timeout: 5_000 });
@@ -163,7 +163,7 @@ test("U1-visual: checkbox widget matches UI-SPEC styling @phase12.1", async ({ p
 
 /**
  * U2-reveal: caret placed on a task line reveals the raw '- [ ] ' text.
- * After D-01: when cursor is on the task line, no checkbox widget is in the DOM;
+ * When the cursor is on the task line, no checkbox widget is in the DOM;
  * the raw marker text '[ ]' is present and editable in that cm-line.
  */
 test("U2-reveal: arrow onto task line shows raw markup, no widget @phase12.1", async ({ page }) => {
@@ -194,7 +194,7 @@ test("U2-reveal: arrow onto task line shows raw markup, no widget @phase12.1", a
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowLeft");
 
-  // After D-01: the checkbox widget should be GONE from the DOM on the active line
+  // The checkbox widget should be GONE from the DOM on the active line
   await expect(page.locator("span.cm-task-checkbox")).toHaveCount(0, { timeout: 3_000 });
 
   // The raw '[ ]' text must be visible/editable in the task line
@@ -379,7 +379,7 @@ test("U7-no-leaking-dash: off-cursor task shows bullet+widget, no raw dash, no n
   expect(nativeInputs).toBe(0);
 
   // The task lines in the DOM should NOT contain a raw '-' text node
-  // (D-02 reversed: the '-' is replaced by a bullet widget '•', not by the checkbox widget)
+  // (reversed: the '-' is replaced by a bullet widget '•', not by the checkbox widget)
   const taskLineHasDash = await page.evaluate(() => {
     const lines = document.querySelectorAll(".cm-content .cm-line");
     for (const line of lines) {
@@ -548,8 +548,8 @@ test("U11-deeply-nested-progressive-deindent: Enter on empty 4-space task de-ind
  * The list must NOT exit (i.e., no bare newline; new line has the '- [ ] ' marker).
  * Tests the ENTER BUG fix: previously Enter sometimes exited the list instead of continuing.
  *
- * Root-cause of original bug: D-02 widened the widget atomic range to cover "- [ ] ",
- * causing CM6 cursor movement to behave unexpectedly near the boundary. D-02 reversal
+ * Root-cause of the original bug: the widget's atomic range covered "- [ ] ",
+ * causing CM6 cursor movement to behave unexpectedly near the boundary. Narrowing it
  * fixes this — "- " is normal markup, only "[ ]" is atomic.
  */
 test("U8-enter-continues-list: Enter on non-empty task continues with new checkbox @phase12.1", async ({ page }) => {
@@ -590,8 +590,8 @@ test("U8-enter-continues-list: Enter on non-empty task continues with new checkb
  * U9-backspace-boundary: Backspace from start of task text deletes one character at a time
  * (does not delete the entire "- [ ] " prefix atomically).
  *
- * Root-cause of original bug: D-02 made the entire "- [ ] " range an atomic CM6 replacement,
- * so Backspace from the first text character jumped back to position 0. D-02 reversal
+ * Root-cause of the original bug: the entire "- [ ] " range was an atomic CM6 replacement,
+ * so Backspace from the first text character jumped back to position 0. Narrowing it
  * (widget only covers "[ ]") means Backspace from text position 6 goes to position 5 (space),
  * then position 5 is at the boundary of the smaller "[ ]" widget.
  */

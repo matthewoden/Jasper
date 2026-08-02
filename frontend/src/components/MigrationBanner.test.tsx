@@ -1,7 +1,7 @@
 /**
  * Tests for the Surface 1 Migration Error Banner.
  *
- * Validates UI-SPEC §Surface 1 contract verbatim:
+ * Validates the locked banner contract verbatim:
  *   - Renders nothing when state=ok (banner is server-state-driven)
  *   - Renders locked copy when state=rolled_back, with concrete filename + path
  *   - Logs-path button copies to clipboard + fires the locked toast

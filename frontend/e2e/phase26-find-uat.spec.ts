@@ -1,16 +1,16 @@
 /**
- * Phase 26 UAT — Per-Pane Find/Replace bar (WS-09, D-01..D-04).
+ * Per-Pane Find/Replace bar (WS-09).
  *
  * Covers the observable browser behaviors for the custom Find/Replace bar
- * built in Plan 04: Cmd+F opens a find-only bar; Cmd+Opt+F upgrades to
+ * Cmd+F opens a find-only bar; Cmd+Opt+F upgrades to
  * find+replace; live match count + highlight-all; Replace All mutates the
  * document (reversible via CM6 undo); Esc closes the bar and returns focus
  * to the editor; and per-pane scoping (opening Find in one pane never
- * affects a sibling pane's find state), matching D-01's "per-view CM6 state
+ * affects a sibling pane's find state), matching the "per-view CM6 state
  * is per-pane for free" contract.
  *
  * Selector contract:
- *   - Leaf pane:          [data-testid="leaf-pane"]      (Phase 25)
+ *   - Leaf pane:          [data-testid="leaf-pane"]
  *   - Find bar container: [data-testid="find-bar"]
  *   - Match count label:  [data-testid="find-match-count"]
  *
@@ -111,7 +111,7 @@ function leafPanes(page: Page): Locator {
 }
 
 /**
- * Makes `leaf` the active pane (D-04: click anywhere in a leaf's chrome
+ * Makes `leaf` the active pane (click anywhere in a leaf's chrome
  * focuses it) AND focuses its editor — convenient for pressing Cmd+F right
  * after, since jasperKeymap's findBarKeymap only fires while THAT pane's
  * EditorView has DOM focus.
@@ -190,7 +190,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
 
     // Cmd+F opens the find-only bar — no replace input present. jasperKeymap's
     // findBarKeymap is bound on the CM6 EditorView itself, so it only fires
-    // while THIS pane's `.cm-content` has DOM focus (by design — D-02 scopes
+    // while THIS pane's `.cm-content` has DOM focus (by design — scopes
     // the shortcut to the active editor, not globally).
     await page.keyboard.press(FIND_KEY);
     const bar = page.locator(SELECTORS.findBar);
@@ -208,7 +208,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
     await findInput.fill("zzz-not-present");
     await expect(bar.locator(SELECTORS.findMatchCount)).toHaveText("0 matches");
 
-    // Esc closes the bar and returns focus to the editor (D-02) — also
+    // Esc closes the bar and returns focus to the editor — also
     // re-establishes editor focus so the NEXT shortcut (Cmd+Opt+F) is
     // dispatched against `.cm-content`, not the find bar's own input.
     await page.keyboard.press("Escape");
@@ -233,13 +233,13 @@ test.describe("@find phase26 Find/Replace bar", () => {
     await expect(editor).toContainText("APPLE banana APPLE cherry APPLE");
     await expect(editor).not.toContainText("apple");
 
-    // Replace All is reversible via CM6 undo (T-26-04-Integrity) — refocus
-    // the editor first (the click also re-targets this pane, D-04).
+    // Replace All is reversible via CM6 undo — refocus
+    // the editor first (the click also re-targets this pane).
     await editor.click();
     await page.keyboard.press(UNDO_KEY);
     await expect(editor).toContainText("apple banana apple cherry apple");
 
-    // Esc closes the bar and returns focus to the editor (D-02). Escape is
+    // Esc closes the bar and returns focus to the editor. Escape is
     // handled by the bar's OWN container (bubble-phase from its descendant
     // inputs) — click back into the bar first so the keydown actually
     // reaches it (mirrors realistic UX: the user is interacting with the
@@ -264,7 +264,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
     const idA = await apiCreateNote(page, jasper.baseURL, "find-split");
     await openNoteFromTree(page, idA);
 
-    // Split right clones the active note into a new sibling leaf (P25 D-15)
+    // Split right clones the active note into a new sibling leaf
     // — both leaves show the SAME note, matching "the same note open in
     // both panes" per the scenario requirement.
     await runCommand(page, "Split right");
@@ -285,7 +285,7 @@ test.describe("@find phase26 Find/Replace bar", () => {
     await expect(rightLeaf.locator(SELECTORS.findBar)).toHaveCount(0);
   });
 
-  test("the find bar renders below the breadcrumb and above the note body (P26 polish, UI-SPEC line 151)", async ({
+  test("the find bar renders below the breadcrumb and above the note body", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });

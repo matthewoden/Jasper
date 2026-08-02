@@ -123,7 +123,7 @@ describe("handleAppAltT (tab-new)", () => {
   });
 });
 
-describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
+describe("handleAppCmdShiftF (re-point)", () => {
   beforeEach(() => {
     useTreeStore.setState({
       sidebarPanel: "notes",
@@ -131,7 +131,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
     });
   });
 
-  it("opens the sidebar to the Search panel and dispatches 'focusSearch' (D-05)", async () => {
+  it("opens the sidebar to the Search panel and dispatches 'focusSearch'", async () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
     try {
@@ -177,7 +177,7 @@ describe("handleAppCmdShiftF (Phase 19 D-05 re-point)", () => {
   });
 });
 
-describe("handleAppSidebarToggle (Phase 27 NAV-03, D-13)", () => {
+describe("handleAppSidebarToggle (NAV-03)", () => {
   beforeEach(() => {
     useTreeStore.setState({ notesSidebarVisible: true });
   });
@@ -221,7 +221,7 @@ describe("handleAppSidebarToggle (Phase 27 NAV-03, D-13)", () => {
   });
 });
 
-describe("handleAppBookmarkToggle (Phase 27 BOOK-01, D-14)", () => {
+describe("handleAppBookmarkToggle (BOOK-01)", () => {
   it("Cmd+Shift+B dispatches 'bookmarkCurrent' and preventDefaults/stopPropagates", () => {
     const received: Phase7DispatchEvent[] = [];
     const unsubscribe = subscribePhase7((ev) => received.push(ev));
@@ -282,7 +282,7 @@ describe("handleAppBookmarkToggle (Phase 27 BOOK-01, D-14)", () => {
   });
 });
 
-describe("handleAppCmdB / handleAppCmdI shift-exclusion (WR-05)", () => {
+describe("handleAppCmdB / handleAppCmdI shift-exclusion", () => {
   it("handleAppCmdB does NOT preventDefault on Cmd+Shift+B (owned by handleAppBookmarkToggle)", () => {
     const e = new KeyboardEvent("keydown", {
       key: "B",
@@ -320,7 +320,7 @@ describe("handleAppCmdB / handleAppCmdI shift-exclusion (WR-05)", () => {
   });
 });
 
-describe("handleAppPanelShortcuts (Phase 30 TAGS-01 re-point onto the rightPanel tab slice)", () => {
+describe("handleAppPanelShortcuts (TAGS-01 re-point onto the rightPanel tab slice)", () => {
   beforeEach(() => {
     putWorkspaceMock.mockClear();
     useTreeStore.setState({
@@ -410,7 +410,7 @@ describe("handleAppPanelShortcuts (Phase 30 TAGS-01 re-point onto the rightPanel
   });
 });
 
-describe("handleAppCmdK is retired (Phase 28 QUICK-04 — two-role palette)", () => {
+describe("handleAppCmdK is retired (QUICK-04 — two-role palette)", () => {
   beforeEach(() => {
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
@@ -430,7 +430,7 @@ describe("handleAppCmdK is retired (Phase 28 QUICK-04 — two-role palette)", ()
   });
 });
 
-describe("handleAppCmdO (Phase 28 QUICK-04 — notes quick switcher)", () => {
+describe("handleAppCmdO (QUICK-04 — notes quick switcher)", () => {
   beforeEach(() => {
     useTreeStore.setState({ paletteOpen: false, paletteMode: "commands" });
   });
@@ -452,7 +452,7 @@ describe("handleAppCmdO (Phase 28 QUICK-04 — notes quick switcher)", () => {
   });
 });
 
-describe("handleAppCmdP (Phase 28 QUICK-04 — command palette)", () => {
+describe("handleAppCmdP (QUICK-04 — command palette)", () => {
   beforeEach(() => {
     useTreeStore.setState({ paletteOpen: false, paletteMode: "notes" });
   });
@@ -474,7 +474,7 @@ describe("handleAppCmdP (Phase 28 QUICK-04 — command palette)", () => {
   });
 });
 
-describe("handleAppCmdDot (Phase 22 Plan 01 — zen toggle)", () => {
+describe("handleAppCmdDot (zen toggle)", () => {
   beforeEach(() => {
     useTreeStore.setState({ zen: false });
   });
@@ -502,7 +502,7 @@ describe("handleAppCmdDot (Phase 22 Plan 01 — zen toggle)", () => {
   });
 });
 
-describe("Phase 25 Plan 08 — split-right/split-down/focus-cycle-pane shortcuts", () => {
+describe("split-right/split-down/focus-cycle-pane shortcuts", () => {
   beforeEach(() => {
     usePaneStore.getState().clearAll();
   });

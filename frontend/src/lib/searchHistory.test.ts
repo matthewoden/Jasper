@@ -109,7 +109,7 @@ describe("searchHistory", () => {
     expect(getHistory()).toEqual(["only-in-a"]);
   });
 
-  it("persists across a fresh initForVault call for the same vault (durable, D-17)", () => {
+  it("persists across a fresh initForVault call for the same vault (durable)", () => {
     initForVault("/vault/durable");
     recordSearchHistory("survives-reload");
 

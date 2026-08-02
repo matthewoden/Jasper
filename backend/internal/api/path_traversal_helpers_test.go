@@ -36,7 +36,7 @@ func newSecurityTestServer(t *testing.T) secTestFixture {
 	notesDir := filepath.Join(dataDir, "notes")
 	if err := os.WriteFile(
 		filepath.Join(notesDir, validRel),
-		[]byte("# Valid Note\n\nSeeded by Phase 8 Plan 08-14 path-traversal suite."),
+		[]byte("# Valid Note\n\nSeeded by the path-traversal suite."),
 		0o644,
 	); err != nil {
 		t.Fatalf("seed valid-note.md: %v", err)

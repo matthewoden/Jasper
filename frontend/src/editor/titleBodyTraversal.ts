@@ -17,7 +17,7 @@ import type { EditorState, Extension, Line } from "@codemirror/state";
 import { FRONTMATTER_NODE_NAME } from "./frontmatterPlugin";
 
 /**
- * Pure geometry check (CR-01, extracted for unit-testability): is the caret's
+ * Pure geometry check (extracted for unit-testability): is the caret's
  * bottom edge within one line-height of the element's own bottom edge? That is
  * "last visual row" — the title wraps a long name across multiple visual rows
  * (pre-wrap), and ArrowDown should only cross to the body once there is no
@@ -158,7 +158,7 @@ export function makeTitleBodyTraversalKeymap(
       // Caret is strictly ABOVE the first visible line (the click-in-the-gap
       // case above) — no wrapped-row concept applies there (it isn't real,
       // rendered body content), so cross unconditionally rather than running
-      // the CR-01 moveVertically gate below (which assumes curLine IS the
+      // the moveVertically gate below (which assumes curLine IS the
       // target line).
       if (curLine.number < target.number) {
         let x = 0;
@@ -172,7 +172,7 @@ export function makeTitleBodyTraversalKeymap(
         return true;
       }
 
-      // CR-01 visual-row gate: compute where one visual row up would land
+      // Visual-row gate: compute where one visual row up would land
       // via CM6's own vertical-motion primitive (moveVertically uses
       // goalColumn internally, so this is genuine "up one wrapped row", not
       // "up one logical line"). Cross to the title ONLY when that motion
@@ -193,7 +193,7 @@ export function makeTitleBodyTraversalKeymap(
         if (moved.head !== sel.head && moved.head >= boundary) return false;
       } catch {
         // no real layout available — fall through to cross, matching the
-        // pre-CR-01-fix behavior for environments that can't measure rows.
+        // pre-fix behavior for environments that can't measure rows.
       }
 
       // coordsAtPos can throw in environments without real text-layout

@@ -34,7 +34,7 @@ describe("ResetConfirmDialog", () => {
     expect(screen.getByText("This can't be undone.")).toBeInTheDocument();
   });
 
-  it("never mentions grants or MCP in the dialog copy (D-09 copy risk)", () => {
+  it("never mentions grants or MCP in the dialog copy (copy risk)", () => {
     render(
       <ResetConfirmDialog
         open={true}
@@ -90,7 +90,7 @@ describe("ResetConfirmDialog", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  // Nesting smoke test (RESEARCH.md Pitfall 6 / Assumption A3): renders the
+  // Nesting smoke test: renders the
   // confirm inside an already-open Dialog.Content and asserts the outer
   // dialog's content survives the confirm opening. This is a presence check
   // only — it does not and cannot assert focus-trap handoff or Escape-key

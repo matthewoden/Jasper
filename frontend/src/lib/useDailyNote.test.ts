@@ -135,7 +135,7 @@ describe("useDailyNote", () => {
   });
 
   it("DN-HOOK-5: openToday passes the exact LOCAL YYYY-MM-DD date string to openTodayDailyNote", async () => {
-    // Pinned via vi.setSystemTime + TZ (DN-HOOK-9 idiom, IN-04) so the
+    // Pinned via vi.setSystemTime + TZ (DN-HOOK-9 idiom) so the
     // expected date string is computed once, deterministically, instead of
     // racing a second `new Date()` call against the hook's internal one
     // across a local-midnight boundary.
@@ -167,7 +167,7 @@ describe("useDailyNote", () => {
     }
   });
 
-  it("DN-HOOK-9: uses the LOCAL calendar date, not UTC (WR-02)", async () => {
+  it("DN-HOOK-9: uses the LOCAL calendar date, not UTC", async () => {
     // Pin the process TZ to Pacific so this test is deterministic regardless
     // of the host/CI machine's own timezone (Node re-reads process.env.TZ
     // per Date construction, so this reliably shifts `new Date()` locals).
@@ -199,7 +199,7 @@ describe("useDailyNote", () => {
     }
   });
 
-  it("DN-HOOK-6: happy path — broadcastRefresh is called after setActiveNote (UAT-2 R1-1)", async () => {
+  it("DN-HOOK-6: happy path — broadcastRefresh is called after setActiveNote", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
@@ -227,7 +227,7 @@ describe("useDailyNote", () => {
     expect(useTreeStore.getState().activeNoteId).toBe(fakeNote.id);
   });
 
-  it("DN-HOOK-7: error path — broadcastRefresh is NOT called on failure (UAT-2 R1-1)", async () => {
+  it("DN-HOOK-7: error path — broadcastRefresh is NOT called on failure", async () => {
     mockedOpenToday.mockRejectedValueOnce(new Error("server down"));
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
@@ -239,7 +239,7 @@ describe("useDailyNote", () => {
     expect(mockedBroadcastRefresh).toHaveBeenCalledTimes(0);
   });
 
-  it("WR-04: broadcastRefresh rejects — note still opens, no 'couldn't open' toast fires", async () => {
+  it("broadcastRefresh rejects — note still opens, no 'couldn't open' toast fires", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
     mockedBroadcastRefresh.mockRejectedValueOnce(new Error("tree refresh failed"));
     const openInActivePaneSpy = vi.spyOn(usePaneStore.getState(), "openInActivePane");
@@ -287,7 +287,7 @@ describe("useDailyNote", () => {
     expect(expanded.has("work/journals")).toBe(true);
   });
 
-  it("DN-HOOK-12: open failure — expands nothing (pp9, D-5)", async () => {
+  it("DN-HOOK-12: open failure — expands nothing (pp9)", async () => {
     mockedOpenToday.mockRejectedValueOnce(new Error("server down"));
 
     const { result } = renderHook(() => useDailyNote(), { wrapper });
@@ -299,7 +299,7 @@ describe("useDailyNote", () => {
     expect(useTreeStore.getState().expanded.size).toBe(0);
   });
 
-  it("DN-HOOK-13: broadcastRefresh rejects — still expands the folder, still no failure toast (pp9, D-2)", async () => {
+  it("DN-HOOK-13: broadcastRefresh rejects — still expands the folder, still no failure toast (pp9)", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
     mockedBroadcastRefresh.mockRejectedValueOnce(new Error("tree refresh failed"));
 
@@ -316,7 +316,7 @@ describe("useDailyNote", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("DN-HOOK-14: ordering — expansion happens only after broadcastRefresh() settles (pp9, D-1)", async () => {
+  it("DN-HOOK-14: ordering — expansion happens only after broadcastRefresh() settles (pp9)", async () => {
     mockedOpenToday.mockResolvedValueOnce(fakeNote);
     let resolveRefresh: () => void = () => {};
     const deferred = new Promise<void>((resolve) => {

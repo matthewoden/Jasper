@@ -1,5 +1,5 @@
 /**
- * uat3-flush-race.spec.ts — real-browser reproduction of UAT-3 (the
+ * uat3-flush-race.spec.ts — real-browser reproduction of the
  * flush-on-close save-failure race).
  *
  * The common close path is: click the tab's close X while a note has
@@ -14,10 +14,10 @@
  * flight (page.route defers settling it) until after the close click is
  * processed, so flush() is guaranteed to land while that save is still in
  * flight and coalesce onto its real outcome — an immediate abort could
- * settle first and let flush start its own save, bypassing coalescing
- * (IN-06). Only then is the held PUT aborted; the "Save failed — close
+ * settle first and let flush start its own save, bypassing coalescing.
+ * Only then is the held PUT aborted; the "Save failed — close
  * anyway?" dialog (FlushConfirmDialog) must surface, and "Close without
- * saving" must leave zero tabs + the blank fallback pane (per WR-01, the
+ * saving" must leave zero tabs + the blank fallback pane (the
  * flush-reject close path also clears the legacy activeNoteId so the note
  * does not reappear in the tab-less fallback).
  *
@@ -59,7 +59,7 @@ function tabPills(page: Page) {
   return tabStrip(page).getByRole("tab");
 }
 
-test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm dialog", () => {
+test.describe("@uat3 dirty-tab close-X race surfaces the flush-confirm dialog", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -86,7 +86,7 @@ test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm di
     // Aborting immediately would leave a timing window where the
     // blur-started save settles BEFORE the close handler's flush() runs —
     // flush would then start its own failing save and the dialog would
-    // surface without ever exercising the coalescing branch (IN-06).
+    // surface without ever exercising the coalescing branch.
     // Holding the PUT until after the close click is processed pins the
     // interleaving: flush() must coalesce onto the in-flight save. Every
     // other request (including the initial GET) continues normally.
@@ -110,7 +110,7 @@ test.describe("@uat3 UAT-3: dirty-tab close-X race surfaces the flush-confirm di
     // Click the tab's close X. This blurs the editor first (starting the
     // PUT now held in flight), then flushAndClose's flush() call lands
     // while that save cannot have settled and coalesces onto its real
-    // (failing) outcome — the exact UAT-3 race path.
+    // (failing) outcome — the exact race path.
     const closeBtn = tabPills(page)
       .first()
       .locator('button[aria-label^="Close "]');

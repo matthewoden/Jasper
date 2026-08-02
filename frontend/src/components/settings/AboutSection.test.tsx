@@ -1,7 +1,7 @@
 /**
- * AboutSection.test — fetch-on-visible gating (D-23), all six facts, the
+ * AboutSection.test — fetch-on-visible gating, all six facts, the
  * zero-count-is-not-an-error rule, the non-looping error state, the
- * copy/reveal controls, and the D-15 cache-hit-on-reopen behavior.
+ * copy/reveal controls, and the cache-hit-on-reopen behavior.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +16,7 @@ const { mockFetcher } = vi.hoisted(() => ({ mockFetcher: vi.fn() }));
 
 // The mocked module builds vaultAboutResource on the REAL createResource
 // primitive with mockFetcher standing in for the network call, so
-// read()-joining and cache-hit-on-resubscribe (D-15's "reopening a panel
+// read()-joining and cache-hit-on-resubscribe (the "reopening a panel
 // is free") are exercised for real rather than reimplemented as a second,
 // divergent test double.
 vi.mock("../../lib/vaultAboutApi", async () => {
@@ -131,7 +131,7 @@ describe("AboutSection", () => {
     });
   });
 
-  it("does not refetch on toggling false -> true -> false -> true — reopening a panel is a cache hit (D-15)", async () => {
+  it("does not refetch on toggling false -> true -> false -> true — reopening a panel is a cache hit", async () => {
     mockFetcher.mockResolvedValue({ data: sampleAbout });
     const { rerender } = render(
       <TooltipProvider>

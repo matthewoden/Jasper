@@ -557,7 +557,7 @@ export function TabStrip({
       const paneEl = hit?.closest("[data-droppane]") as HTMLElement | null;
       const targetLeafId = paneEl?.dataset.droppane;
       // Suppress the split/move hover while the cursor is over a tab strip
-      // (CR-01): every strip lives inside its own pane's `[data-droppane]`
+      // every strip lives inside its own pane's `[data-droppane]`
       // subtree, so an ordinary in-strip reorder (cursor near the top of the
       // pane) would otherwise hit-test as a bogus "top" split on the pane the
       // user never left. Dragging into a pane *body* — including the drag's
@@ -570,7 +570,7 @@ export function TabStrip({
         // — never from this (source) strip's data. Same-pane strip hover
         // (targetLeafId === leafId) intentionally falls through to the final
         // `else` below: that is the in-strip reorder path's own territory
-        // (CR-01 — no bogus split/insert overlay on the pane never left).
+        // (no bogus split/insert overlay on the pane never left).
         const foreignStripEl = hit!.closest(
           '[data-testid="tab-strip"]',
         ) as HTMLElement;
@@ -661,7 +661,7 @@ export function TabStrip({
       usePaneDragStore.getState().endDrag();
     }
 
-    // Focus loss mid-drag is always an abandon — never route a drop (gap 5 / CR-02).
+    // Focus loss mid-drag is always an abandon — never route a drop.
     function handleWindowBlur() {
       if (dragRef.current === null) return;
       dragRef.current = null;
@@ -879,7 +879,7 @@ export function TabStrip({
     setDropIndicatorX(null);
     setDragGhost(null);
     // An abandoned/cancelled drag must never leave a later legitimate click
-    // suppressed (gap 5 / CR-02).
+    // suppressed.
     suppressClickRef.current = false;
     usePaneDragStore.getState().endDrag();
   }

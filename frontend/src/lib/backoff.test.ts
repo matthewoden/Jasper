@@ -18,7 +18,7 @@ describe("nextDelay", () => {
     expect(nextDelay(20, () => 0.999)).toBeLessThanOrEqual(BACKOFF_CAP_MS * 1.5);
   });
 
-  it("constants exported with locked values (D-04)", () => {
+  it("constants exported with locked values", () => {
     expect(BACKOFF_BASE_MS).toBe(1_000);
     expect(BACKOFF_CAP_MS).toBe(30_000);
   });

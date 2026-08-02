@@ -2,12 +2,12 @@
  * Tests for SetupApp — the /setup wizard root.
  *
  * Coverage:
- *   - All 3 section headings render (Phase 24 D-03: MCP section removed —
+ * - All 3 section headings render (the MCP section was removed —
  *     grants are managed post-setup via the folder right-click menu).
  *   - "Start Jasper" is disabled until DataDirSection reports valid=true.
  *   - Successful submit: calls clearDraft() and window.location.assign("/").
  *   - Failed submit: shows error banner with prefix and suffix copy.
- *   - Appearance controls apply accent + reading font live (dark-only, D-01).
+ *   - Appearance controls apply accent + reading font live (dark-only).
  *
  * client.{POST,GET} mocked via vi.mock so no real network calls fly.
  * window.location.assign spied via vi.spyOn (jsdom's location is read-only).
@@ -115,7 +115,7 @@ describe("SetupApp — submit happy path", () => {
     await makeDataDirValid();
 
     // Pick a non-default accent + reading font so the submit body proves the
-    // wizard's Appearance choices reach the server (CR-01).
+    // wizard's Appearance choices reach the server.
     fireEvent.click(screen.getByLabelText("Sky"));
     fireEvent.click(screen.getByRole("button", { name: "Serif" }));
 
@@ -140,7 +140,7 @@ describe("SetupApp — submit happy path", () => {
     ).body;
     expect(body.data_dir).toBe("~/JasperNotes");
     expect(body.theme).toBe("dark");
-    // CR-01: accent + readingFont are included in the setup submit body.
+    // accent + readingFont are included in the setup submit body.
     expect(body.accent).toBe("sky");
     expect(body.readingFont).toBe("serif");
   });
@@ -182,7 +182,7 @@ describe("SetupApp — submit failure", () => {
 });
 
 describe("SetupApp — appearance live preview", () => {
-  it("applies the accent + reading font live (dark-only, D-01: no theme toggle)", () => {
+  it("applies the accent + reading font live (dark-only: no theme toggle)", () => {
     render(<SetupApp />);
 
     // Clicking the Sky swatch applies its hex to the --color-accent var immediately.

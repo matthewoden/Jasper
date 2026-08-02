@@ -1,5 +1,5 @@
 /**
- * Phase 7 UAT — Search, Daily Notes, Attachments, Palette & Switcher.
+ * Search, Daily Notes, Attachments, Palette & Switcher.
  *
  * Scenarios (S1–S11):
  *   S1  Search: type query, results replace tree, click opens, X/Esc/len<2 clears
@@ -50,7 +50,7 @@ import {
 import { localDateString } from "./helpers/localDate";
 
 
-test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
+test.describe("Sidebar search FTS5", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -109,7 +109,7 @@ test.describe("Phase 7 — Sidebar search FTS5 (S1 / UAT-5 N11 / D-57)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+O quick switcher searches note titles (S2 / UAT #11)", () => {
+test.describe("Cmd+O quick switcher searches note titles (S2 / UAT #11)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -164,7 +164,7 @@ test.describe("Phase 7 — Cmd+O quick switcher searches note titles (S2 / UAT #
 });
 
 
-test.describe("Phase 7 — Today button creates daily note (S3)", () => {
+test.describe("Today button creates daily note (S3)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -212,7 +212,7 @@ test.describe("Phase 7 — Today button creates daily note (S3)", () => {
 });
 
 
-test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
+test.describe("Today shortcut Cmd+Shift+D (S4)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -244,7 +244,7 @@ test.describe("Phase 7 — Today shortcut Cmd+Shift+D (S4)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
+test.describe("Cmd+O quick switcher (S5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -296,7 +296,7 @@ test.describe("Phase 7 — Cmd+O quick switcher (S5)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
+test.describe("Cmd+P command palette (S6)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -346,7 +346,7 @@ test.describe("Phase 7 — Cmd+P command palette (S6)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+/ cheat-sheet (S7)", () => {
+test.describe("Cmd+/ cheat-sheet (S7)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -403,7 +403,7 @@ test.describe("Phase 7 — Cmd+/ cheat-sheet (S7)", () => {
 });
 
 
-test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
+test.describe("Drag-drop attachment (S8)", () => {
   let jasper: JasperHandle;
   let tmpPng: string;
 
@@ -505,7 +505,7 @@ test.describe("Phase 7 — Drag-drop attachment (S8)", () => {
 });
 
 
-test.describe("Phase 7 — Paste image attachment (S9)", () => {
+test.describe("Paste image attachment (S9)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -603,7 +603,7 @@ test.describe("Phase 7 — Paste image attachment (S9)", () => {
 });
 
 
-test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
+test.describe("Oversize upload >100MB (S10)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -662,7 +662,7 @@ test.describe("Phase 7 — Oversize upload >100MB (S10)", () => {
 });
 
 
-test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
+test.describe("Daily folder calendar icon (S11)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -741,7 +741,7 @@ test.describe("Phase 7 — Daily folder calendar icon (S11)", () => {
 });
 
 
-test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", () => {
+test.describe("Daily note registry hydration (S12 / UAT #1, #6)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -764,7 +764,7 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
     await expect(page.getByText("Could not load note")).toHaveCount(0, { timeout: 4_000 });
     await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 8_000 });
 
-    // v1.2 redesign (READ-01/D-02): the note's first H1 is hidden inside the
+    // v1.2 redesign (READ-01): the note's first H1 is hidden inside the
     // editor (firstH1HideExtension) and rendered above it in the TitleElement.
     // The daily note's date lives in the H1, so it now appears in the title
     // element, not in .cm-content (whose body is empty for a fresh daily note).
@@ -791,7 +791,7 @@ test.describe("Phase 7 — Daily note registry hydration (S12 / UAT #1, #6)", ()
 });
 
 
-test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () => {
+test.describe("Command palette commands (S13 / UAT #2–#3,#5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -802,7 +802,7 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
     if (jasper) await jasper.kill();
   });
 
-  test("S13a — Cmd+P opens palette with all 8 commands visible (UAT #2 / Plan 07-27: Find removed)", async ({ page }) => {
+  test("S13a — Cmd+P opens palette with all 8 commands visible (UAT #2: Find removed)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -861,7 +861,7 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
     const commandDialog = page.getByRole("dialog", { name: "Command palette" });
     await expect(commandDialog).toBeVisible({ timeout: 3_000 });
 
-    // Phase 28 Plan 03 relabeled "Switch / search notes" to
+    // A later pass relabeled "Switch / search notes" to
     // "Quick switcher (notes)" (shortcutsRegistry.ts id "switch-note").
     const switchCmd = page.getByText("Quick switcher (notes)", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 5_000 });
@@ -881,7 +881,7 @@ test.describe("Phase 7 — Command palette commands (S13 / UAT #2–#3,#5)", () 
 });
 
 
-test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", () => {
+test.describe("Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -951,7 +951,7 @@ test.describe("Phase 7 — Cmd+B/I bold/italic in editor (S14 / UAT #8, #9)", ()
 });
 
 
-test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () => {
+test.describe("Cmd+O updated_at fallback sort (S15 / UAT #10)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1014,7 +1014,7 @@ test.describe("Phase 7 — Cmd+O updated_at fallback sort (S15 / UAT #10)", () =
 });
 
 
-test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
+test.describe("Drag-drop visual indicator (S16 / UAT #12)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1058,7 +1058,7 @@ test.describe("Phase 7 — Drag-drop visual indicator (S16 / UAT #12)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 / UAT-2 R1-2,R1-3)", () => {
+test.describe("Cmd+P/Cmd+O cold-open + switch-note input clear (S19 R1-3)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1069,7 +1069,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     if (jasper) await jasper.kill();
   });
 
-  test("S19a — cold Cmd+P shows all 8 commands immediately on first open (Plan 07-27: Find removed)", async ({ page }) => {
+  test("S19a — cold Cmd+P shows all 8 commands immediately on first open (Find removed)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -1079,7 +1079,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
 
     await expect(page.getByText("New note", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
-    // Palette entry count grew from 8 to 17 across Phase 22/25/27/28 (Toggle
+    // Palette entry count grew from 8 to 17 (Toggle
     // Zen Mode, split/focus-pane commands, Toggle left sidebar, Bookmark
     // current note, etc.) — see shortcutsRegistry.test.ts's locked-count test.
     await expectPaletteVisibleWithNCommands(page, 17);
@@ -1124,7 +1124,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
     await cmdInput.fill("sw");
     await expect(cmdInput).toHaveValue("sw");
 
-    // Phase 28 Plan 03 relabeled "Switch / search notes" to
+    // A later pass relabeled "Switch / search notes" to
     // "Quick switcher (notes)".
     const switchCmd = page.getByText("Quick switcher (notes)", { exact: true }).first();
     await expect(switchCmd).toBeVisible({ timeout: 3_000 });
@@ -1150,7 +1150,7 @@ test.describe("Phase 7 — Cmd+P/Cmd+O cold-open + switch-note input clear (S19 
   });
 });
 
-test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", () => {
+test.describe("Attachments folder visible in tree (S17 / UAT #13)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1197,7 +1197,7 @@ test.describe("Phase 7 — Attachments folder visible in tree (S17 / UAT #13)", 
 });
 
 
-test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT-2 R1-7)", () => {
+test.describe("Non-markdown files visible in sidebar tree", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1364,7 +1364,7 @@ test.describe("Phase 7 — Non-markdown files visible in sidebar tree (S22 / UAT
 });
 
 
-test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / UAT-3 R7)", () => {
+test.describe("Image attachment file-preview in middle pane", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1423,7 +1423,7 @@ test.describe("Phase 7 — Image attachment file-preview in middle pane (S27 / U
   });
 });
 
-test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b / UAT-3 R7)", () => {
+test.describe("Non-image file metadata preview in middle pane", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1478,7 +1478,7 @@ test.describe("Phase 7 — Non-image file metadata preview in middle pane (S27b 
 });
 
 
-test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 R1-1)", () => {
+test.describe("Daily-note rename keeps tree consistent", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1587,7 +1587,7 @@ test.describe("Phase 7 — Daily-note rename keeps tree consistent (S18 / UAT-2 
 
 // Named S35 (not S19 — that id is already used above by the cold-open
 // quick-switcher scenarios) to avoid a duplicate scenario id in this file.
-test.describe("Phase 7 — Today expands the daily folder (S35 / pp9)", () => {
+test.describe("Today expands the daily folder (S35 / pp9)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1653,7 +1653,7 @@ test.describe("Phase 7 — Today expands the daily folder (S35 / pp9)", () => {
 });
 
 
-test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
+test.describe("Cmd+B/I CM6 wrap toggle", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1748,7 +1748,7 @@ test.describe("Phase 7 — Cmd+B/I CM6 wrap toggle (S20 / UAT-2 R1-4)", () => {
 });
 
 
-test.describe("Phase 7 — Single-session edit produces NO phantom conflict banner (S21 / UAT-2 N8)", () => {
+test.describe("Single-session edit produces NO phantom conflict banner", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1860,7 +1860,7 @@ test.describe("Phase 7 — Single-session edit produces NO phantom conflict bann
 });
 
 
-test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop snap (S24 / UAT-3 N9, R1-5, R1-6)", () => {
+test.describe("SaveIndicator-button in TopBar + Search icon + drop snap (S24 R1-5, R1-6)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1906,10 +1906,10 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
 
   test("S24b — clicking Search icon in activity ribbon opens the in-sidebar Search panel", async ({ page }) => {
     // v1.2 redesign: the Search affordance moved from SidebarToolbar to the
-    // activity ribbon (Phase 18), and it now opens the in-sidebar Search panel
+    // activity ribbon, and it now opens the in-sidebar Search panel
     // (SidebarSearchPanel) rather than an FTS5 modal dialog.
     //
-    // Phase 27 NAV-02 (D-09/D-10) then removed the ribbon's Files/Search
+    // NAV-02 then removed the ribbon's Files/Search
     // toggles entirely — panel selection now lives in the sidebar's own
     // SidebarTabRow (Notes / Search / Bookmarks icon tabs, aria-label
     // "Search"), which this test now drives instead. That row also does NOT
@@ -1946,7 +1946,7 @@ test.describe("Phase 7 — SaveIndicator-button in TopBar + Search icon + drop s
 });
 
 
-test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5)", () => {
+test.describe("Right-rail polish + alignment (S26 N4, N5)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -1958,7 +1958,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
   });
 
   test("S26a — right-rail toggle is visible when panels are selected; adding a tag populates the Tags panel", async ({ page }) => {
-    // Design change: the rail toggle (Collapse/Show panels — Phase 30 split
+    // Design change: the rail toggle (Collapse/Show panels — split
     // this into two separate buttons, RightRailTabRow's "Collapse panels"
     // when expanded and the tab-strip's "Show panels" when collapsed, rather
     // than one dynamically-named toggle) is always present regardless of
@@ -2004,8 +2004,8 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
   });
 
   // S26b removed in v1.2: the tags-panel "no chevron / has × close button"
-  // contract was deliberately reversed by the Phase 20 right-rail redesign
-  // (D-01/D-03). The unified SectionHeader now removes the per-panel close
+  // contract was deliberately reversed by the right-rail redesign.
+  // The unified SectionHeader now removes the per-panel close
   // button entirely and USES a ChevronDown/ChevronRight icon as its collapse
   // affordance — so both premises the test asserted (a "close tags panel"
   // button existing, and no chevron in the header) are intentionally gone.
@@ -2031,8 +2031,8 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
     await expect(page.locator(".cm-content:visible").first()).toBeVisible({ timeout: 5_000 });
 
     // v1.2 redesign: the editor content is now a self-centering 760px column
-    // (margin:0 auto, 21-01/D-14) and the sidebar toggle lives in the tab-strip
-    // chrome (Phase 18) above the editor. A pure horizontal edge comparison is
+    // (margin:0 auto, 21-01) and the sidebar toggle lives in the tab-strip
+    // chrome above the editor. A pure horizontal edge comparison is
     // therefore meaningless (the centered column's left edge sits far to the
     // right of the toggle). The real intent — the toggle must not visually
     // collide with the editor content — is preserved as a rectangle
@@ -2044,7 +2044,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
       a.y < b.y + b.height &&
       a.y + a.height > b.y;
 
-    // Phase 27 NAV-01/NAV-03 split the old single dynamically-named toggle
+    // NAV-01/NAV-03 split the old single dynamically-named toggle
     // into two buttons: SidebarTabRow's "Collapse sidebar" (shown while
     // expanded) and PaneCornerReopenButton's "Show sidebar" (shown while
     // collapsed).
@@ -2076,7 +2076,7 @@ test.describe("Phase 7 — Right-rail polish + alignment (S26 / UAT-2 N3, N4, N5
 });
 
 
-test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", () => {
+test.describe("Switcher title-fuzzy only (S28 split)", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
@@ -2113,7 +2113,7 @@ test.describe("Phase 7 — Switcher title-fuzzy only (S28 / UAT-5 N11 split)", (
 });
 
 
-test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07-34)", () => {
+test.describe("Sidebar OS-file drop target", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2221,7 +2221,7 @@ test.describe("Phase 7 — Sidebar OS-file drop target (S29 / UAT-3 N2 / Plan 07
 });
 
 
-test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UAT-3 N9 → UAT-4 N9 / D-55 partial-revert)", () => {
+test.describe("SaveIndicator-button click triggers reindex (S31 → partial-revert)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -2232,7 +2232,7 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     if (jasper) await jasper.kill();
   });
 
-  test("S31 (Plan 07-38) — clicking the SaveIndicator-button in StatusBar POSTs /api/v1/admin/reindex with mode=incremental", async ({ page }) => {
+  test("S31 — clicking the SaveIndicator-button in StatusBar POSTs /api/v1/admin/reindex with mode=incremental", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -2253,7 +2253,7 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
     expect(postData?.mode).toBe("incremental");
   });
 
-  test("S31b (Plan 07-38) — TopBar does NOT render SaveIndicator-button; standalone 'Reindex notes' button stays removed", async ({ page }) => {
+  test("S31b — TopBar does NOT render SaveIndicator-button; standalone 'Reindex notes' button stays removed", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -2274,12 +2274,12 @@ test.describe("Phase 7 — SaveIndicator-button click triggers reindex (S31 / UA
 });
 
 
-test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () => {
+test.describe("Switcher/Search split", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
 
-  test("S32 (Plan 07-39): Cmd+O switcher renders title-fuzzy ONLY; Sidebar search renders FTS5 hits with <mark>", async ({ page }) => {
+  test("S32: Cmd+O switcher renders title-fuzzy ONLY; Sidebar search renders FTS5 hits with <mark>", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await waitForConnected(page);
 
@@ -2334,7 +2334,7 @@ test.describe("Phase 7 — Switcher/Search split (S32 / UAT-5 N11 / D-57)", () =
 });
 
 
-test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33 / UAT-5 N2-sub-B)", () => {
+test.describe("Internal file drag via useTreeMutations.moveFile", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });
@@ -2409,7 +2409,7 @@ test.describe("Phase 7 — Internal file drag via useTreeMutations.moveFile (S33
 });
 
 
-test.describe("Phase 7 — Cmd+Shift+F opens search modal (S34 / UAT-6 / Plan 07-40)", () => {
+test.describe("Cmd+Shift+F opens search modal", () => {
   let jasper: JasperHandle;
   test.beforeAll(async () => { jasper = await spawnJasper(); });
   test.afterAll(async () => { if (jasper) await jasper.kill(); });

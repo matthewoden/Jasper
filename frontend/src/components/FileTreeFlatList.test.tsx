@@ -2,7 +2,7 @@
  * FileTree flat-list mode tests — the activeTagFilter branch.
  *
  * When activeTagFilter is non-null, FileTree reads tagsApi.tagNotesResource
- * (keyed on tag name, D-10 single-slot) and renders a simple list (no
+ * (keyed on tag name single-slot) and renders a simple list (no
  * arborist tree). When null, the normal tree renders. Scoped to the
  * flat-list branch only. `tagNotesResource` is built with the REAL
  * `createKeyedResource` (not mocked) so the layer's fetch-once/subscribe
@@ -129,7 +129,7 @@ beforeEach(() => {
     activeTagFilter: null,
   });
   listTagNotesMock.mockReset();
-  // tagNotesResource is a module-level singleton (D-10 single-slot); each
+  // tagNotesResource is a module-level singleton (single-slot); each
   // test reuses tag names like "foo" with different mocked data, so the
   // per-key cache must be cleared or a later test would read a prior
   // test's stale hydrated entry instead of refetching.
@@ -145,7 +145,7 @@ beforeEach(() => {
   });
 });
 
-describe("FileTree — flat-list mode (Phase 6 activeTagFilter branch)", () => {
+describe("FileTree — flat-list mode (activeTagFilter branch)", () => {
   it("FT1: when activeTagFilter is null, FileTree behaves exactly as before (renders arborist tree)", async () => {
     useTreeStore.setState({ activeTagFilter: null });
     renderFileTree();

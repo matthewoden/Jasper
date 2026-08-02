@@ -66,7 +66,7 @@ describe("AppearanceSection", () => {
     expect(screen.getByRole("button", { name: "Orange" })).toBeInTheDocument();
   });
 
-  it("names the accent swatch group, matching the sibling Reading font row (32-REVIEW WR-03)", () => {
+  it("names the accent swatch group, matching the sibling Reading font row (32-REVIEW)", () => {
     renderSection(makeConfig());
     const group = screen.getByRole("group", { name: "Accent color" });
     expect(group).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("AppearanceSection", () => {
     expect(persistReadingFontBootstrap).not.toHaveBeenCalled();
   });
 
-  it("tabbing through the font-size and line-height number inputs without changing any value issues zero saveConfig calls (WR-06)", () => {
+  it("tabbing through the font-size and line-height number inputs without changing any value issues zero saveConfig calls", () => {
     const { saveConfig } = renderSection(makeConfig());
     const fontSizeInput = screen.getByRole("spinbutton", { name: "Font size" });
     const lineHeightInput = screen.getByRole("spinbutton", { name: "Line height" });
@@ -169,7 +169,7 @@ describe("AppearanceSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("points both halves of each slider pair at the caption carrying the validator bounds (32-REVIEW WR-02)", () => {
+  it("points both halves of each slider pair at the caption carrying the validator bounds (32-REVIEW)", () => {
     renderSection(makeConfig());
 
     for (const [name, caption] of [

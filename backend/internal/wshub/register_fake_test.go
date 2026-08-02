@@ -10,7 +10,7 @@ package wshub
 // default branch, mirroring the production code's
 // `go c.closeOnce.Do(c.closeSlow)` call.
 //
-// WR-08 — LOAD-BEARING WARNING:
+// LOAD-BEARING WARNING:
 //
 // The returned *client has c.conn == nil. This is fine TODAY because
 // only writePump touches c.conn and writePump is never started for

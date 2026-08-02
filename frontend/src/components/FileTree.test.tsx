@@ -418,7 +418,7 @@ describe("FileTree helpers", () => {
 });
 
 
-describe("<FileTree /> — Plan 03-07 wiring", () => {
+describe("<FileTree /> — wiring", () => {
   it("TestFileTree_DeleteFlow_Note", async () => {
     const tree: Tree = {
       root: [
@@ -826,7 +826,7 @@ describe("resetTreeListLayout (Gap R2-3)", () => {
 });
 
 
-describe("<FileTree /> — Plan 03-22 (Gap R2-6) Direction B (filename → H1)", () => {
+describe("<FileTree /> — Direction B (filename → H1)", () => {
   type GetReturn = Awaited<ReturnType<typeof getNoteFresh>>;
   type PutReturn = Awaited<ReturnType<typeof updateNote>>;
 
@@ -1140,7 +1140,7 @@ describe('Bug F — file/folder duplicate-name validation', () => {
 });
 
 
-describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () => {
+describe("<FileTree /> — multi-select + batch operations", () => {
   function folderNodeStub(args: {
     id: string;
     path: string;
@@ -1182,7 +1182,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     } as unknown as NodeApi<ArboristNode>;
   }
 
-  it("UX-13: handleSelect deselects descendants when a folder enters selection", () => {
+  it("handleSelect deselects descendants when a folder enters selection", () => {
     const childA1 = noteNodeStub({ id: "n1", path: "a/x.md" });
     const childA2 = noteNodeStub({ id: "n2", path: "a/y.md" });
     const childA3 = folderNodeStub({
@@ -1208,7 +1208,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(deselect).toHaveBeenCalledTimes(4);
   });
 
-  it("UX-13: handleSelect is a no-op when only notes are selected (no folders)", () => {
+  it("handleSelect is a no-op when only notes are selected (no folders)", () => {
     const note1 = noteNodeStub({ id: "n1", path: "x.md" });
     const note2 = noteNodeStub({ id: "n2", path: "y.md" });
     const deselect = vi.fn<(id: string) => void>();
@@ -1216,7 +1216,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(deselect).not.toHaveBeenCalled();
   });
 
-  it("UX-13: handleMove iterates dragNodes and calls moveNote/moveFolder per source (executeBatchMove contract via executeBatchDelete-style helpers)", async () => {
+  it("handleMove iterates dragNodes and calls moveNote/moveFolder per source (executeBatchMove contract via executeBatchDelete-style helpers)", async () => {
     const muts = defaultMutsResult();
     muts.moveNote.mockResolvedValue(undefined);
     muts.moveFolder.mockResolvedValue(undefined);
@@ -1281,7 +1281,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(muts.moveFolder).toHaveBeenCalledWith("src", "dest/src");
   });
 
-  it("UX-13: handleMove skips no-op moves (computeMoveTarget.isNoOp branch)", async () => {
+  it("handleMove skips no-op moves (computeMoveTarget.isNoOp branch)", async () => {
     const muts = defaultMutsResult();
     muts.moveNote.mockResolvedValue(undefined);
 
@@ -1397,7 +1397,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(muts.moveFolder).not.toHaveBeenCalled();
   });
 
-  it("UX-13: handleRequestDelete with multi-selection sets multi target (buildMultiDeleteTarget)", () => {
+  it("handleRequestDelete with multi-selection sets multi target (buildMultiDeleteTarget)", () => {
     const buildSelected = (
       data: TreeRowData,
       arboristId: string,
@@ -1440,7 +1440,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(result).toEqual({ kind: "multi", count: 3 });
   });
 
-  it("UX-13: handleRequestDelete returns null when only one row is selected (single target)", () => {
+  it("handleRequestDelete returns null when only one row is selected (single target)", () => {
     const dataA: TreeRowData = {
       kind: "note",
       id: "n1",
@@ -1465,7 +1465,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(buildMultiDeleteTarget(dataOther, onlyOne)).toBeNull();
   });
 
-  it("UX-13: handleConfirmDelete with multi target iterates and deletes all (executeBatchDelete)", async () => {
+  it("handleConfirmDelete with multi target iterates and deletes all (executeBatchDelete)", async () => {
     const muts = {
       deleteNote: vi.fn().mockResolvedValue(undefined),
       deleteFolder: vi.fn().mockResolvedValue(undefined),
@@ -1507,7 +1507,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
     expect(result).toEqual({ succeeded: 3, total: 3 });
   });
 
-  it("UX-13: handleConfirmDelete with multi target surfaces partial-completion when some deletes fail", async () => {
+  it("handleConfirmDelete with multi target surfaces partial-completion when some deletes fail", async () => {
     const muts = {
       deleteNote: vi
         .fn()
@@ -1554,7 +1554,7 @@ describe("<FileTree /> — UX-13 multi-select + batch operations (Plan 07)", () 
 });
 
 
-describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
+describe("DnD cycle + mixed-kind", () => {
   function folderNode(path: string): NodeApi<ArboristNode> {
     const arborist: ArboristNode = {
       id: "folder:" + path,
@@ -1676,7 +1676,7 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
   });
 
 
-  it("WR-08: dragIds are derived from api.dragNodes.map(n => n.id), not api.state.dnd.dragIds", () => {
+  it("dragIds are derived from api.dragNodes.map(n => n.id), not api.state.dnd.dragIds", () => {
     const nodes: NodeApi<ArboristNode>[] = [
       folderNode("archive/old"),
       noteNode({ id: "n1", path: "projects/x.md" }),
@@ -1687,7 +1687,7 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
     // helper is pure and depends only on the documented surface.
   });
 
-  it("WR-08: dragIds shape matches dragNodes ids in iteration order", () => {
+  it("dragIds shape matches dragNodes ids in iteration order", () => {
     const nodes: NodeApi<ArboristNode>[] = [
       folderNode("a"),
       folderNode("b"),
@@ -1702,8 +1702,8 @@ describe("Phase 5.5 gap-closure Plan 10 — DnD cycle + mixed-kind", () => {
 });
 
 
-describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTarget", () => {
-  it("WR-09 / Test 4: handleRequestDelete (note branch) routes the canonical id to deleteNote", async () => {
+describe("canonical id/path on DeleteTarget", () => {
+  it("Test 4: handleRequestDelete (note branch) routes the canonical id to deleteNote", async () => {
     const tree: Tree = {
       root: [
         {
@@ -1742,7 +1742,7 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     });
   });
 
-  it("WR-09 / Test 5: handleRequestDelete (folder branch) routes the canonical path to deleteFolder", async () => {
+  it("Test 5: handleRequestDelete (folder branch) routes the canonical path to deleteFolder", async () => {
     const tree: Tree = {
       root: [
         {
@@ -1791,13 +1791,13 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
     });
   });
 
-  it("WR-09 / Tests 6-7: handleConfirmDelete uses target.id / target.path directly (no name-based lookup helpers)", () => {
+  it("Tests 6-7: handleConfirmDelete uses target.id / target.path directly (no name-based lookup helpers)", () => {
     const fileTreeSrc = String(FileTree.toString());
     expect(fileTreeSrc).not.toMatch(/findNoteIdByName/);
     expect(fileTreeSrc).not.toMatch(/findFolderPathByName/);
   });
 
-  it("WR-09 / Test 8: basename collision regression — two notes named Foo.md, deleting the SUBFOLDER one removes only the subfolder note", async () => {
+  it("Test 8: basename collision regression — two notes named Foo.md, deleting the SUBFOLDER one removes only the subfolder note", async () => {
     const tree: Tree = {
       root: [
         {
@@ -1862,7 +1862,7 @@ describe("Phase 5.5 gap-closure Plan 13 — WR-09 canonical id/path on DeleteTar
 });
 
 
-describe("FT-folder-default — folders default CLOSED (UAT-2 N1 / Plan 07-29)", () => {
+describe("FT-folder-default — folders default CLOSED", () => {
   const twoFolderTree: Tree = {
     root: [
       {
@@ -1979,13 +1979,13 @@ function makeOsFileDragEvent(
   return evt;
 }
 
-describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3 N2)", () => {
+describe("FT-no-external-drop — sidebar accepts OS file drag", () => {
   beforeEach(() => {
     mockedUpload.mockReset();
     mockedBcast.mockReset();
   });
 
-  it("FT-NED-1: dragover with 'Files' calls stopPropagation AND preventDefault (Plan 07-34)", async () => {
+  it("FT-NED-1: dragover with 'Files' calls stopPropagation AND preventDefault", async () => {
     const tree: Tree = {
       root: [
         {
@@ -2212,7 +2212,7 @@ describe("FT-no-external-drop — sidebar accepts OS file drag (UAT-2 N2 + UAT-3
     });
   });
 
-  describe("FT-N2-MD — markdown drops create notes (Plan 07-39 / UAT-5 N2-sub-A)", () => {
+  describe("FT-N2-MD — markdown drops create notes", () => {
     beforeEach(() => {
       mockedCreateNoteFromMarkdownDrop.mockReset();
       mockedUpload.mockReset();

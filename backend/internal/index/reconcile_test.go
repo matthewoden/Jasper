@@ -178,7 +178,7 @@ func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	}
 }
 
-// TestReconcile_ReadoptsRestoredFile — TRASH-05 (D-05) regression: a .md file
+// TestReconcile_ReadoptsRestoredFile — TRASH-05 regression: a .md file
 // moved back into notes/ (manual restore from .trash/) is re-adopted by an
 // incremental Reconcile with a FRESH, non-nil UUID.
 //
@@ -297,7 +297,7 @@ func TestReconcile_NoChecksumWritten_Phase2Deferral(t *testing.T) {
 			t.Fatal(err)
 		}
 		if c != "" {
-			t.Errorf("checksum_sha256: got %q, want empty (Phase 2 deferral)", c)
+			t.Errorf("checksum_sha256: got %q, want empty (checksum fallback is not implemented)", c)
 		}
 	}
 }

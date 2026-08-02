@@ -5,8 +5,8 @@
  * view keeping its own independent selection, and the syncAnnotation guard
  * that prevents re-broadcast loops.
  *
- * Coverage (Task 2 — Pitfall 2): single undo-history owner + promotion on
- * primary unregister, following the Plan 01 spike's documented outcome
+ * Coverage: single undo-history owner + promotion on
+ * primary unregister, following the spike's documented outcome
  * (history does NOT survive Compartment.reconfigure — keep the closing
  * primary's EditorView alive off-DOM instead of destroying it).
  */
@@ -138,7 +138,7 @@ describe("sharedDocRegistry — Task 1: registry + syncDispatch (N-view live mir
   });
 });
 
-describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on-unregister (Pitfall 2)", () => {
+describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on-unregister", () => {
   it("only the primary records history; undo/redo invoked via the primary affects the shared doc", () => {
     const noteId = "note-5";
     const viewA = makeHistoryView(noteId, "hello", true); // primary
@@ -232,7 +232,7 @@ describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on
     viewC.destroy();
   });
 
-  it("CR-02 regression (25-REVIEW.md): closing the PRIMARY pane before its sibling releases the entry — no leaked detached primary", () => {
+  it("regression: closing the PRIMARY pane before its sibling releases the entry — no leaked detached primary", () => {
     const noteId = "note-cr02";
     const viewA = makeHistoryView(noteId, "hello", true); // primary
     const viewB = makeHistoryView(noteId, "hello", false); // survivor
@@ -246,7 +246,7 @@ describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on
     // Now the only remaining pane (the survivor, viewB) closes too — this is
     // the SINGLE unregisterView call MarkdownEditor's own unmount cleanup
     // actually makes per view; nothing else ever calls unregisterView a
-    // second time for the departed primary in production. Before the CR-02
+    // second time for the departed primary in production. Before the
     // fix, this left `viewA` (and the registry entry) permanently leaked —
     // getPrimaryView(noteId) kept returning the detached, undestroyed viewA
     // forever, and (via EditorPane's getPrimaryView(id) === null gate) the
@@ -267,7 +267,7 @@ describe("sharedDocRegistry — Task 2: single undo-history owner + promotion-on
     viewC.destroy();
   });
 
-  it("CR-02 regression: the ORIGINAL (secondary-then-primary) close order still fully releases the entry", () => {
+  it("regression: the ORIGINAL (secondary-then-primary) close order still fully releases the entry", () => {
     // Documents that the fix does not regress the already-correct order —
     // only the previously-broken primary-first order needed a code change.
     const noteId = "note-cr02b";

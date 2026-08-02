@@ -109,7 +109,7 @@ function canonVaultPath(p: string): string {
   return process.platform === "darwin" ? real.toLowerCase() : real;
 }
 
-test.describe("Phase 8 R4-6 — violet folder tint via data-ai-level", () => {
+test.describe("violet folder tint via data-ai-level", () => {
   test("granted folder + descendant note both get data-ai-level on the row element", async ({
     page,
   }) => {

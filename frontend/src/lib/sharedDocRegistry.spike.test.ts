@@ -1,5 +1,5 @@
 /**
- * SPIKE OUTCOME (Open Question 1): history resets on reconfigure — Plan 03 MUST
+ * SPIKE OUTCOME: history resets on reconfigure — callers MUST
  * keep the closing primary's EditorView alive off-DOM (detached, not destroyed)
  * to retain history until the note fully closes.
  *
@@ -11,7 +11,7 @@
  * proves that empirically: edits recorded on the secondary view BEFORE promotion
  * are NOT undoable after `historyCompartment.reconfigure(history())` runs.
  *
- * Consequence for Plan 03 (Pattern 2 promotion): do NOT rely on a bare
+ * Consequence for promotion: do NOT rely on a bare
  * Compartment.reconfigure to hand off undo history when the primary view's pane
  * closes. Instead, keep the original primary EditorView alive but detached from
  * the DOM (not destroyed) so its history StateField (and thus its undo stack)
@@ -20,7 +20,7 @@
  * Undo/Redo keys on ANY view for the note route to the (possibly off-DOM)
  * primary's own dispatch, not to the promoted view's freshly-emptied history.
  *
- * This is the RESEARCH.md fallback (Open Question 1 / Assumption A2), now
+ * This is the documented fallback, now
  * confirmed as the actual required path rather than a defensive fallback.
  */
 import { describe, expect, it } from "vitest";
@@ -41,7 +41,7 @@ describe("sharedDocRegistry spike — undo-history promotion via Compartment.rec
     // other's (not-yet-constructed) EditorView without needing `let` bindings.
     const refs: { a?: EditorView; b?: EditorView } = {};
 
-    // Minimal local syncDispatch (per RESEARCH.md Pattern 1): apply the
+    // Minimal local syncDispatch: apply the
     // transaction locally, then re-dispatch ONLY tr.changes (never selection)
     // to the other view, tagged so it does not re-broadcast.
     function dispatchA(tr: Transaction): void {

@@ -36,7 +36,7 @@ vi.mock("./sessionId", () => ({
 // treeResource is rebuilt fresh here with the REAL createResource (mirrors
 // plan 07's useBacklinks.test.ts pattern) so ws.onopen's explicit
 // treeResource.invalidate() call and every mutation-event publish() below
-// exercise the real D-12/D-13 wiring end to end — only the network-facing
+// exercise the real invalidation wiring end to end — only the network-facing
 // fetch (mockGetTree) is faked.
 const mockGetTree = vi.fn().mockResolvedValue({ data: { root: [] } });
 vi.mock("./treeApi", async () => {
@@ -94,7 +94,7 @@ describe("useSessionSync", () => {
     expect(invalidateSpy).toHaveBeenCalled();
   });
 
-  it("D-05 reconnect order: treeResource.invalidate() fires BEFORE setStatus('connected')", async () => {
+  it("reconnect order: treeResource.invalidate() fires BEFORE setStatus('connected')", async () => {
     server = new Server(fakeUrl);
     const invalidateSpy = vi.spyOn(treeResource, "invalidate");
     const handlers = makeHandlers();
@@ -162,7 +162,7 @@ describe("useSessionSync", () => {
 
     const reindexStartedEvt: WSEnvelope = {
       event: "reindex:started",
-      origin_session_id: "", // server-originated (Pitfall 5)
+      origin_session_id: "", // server-originated
       payload: {},
     };
     server.emit("message", JSON.stringify(reindexStartedEvt));
@@ -170,7 +170,7 @@ describe("useSessionSync", () => {
 
     const reindexCompleteEvt: WSEnvelope = {
       event: "reindex:complete",
-      origin_session_id: "", // server-originated (Pitfall 5)
+      origin_session_id: "", // server-originated
       payload: { notes_indexed: 5 },
     };
     server.emit("message", JSON.stringify(reindexCompleteEvt));
@@ -179,7 +179,7 @@ describe("useSessionSync", () => {
     unsubscribe();
   });
 
-  it("server-originated events (origin_session_id='') reach the tab even when own sid is not empty (Pitfall 5)", async () => {
+  it("server-originated events (origin_session_id='') reach the tab even when own sid is not empty", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
     renderHook(() => useSessionSync(handlers, { wsUrlFn: () => fakeUrl }));
@@ -195,7 +195,7 @@ describe("useSessionSync", () => {
 });
 
 
-describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
+describe("SS1..SS7: useSessionSync extensions", () => {
   let server: Server;
 
   afterEach(() => {
@@ -266,7 +266,7 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
   });
 
 
-  it("SS4: links:rewritten with own session_id is suppressed (D-35)", async () => {
+  it("SS4: links:rewritten with own session_id is suppressed", async () => {
     server = new Server(fakeUrl);
     const handlers = makeHandlers();
     const onLinksRewritten = vi.fn();
@@ -357,7 +357,7 @@ describe("SS1..SS7: useSessionSync Plan 06-11 extensions", () => {
 });
 
 
-describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
+describe("VS1..VS2: useSessionSync vault switch extensions", () => {
   let server: Server;
 
   afterEach(() => {
@@ -414,7 +414,7 @@ describe("VS1..VS2: useSessionSync Plan 08-17d vault switch extensions", () => {
 });
 
 
-describe("Plan 08: treeResource invalidation costs nothing while nobody's looking", () => {
+describe("treeResource invalidation costs nothing while nobody's looking", () => {
   let server: Server;
 
   afterEach(() => {

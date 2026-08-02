@@ -2,7 +2,7 @@
  * Tests for useBacklinks — the reactive hook that drives the backlinks rail.
  *
  * `backlinksResource` is built with the REAL `createKeyedResource` (not
- * mocked) so the resource layer's D-10 single-slot/coalescing/invalidation
+ * mocked) so the resource layer's single-slot/coalescing/invalidation
  * semantics are exercised for real — only the network-facing
  * `getNoteBacklinks` fetcher is mocked via `./backlinksApi`.
  */
@@ -263,7 +263,7 @@ describe("UB8: tags:rewritten does NOT trigger a refetch (deliberate exclusion)"
 });
 
 
-describe("UB9: switching noteId evicts the previous note's entry (D-10 single-slot)", () => {
+describe("UB9: switching noteId evicts the previous note's entry (single-slot)", () => {
   it("A to B evicts A's cache entry; returning to A refetches", async () => {
     mockGetNoteBacklinks.mockImplementation((id: string) =>
       Promise.resolve(id === "note-A" ? [ROW_A] : [ROW_B]),
@@ -280,7 +280,7 @@ describe("UB9: switching noteId evicts the previous note's entry (D-10 single-sl
     rerender({ noteId: "note-B" });
     await waitFor(() => expect(result.current.backlinks).toEqual([ROW_B]));
 
-    // A's slot was evicted on B's 0->1 subscribe (D-10) — the entry no
+    // A's slot was evicted on B's 0->1 subscribe — the entry no
     // longer exists at all, not merely stale.
     expect(
       backlinksResource.forKey("note-A").peek().hydrated,

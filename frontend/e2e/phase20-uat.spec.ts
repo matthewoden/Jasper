@@ -1,20 +1,20 @@
 /**
- * Phase 20 UAT — Right Sidebar: Outline & Linked Mentions.
+ * Right Sidebar: Outline & Linked Mentions.
  *
  * RSIDE-01: the Outline panel parses headings from the LIVE CM6 document,
- *   indents rows by heading level (8 + (level-1)*12 px per 20-UI-SPEC.md),
+ *   indents rows by heading level (8 + (level-1)*12 px),
  *   includes the title-bound first H1, shows "No headings" when a note has
  *   none, and a row click smooth-scrolls (CSS `scroll-behavior: smooth` on
- *   `.cm-scroller`) + moves the cursor to that heading line (D-13).
+ *   `.cm-scroller`) + moves the cursor to that heading line.
  * RSIDE-02: Linked mentions renders one card per linking note (accent title,
- *   `useTabStore.getState().openTab` on click — D-15), stacked per-mention
- *   excerpts (D-16/D-17), and "No backlinks found" when there are none
- *   (D-19). The header count badge (D-18) was dropped in Phase 31
- *   (D-01/D-02) along with all right-rail sub-headers — no longer asserted.
- * Chrome model (D-01..D-07): the tab-bar toggle is the sidebar's only
+ * `useTabStore.getState().openTab` on click), stacked per-mention
+ *   excerpts, and "No backlinks found" when there are none.
+ * The header count badge was dropped along with all right-rail
+ * sub-headers — no longer asserted.
+ * Chrome model: the tab-bar toggle is the sidebar's only
  *   show/hide control; the rail is visible by default on a fresh profile.
  *   The three sections (Outline / Linked mentions / Tags) are now exactly
- *   one mounted panel at a time, switched via the icon tab row (Phase 30
+ * one mounted panel at a time, switched via the icon tab row (the
  *   TAGS-01 rework; superseded the original independent SectionHeaders).
  *
  * Harness mirrors phase19-uat.spec.ts: spawnJasper() per describe block
@@ -80,7 +80,7 @@ function outlineList(page: Page) {
 }
 
 /**
- * Right-rail icon-tab row (Phase 30 TAGS-01 rework — replaces the Phase 20
+ * Right-rail icon-tab row (TAGS-01 rework — replaces the earlier
  * three-collapsible-sections rail). Exactly one panel is mounted at a time,
  * selected by clicking one of these three icon-only tab buttons.
  */
@@ -141,7 +141,7 @@ test.describe("@phase20 RSIDE-01: Outline lists headings indented by level, firs
       "Section Three",
     ]);
 
-    // Indent increases strictly per level (8 + (level-1)*12 px per 20-UI-SPEC.md).
+    // Indent increases strictly per level (8 + (level-1)*12 px).
     const indentOf = async (loc: ReturnType<typeof outlineHeadingRow>) =>
       await loc.evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
     const [i1, i2, i3] = await Promise.all([
@@ -263,12 +263,12 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
     await targetRow.click();
 
     // Linked mentions is not the default rail tab (Outline is) — switch to
-    // it before asserting the panel's count badge/cards (Phase 30 TAGS-01
+    // it before asserting the panel's count badge/cards (TAGS-01
     // single-mounted-panel tab-row model).
     await railTab(page, "Linked mentions").click();
 
     // Panel-level counts (the sub-header's count badge) were dropped
-    // entirely in Phase 31 (D-01/D-02) and do not relocate — only the
+    // entirely and do not relocate — only the
     // cards/openTab/excerpts behavior below remains in scope.
     const cardTitle = page.getByRole("button", { name: "Open note: linking-note" });
     await expect(cardTitle).toBeVisible();
@@ -309,13 +309,13 @@ test.describe("@phase20 RSIDE-02: Linked-mentions cards, count badge, openTab, e
 
 // ─── Chrome model: default-visible rail + single-mounted-panel tab-row ──
 //
-// The Phase 20 three-collapsible-sections rail (independent SectionHeader
+// The earlier three-collapsible-sections rail (independent SectionHeader
 // aria-expanded state per section, all three stacked and visible at once)
-// was REPLACED by the Phase 30 TAGS-01 tab-row rework (RightRail.tsx):
+// was REPLACED by the TAGS-01 tab-row rework (RightRail.tsx):
 // exactly ONE panel (Outline / Linked mentions / Tags) is mounted at a
 // time, selected by a 30x30 icon-tab row, with no per-section collapse
 // affordance left anywhere in the rail. This test is rewritten to guard
-// the current equivalent of the same user value this Phase 20 test
+// the current equivalent of the same user value this test
 // protected — "the right rail renders by default and its panel-switching
 // affordance works" — using the icon-tab row instead of section headers.
 //

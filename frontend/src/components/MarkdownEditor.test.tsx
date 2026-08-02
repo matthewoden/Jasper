@@ -89,7 +89,7 @@ describe("<MarkdownEditor />", () => {
     expect(onChange).toHaveBeenCalledWith("typed");
   });
 
-  it("applyServerUpdate updates the document but does NOT trigger onChange (D-10)", () => {
+  it("applyServerUpdate updates the document but does NOT trigger onChange", () => {
     const probeRef = { current: null as ProbeRef | null };
     const onChange = vi.fn();
     renderWithToast(<Probe ref={probeRef} initialDoc="" onChange={onChange} />);
@@ -125,7 +125,7 @@ describe("<MarkdownEditor />", () => {
     expect(() => probeRef.current?.ed()?.focus()).not.toThrow();
   });
 
-  it("renders with data-testid='markdown-editor' for E2E selection (Plan 05-12)", () => {
+  it("renders with data-testid='markdown-editor' for E2E selection", () => {
     const { container } = renderWithToast(<Probe initialDoc="" onChange={vi.fn()} />);
     expect(container.querySelector('[data-testid="markdown-editor"]')).not.toBeNull();
   });
@@ -186,7 +186,7 @@ describe("<MarkdownEditor />", () => {
     expect(document.activeElement).toBe(view!.contentDOM);
   });
 
-  it("onBlur fires when CM6 contentDOM blurs (UX-07)", () => {
+  it("onBlur fires when CM6 contentDOM blurs", () => {
     const onBlur = vi.fn();
     const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} onBlur={onBlur} />,
@@ -199,7 +199,7 @@ describe("<MarkdownEditor />", () => {
     expect(onBlur).toHaveBeenCalledTimes(1);
   });
 
-  it("onBlur is undefined-safe (UX-07)", () => {
+  it("onBlur is undefined-safe", () => {
     const { container } = renderWithToast(
       <Probe initialDoc="hello" onChange={vi.fn()} />,
     );
@@ -222,7 +222,7 @@ describe("<MarkdownEditor />", () => {
     expect(["pre-wrap", "break-spaces"]).toContain(ws);
   });
 
-  describe("shared-doc registry sync (WS-10, Plan 05)", () => {
+  describe("shared-doc registry sync (WS-10)", () => {
     it("a change dispatched in one view mirrors into another view sharing the same noteId, without re-invoking the receiving view's onChange", () => {
       const noteId = "shared-note-sync";
       const probeARef = { current: null as ProbeRef | null };
@@ -276,7 +276,7 @@ describe("<MarkdownEditor />", () => {
     });
   });
 
-  describe("WR-04 regression (25-REVIEW.md): attachment resolution uses THIS pane's own noteId, not the global activeNoteId", () => {
+  describe("regression: attachment resolution uses THIS pane's own noteId, not the global activeNoteId", () => {
     afterEach(() => {
       useTreeStore.setState({ activeNoteId: null });
     });
@@ -312,7 +312,7 @@ describe("<MarkdownEditor />", () => {
     });
   });
 
-  describe("search commands (P26, WS-09/D-01)", () => {
+  describe("search commands (P26, WS-09)", () => {
     it("matchInfo returns {0,0} before any search query is set", () => {
       const probeRef = { current: null as ProbeRef | null };
       renderWithToast(

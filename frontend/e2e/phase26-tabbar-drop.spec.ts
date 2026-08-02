@@ -1,5 +1,5 @@
 /**
- * Phase 26 polish UAT — Cross-pane tab-BAR positional insert (Obsidian
+ * polish UAT — Cross-pane tab-BAR positional insert (Obsidian
  * parity, P26 quick-task 260718-n6a).
  *
  * Dragging a tab onto a FOREIGN pane's tab STRIP (not its body) shows an
@@ -16,7 +16,7 @@
  * memory). Zero fixed sleeps; every timing-sensitive step uses a web-first
  * assertion.
  *
- * Selector contract (reuses the Phase 25/26 contract):
+ * Selector contract (reuses the 26 contract):
  *   - Leaf pane:               [data-testid="leaf-pane"]
  *   - Tab strip:                [data-testid="tab-strip"]
  *   - Foreign-strip caret:      [data-testid="tab-drop-indicator"]
@@ -24,7 +24,7 @@
  *
  * Same-pane in-strip reorder (drag pill 0 past pill 1 within ONE strip) is
  * NOT re-verified here — it is the untouched React-synthetic
- * handleStripPointerMove/Up path (CR-01), already covered exhaustively by
+ * handleStripPointerMove/Up path, already covered exhaustively by
  * TabStrip.test.tsx and phase25-uat.spec.ts's own reorder scenarios.
  */
 import { test, expect, type Page, type Locator } from "@playwright/test";
@@ -173,7 +173,7 @@ test.describe("@drag P26 polish: cross-pane tab-BAR positional insert (Obsidian 
     // Pane A: alpha + beta. "Split right" CLONES the active tab (beta) into
     // pane B, so opening xray in B yields B = [beta, xray]. Dragging alpha
     // (only in A) into B is a clean positional insert: alpha is not already in
-    // B (no D-07 dedup) and A keeps beta afterwards (no D-06 collapse).
+    // B (no dedup) and A keeps beta afterwards (no collapse).
     await openNoteFromTree(page, idAlpha);
     await openNoteFromTree(page, idBeta);
     await splitRight(page);

@@ -281,14 +281,14 @@ func TestPostSetup_HappyPath(t *testing.T) {
 	// app.db is created by the migration runner on first server boot,
 	// not by setup/RunSetup/CreateVault.
 	if _, err := os.Stat(vault.AppDBPath(target)); err == nil {
-		t.Fatalf("setup should NOT create app.db (D-04); got file at %s", vault.AppDBPath(target))
+		t.Fatalf("setup should NOT create app.db; got file at %s", vault.AppDBPath(target))
 	}
 	if _, err := os.Stat(filepath.Join(target, "notes")); err != nil {
 		t.Fatalf("notes/ missing: %v", err)
 	}
 }
 
-// SH7: the wizard payload no longer carries mcp_enabled (Phase 24 D-06);
+// SH7: the wizard payload no longer carries mcp_enabled;
 // the MCP listener config (port/bind) must still persist to disk so the
 // listener has something to bind on the next (always-on) boot.
 func TestPostSetup_McpConfigAlwaysPersisted(t *testing.T) {

@@ -1,7 +1,7 @@
 /**
  * Tests for the Surface 2 Reset-and-Rebuild Confirmation dialog.
  *
- * Covers the locked UI-SPEC §Surface 2 copy and interaction contract.
+ * Covers the locked copy and interaction contract.
  * Radix AlertDialog manages focus trap + ESC + outside-click; we assert
  * that our wiring of `onOpenChange` / `onConfirm` is correct, not that
  * Radix internally implements the focus trap (that's Radix's test suite).
@@ -101,7 +101,7 @@ describe("<ResetAndRebuildDialog />", () => {
     expect(hasFalse).toBe(true);
   });
 
-  it("RD6: confirm button uses semibold weight (locked styling — UI-SPEC §Surface 2)", () => {
+  it("RD6: confirm button uses semibold weight (locked styling)", () => {
     render(
       <ResetAndRebuildDialog
         open={true}

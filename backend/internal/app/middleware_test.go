@@ -311,7 +311,7 @@ func TestCSRFOriginMiddleware_DeleteAllows(t *testing.T) {
 	}
 }
 
-// TestPatchConfig_ForeignOrigin_403 — T-32.1-03: proves (rather than
+// TestPatchConfig_ForeignOrigin_403 proves (rather than
 // assumes) that csrfOriginMiddleware's method-agnostic design
 // (csrfSafeMethods = GET/HEAD/OPTIONS only) already covers the new PATCH
 // verb. Asserts PATCH-with-foreign-Origin 403 and PATCH-with-allowed-Origin

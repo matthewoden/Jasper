@@ -141,7 +141,7 @@ beforeEach(() => {
 
 /**
  * The palette input is role="textbox" in commands/search mode but
- * role="combobox" in notes mode (D-13/D-16 ARIA wiring, 28-04). Tests that
+ * role="combobox" in notes mode (ARIA wiring, 28-04). Tests that
  * don't care which mode is under test query via this helper instead of a
  * hardcoded role.
  */
@@ -489,7 +489,7 @@ describe("CMM-N11-SPLIT — switcher is title-fuzzy only", () => {
     }
   });
 
-  it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows the create row, not a search result (28-05: create row replaces the old 'no matches' empty state per UI-SPEC)", () => {
+  it("CMM-N11-SPLIT-3: a body-only match (no title fuzzy hit) shows the create row, not a search result — the create row replaces the old 'no matches' empty state", () => {
     mockUseQuickSwitcher.mockReturnValue([]);
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
@@ -541,7 +541,7 @@ describe("CMM-SEARCH-MODE — CommandMenu mode='search'", () => {
     expect(screen.getByPlaceholderText("Search notes…")).toBeTruthy();
   });
 
-  it("CMM-SEARCH-MODE-2: typing < 2 chars renders an indicator or empty hint (post UAT-8)", () => {
+  it("CMM-SEARCH-MODE-2: typing < 2 chars renders an indicator or empty hint", () => {
     mockUseSearch.mockReturnValue({ results: [], isSearching: false });
     render(<CommandMenu {...defaultSearchProps} />);
     const input = getPaletteInput();
@@ -691,7 +691,7 @@ describe("CMM-UAT8FU — measureElement gated on search-result rows only", () =>
     expect(noteRow?.hasAttribute("data-index")).toBe(false);
   });
 
-  it("CMM-UAT8FU-3: in mode='search', search-result rows DO have data-index (measureElement preserved from Plan 07-42)", () => {
+  it("CMM-UAT8FU-3: in mode='search', search-result rows DO have data-index (measureElement preserved from)", () => {
     mockUseSearch.mockReturnValue({ results: [FTS5_HIT], isSearching: false });
 
     render(<CommandMenu open={true} onOpenChange={vi.fn()} mode="search" actions={{}} />);
@@ -910,10 +910,10 @@ describe("CommandMenu — regression: scoped modes stay isolated", () => {
 });
 
 
-describe("CommandMenu — kind badges (D-01 restyle)", () => {
-  // D28.1 reverses D-14: owner mock-reconciliation adds a leading "Note" badge
+describe("CommandMenu — kind badges", () => {
+  // Owner mock-reconciliation adds a leading "Note" badge
   // so every quick-switcher row shares an aligned leading badge column.
-  it("note rows carry a leading 'Note' kind badge (D28.1, reverses D-14)", () => {
+  it("note rows carry a leading 'Note' kind badge (D28.1, reverses)", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
     expect(screen.getByText("Note", { exact: true })).toBeTruthy();
@@ -972,7 +972,7 @@ describe("CMM-28.1-03-CATEGORY — command palette category sub-label", () => {
 });
 
 
-describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitle (D-14/D-15/D-16)", () => {
+describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitle", () => {
   it("a note row's folder path renders as a second-line subtitle, not a same-line badge/right-align", () => {
     mockUseQuickSwitcher.mockReturnValue([
       { id: "n1", title: "Meeting Notes", path: "Work/meeting.md" },
@@ -1023,7 +1023,7 @@ describe("CMM-28-04-ROWS — two-line notes rows, match highlight, Vault subtitl
 });
 
 
-describe("CMM-28-04-FOOTER — always-on footer legend (D-13, D28.1-01: 5 hints)", () => {
+describe("CMM-28-04-FOOTER — always-on footer legend (D28.1-01: 5 hints)", () => {
   it("renders the footer legend in notes mode with all five labels: navigate/open/create/split/dismiss", () => {
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Note A", path: "a.md" }]);
     render(<CommandMenu {...defaultNoteProps} />);
@@ -1094,7 +1094,7 @@ describe("CMM-28-04-ARIA — combobox/listbox/option roles (notes mode)", () => 
 });
 
 
-describe("CMM-28-05-CREATE — create row (D-07/D-08)", () => {
+describe("CMM-28-05-CREATE — create row", () => {
   it("shows the create row for a novel query with no exact title match", () => {
     mockUseQuickSwitcher.mockReturnValue([]);
     render(<CommandMenu {...defaultNoteProps} />);
@@ -1190,7 +1190,7 @@ describe("CMM-28-05-CREATE — create row (D-07/D-08)", () => {
 });
 
 
-describe("CMM-28-05-KEYS — Enter/Shift+Enter/Cmd+Shift+Enter wiring (D-05/07/09/10/11)", () => {
+describe("CMM-28-05-KEYS — Enter/Shift+Enter/Cmd+Shift+Enter wiring", () => {
   it("plain Enter on the create row creates + opens in the active pane, then closes", async () => {
     const onOpenChange = vi.fn();
     mockCreateNote.mockResolvedValue({ id: "new-1", title: "Brand New", path: "Brand New.md" });
@@ -1324,7 +1324,7 @@ describe("CMM-28-05-KEYS — Enter/Shift+Enter/Cmd+Shift+Enter wiring (D-05/07/0
 });
 
 
-describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
+describe("CMM-CLICK — mouse-click activation path", () => {
   it("CMM-CLICK-1: clicking a note row calls openTab(id) and never setActiveNote", () => {
     const onOpenChange = vi.fn();
     mockUseQuickSwitcher.mockReturnValue([{ id: "n1", title: "Meeting Notes", path: "meeting.md" }]);
@@ -1341,7 +1341,7 @@ describe("CMM-CLICK — mouse-click activation path (IN-02)", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("CMM-CLICK-2: clicking a search-result row calls openTab(id) and never setActiveNote (locks WR-01)", () => {
+  it("CMM-CLICK-2: clicking a search-result row calls openTab(id) and never setActiveNote", () => {
     const onOpenChange = vi.fn();
     const FTS5_HIT = {
       id: "n-click-search-1",

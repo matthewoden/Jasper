@@ -114,7 +114,7 @@ func TestRunStatus_RunningService_PrintsAllFields(t *testing.T) {
 }
 
 // TestRunStatus_McpListeningWithGrants pins the MCP summary line including
-// per-grant breakdown. The listener always starts (Phase 24 D-06); there
+// per-grant breakdown. The listener always starts; there
 // is no enable/disable toggle to pin here.
 func TestRunStatus_McpListeningWithGrants(t *testing.T) {
 	dir := t.TempDir()

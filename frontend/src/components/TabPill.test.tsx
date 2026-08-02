@@ -15,7 +15,7 @@ import { TooltipProvider } from "./Tooltip";
 import { MIN_TAB_WIDTH, MAX_TAB_WIDTH } from "../lib/tabOverflow";
 
 describe("<TabPill />", () => {
-  it("D-10: never renders a FileText note icon", () => {
+  it("never renders a FileText note icon", () => {
     render(
       <TabPill
         title="note.md"
@@ -266,7 +266,7 @@ describe("<TabPill />", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("D-14 / CR-02: middle-click on a PINNED pill calls onPinnedClickRefused, NOT onClose", () => {
+  it("middle-click on a PINNED pill calls onPinnedClickRefused, NOT onClose", () => {
     const onClose = vi.fn();
     const onPinnedClickRefused = vi.fn();
     render(
@@ -291,7 +291,7 @@ describe("<TabPill />", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("D-14 / CR-02: middle-click on an UNpinned pill still calls onClose (no regression)", () => {
+  it("middle-click on an UNpinned pill still calls onClose (no regression)", () => {
     const onClose = vi.fn();
     const onPinnedClickRefused = vi.fn();
     render(
@@ -339,7 +339,7 @@ describe("<TabPill />", () => {
       />,
     );
     const closeBtn = screen.getByRole("button", { name: "Close note.md" });
-    // The prior UAT-15.1-ALIGN bottom-pin hack (alignSelf:"flex-end" +
+    // The prior bottom-pin hack (alignSelf:"flex-end" +
     // marginBottom:6) is gone — the button now shares the pill row's own
     // alignItems:"center", landing on the same vertical center as the label.
     expect(closeBtn.style.alignSelf).toBe("");

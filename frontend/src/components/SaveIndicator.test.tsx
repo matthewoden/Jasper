@@ -92,14 +92,14 @@ describe("<SaveIndicator />", () => {
 });
 
 
-// Button mode always renders inside the shared Tooltip system (Phase 31 UAT
+// Button mode always renders inside the shared Tooltip system (UAT
 // #1) — every render in this describe block needs a TooltipProvider
 // ancestor or Radix throws.
 function renderButton(ui: React.ReactElement) {
   return render(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
-describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", () => {
+describe("<SaveIndicator /> — onClick (SaveIndicator-as-button)", () => {
   it("SI-BTN-1: with onClick prop, renders as a <button>", () => {
     const handler = vi.fn();
     const { container } = renderButton(
@@ -182,7 +182,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-cloud-off/);
   });
 
-  it("SI-BTN-8: aria-label is state copy + ' — click to refresh'; the tooltip (shared Tooltip, Phase 31 UAT #1) shows the same copy, no native title", () => {
+  it("SI-BTN-8: aria-label is state copy + ' — click to refresh'; the tooltip (shared Tooltip UAT #1) shows the same copy, no native title", () => {
     renderButton(<SaveIndicator state={{ status: "idle" }} onClick={vi.fn()} />);
     const btn = screen.getByRole("button");
     expect(btn.getAttribute("aria-label") ?? "").toMatch(/click to refresh/i);
@@ -191,7 +191,7 @@ describe("<SaveIndicator /> — onClick (Plan 07-37 SaveIndicator-as-button)", (
     expect(screen.getByText(/click to refresh/i)).toBeInTheDocument();
   });
 
-  it("SI-BTN-9a: button is disabled while status === 'saving' (DoS guard T-37-01)", () => {
+  it("SI-BTN-9a: button is disabled while status === 'saving' (DoS guard)", () => {
     const { container } = renderButton(
       <SaveIndicator
         state={{ status: "saving", startedAt: new Date() }}

@@ -3,7 +3,7 @@
  *
  * Layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
  *
- * Phase 31 UAT #3: the duplicate Settings gear (SettingsMenu) was removed
+ * The duplicate Settings gear (SettingsMenu) was removed
  * from the status bar — ActivityRibbon's own gear is the sole entry point
  * now (see ActivityRibbon.test.tsx for its coverage).
  *
@@ -93,7 +93,7 @@ describe("<StatusBar />", () => {
     expect(dot).toBeInTheDocument();
   });
 
-  it("Test2b_DotColumnMatchesRibbonWidth (Phase 31 UAT #2 — ribbon-column alignment)", () => {
+  it("Test2b_DotColumnMatchesRibbonWidth (UAT #2 — ribbon-column alignment)", () => {
     renderStatusBar();
     const column = screen.getByTestId("status-bar-dot-column");
     // 48px matches ActivityRibbon's own column width; -8px marginLeft
@@ -114,7 +114,7 @@ describe("<StatusBar />", () => {
     ).toBeTruthy();
   });
 
-  it("Test4_DoesNotRenderSettingsMenuInStatusBar (Phase 31 UAT #3 — duplicate gear removed)", () => {
+  it("Test4_DoesNotRenderSettingsMenuInStatusBar (UAT #3 — duplicate gear removed)", () => {
     renderStatusBar();
     expect(screen.queryByTestId("settings-menu-trigger")).not.toBeInTheDocument();
   });
@@ -138,8 +138,8 @@ describe("<StatusBar />", () => {
 });
 
 
-describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", () => {
-  it("SB-NO-REFRESH (preserved): no standalone 'Reindex notes' button is rendered (D-55 merge kept)", () => {
+describe("StatusBar — restored SaveIndicator-button", () => {
+  it("SB-NO-REFRESH (preserved): no standalone 'Reindex notes' button is rendered (merge kept)", () => {
     renderStatusBar();
     expect(screen.queryByRole("button", { name: "Reindex notes" })).toBeNull();
   });
@@ -170,14 +170,14 @@ describe("StatusBar — Plan 07-38 (UAT-4 N9) restored SaveIndicator-button", ()
     }
   });
 
-  it("SB-N9-3: the standalone 'Reindex notes' button is NOT rendered (Plan 07-37 removal preserved)", () => {
+  it("SB-N9-3: the standalone 'Reindex notes' button is NOT rendered (removal preserved)", () => {
     renderStatusBar();
     expect(screen.queryByTitle("Reindex notes")).toBeNull();
   });
 });
 
 
-describe("StatusBar — Plan 08-17c vault segment", () => {
+describe("StatusBar — vault segment", () => {
   it("SB-VAULT-1: vault segment NOT rendered when current is null", () => {
     vi.mocked(useVaultPicker).mockReturnValue({
       isOpen: false,
@@ -241,7 +241,7 @@ describe("StatusBar — Plan 08-17c vault segment", () => {
 });
 
 
-describe("StatusBar — Phase 22 Plan 03 zen toggle button (ZEN-01)", () => {
+describe("StatusBar — zen toggle button (ZEN-01)", () => {
   beforeEach(() => {
     useTreeStore.setState({ zen: false });
   });

@@ -167,7 +167,7 @@ describe("flush", () => {
   });
 });
 
-describe("release lifecycle (flush-before-release, T-25-04-Loss)", () => {
+describe("release lifecycle (flush-before-release)", () => {
   it("flushes a pending edit before releaseController resolves (no data loss)", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
@@ -269,7 +269,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
     expect(c.getContent()).toBe("initial");
   });
 
-  it("WR-02 regression (25-REVIEW.md): a silent adopt re-seeds lastH1Sent/lastNotePath so the NEXT edit does not trigger a spurious rename", async () => {
+  it("regression: a silent adopt re-seeds lastH1Sent/lastNotePath so the NEXT edit does not trigger a spurious rename", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("# Original Title\n\nbody", "original-title.md");
 
@@ -307,7 +307,7 @@ describe("onNoteUpdated — once-per-note WS reconciliation", () => {
   });
 });
 
-describe("subscribeContentReplaced (Plan 05: uncontrolled CM6 ref push on silent WS adopt)", () => {
+describe("subscribeContentReplaced (uncontrolled CM6 ref push on silent WS adopt)", () => {
   it("fires with the new content right after a silent onNoteUpdated adopt", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
@@ -354,7 +354,7 @@ describe("subscribeContentReplaced (Plan 05: uncontrolled CM6 ref push on silent
   });
 });
 
-describe("setNotePath (CR-01/CR-02: live tree path overrides the load-time seed)", () => {
+describe("setNotePath (live tree path overrides the load-time seed)", () => {
   it("a later setNotePath call is used as the rename comparator's current side", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("# Original\n\nbody", "untitled.md");
@@ -402,7 +402,7 @@ describe("onNoteDeleted", () => {
   });
 });
 
-describe("setSaveGate (Plan 05: reindex/connectionStatus gating reintroduced at the call site)", () => {
+describe("setSaveGate (reindex/connectionStatus gating reintroduced at the call site)", () => {
   it("a closed gate blocks a debounced save without transitioning saveState", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
@@ -442,7 +442,7 @@ describe("setSaveGate (Plan 05: reindex/connectionStatus gating reintroduced at 
     expect(updateNoteMock).toHaveBeenCalledWith("note-1", "edited again");
   });
 
-  it("WR-03 regression (25-REVIEW.md): setSaveGate is multi-owner — one pane's unregister must not clear another pane's gate", async () => {
+  it("regression: setSaveGate is multi-owner — one pane's unregister must not clear another pane's gate", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
 
@@ -455,7 +455,7 @@ describe("setSaveGate (Plan 05: reindex/connectionStatus gating reintroduced at 
     await vi.advanceTimersByTimeAsync(2000);
     expect(updateNoteMock).not.toHaveBeenCalled(); // pane B's gate still blocks
 
-    // Pane A unmounts (e.g. its tab closes) — before the WR-03 fix, a
+    // Pane A unmounts (e.g. its tab closes) — before the fix, a
     // single-slot `setSaveGate(null)` here would have cleared pane B's gate
     // too, since both panes shared one setter. With multi-owner gates, only
     // pane A's OWN predicate is removed.
@@ -474,7 +474,7 @@ describe("setSaveGate (Plan 05: reindex/connectionStatus gating reintroduced at 
   });
 });
 
-describe("discardPendingEdit (WR-02: no cross-note PUT on fallback-pane note switch)", () => {
+describe("discardPendingEdit (no cross-note PUT on fallback-pane note switch)", () => {
   it("cancels a pending debounced save without calling updateNote", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
@@ -498,7 +498,7 @@ describe("discardPendingEdit (WR-02: no cross-note PUT on fallback-pane note swi
   });
 });
 
-describe("setAutosaveMs (WR-04: async config arriving after mount)", () => {
+describe("setAutosaveMs (async config arriving after mount)", () => {
   it("a later setAutosaveMs call drives the NEXT debounce, not the construction-time value", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md");
@@ -524,7 +524,7 @@ describe("reportSaveFailed (Save-anyway direct-API failure reporting)", () => {
   });
 });
 
-describe("subscribeRenamed (Plan 05: EditorPane refreshTree() reintroduction)", () => {
+describe("subscribeRenamed (EditorPane refreshTree() reintroduction)", () => {
   it("fires with the new path right after a successful H1-driven rename", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("# Original\n\nbody", "original.md");

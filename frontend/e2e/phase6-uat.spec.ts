@@ -1,5 +1,5 @@
 /**
- * Phase 6 UAT — Tags, Backlinks, Wiki-Links.
+ * Tags, Backlinks, Wiki-Links.
  *
  * Scenarios:
  *   S1  : new note ships with frontmatter scaffold
@@ -202,10 +202,10 @@ async function openTabInContext(
 }
 
 /**
- * Reveal the right-rail Tags panel (Phase 30 TAGS-01 tab-row rework,
+ * Reveal the right-rail Tags panel (TAGS-01 tab-row rework,
  * 30-05/30-08).
  *
- * The Phase 20 three-section stacked/collapsible rail (independent
+ * The earlier three-section stacked/collapsible rail (independent
  * SectionHeader "Expand/Collapse <Title> panel" toggles per section) was
  * replaced by a single-panel-at-a-time tab row: RightRailTabRow renders
  * icon-only Outline / Linked mentions / Tags tabs (aria-label = the panel
@@ -220,7 +220,7 @@ async function expandTagBrowser(page: Page): Promise<void> {
     await showPanels.click();
   }
   await page.getByRole("button", { name: "Tags", exact: true }).click();
-  // Phase 31 D-01/D-03/D-05: the "Note tags" active-note section and the
+  // The "Note tags" active-note section and the
   // panel sub-header it lived under are both removed — the Tags tab is now
   // a single vault-wide list (RightRailTagsPanel) with no header of its own.
   // Wait for that list's <ul role="list"> to mount instead (scoped to `ul`
@@ -230,8 +230,8 @@ async function expandTagBrowser(page: Page): Promise<void> {
 }
 
 /**
- * Reveal the right-rail Linked mentions panel (Phase 20 rename, RSIDE-02;
- * Phase 30 tab-row rework). Same reopen model as expandTagBrowser; the
+ * Reveal the right-rail Linked mentions panel (rename, RSIDE-02;
+ * tab-row rework). Same reopen model as expandTagBrowser; the
  * backlinks region (role="region" aria-label="Notes that link to this note")
  * lives inside once the Linked mentions tab is selected.
  */
@@ -247,7 +247,7 @@ async function openBacklinks(page: Page): Promise<void> {
 }
 
 
-test.describe("Phase 6 UAT — Frontmatter scaffold (TAGS-EXT-01/02/03)", () => {
+test.describe("Frontmatter scaffold (TAGS-EXT-01/02/03)", () => {
   let jasper: JasperHandle;
 
   test.beforeEach(async () => {
@@ -360,7 +360,7 @@ test.describe("Phase 6 UAT — Frontmatter scaffold (TAGS-EXT-01/02/03)", () => 
 });
 
 
-test.describe("Phase 6 UAT — Tag browser (TAGS-01..07)", () => {
+test.describe("Tag browser (TAGS-01..07)", () => {
   let jasper: JasperHandle;
 
   test.beforeEach(async () => {
@@ -558,7 +558,7 @@ test.describe("Phase 6 UAT — Tag browser (TAGS-01..07)", () => {
 });
 
 
-test.describe("Phase 6 UAT — Wiki-links (LINKS-01..08)", () => {
+test.describe("Wiki-links (LINKS-01..08)", () => {
   let jasper: JasperHandle;
 
   test.beforeEach(async () => {
@@ -569,7 +569,7 @@ test.describe("Phase 6 UAT — Wiki-links (LINKS-01..08)", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("S8: [[Foo autocomplete shows matches + Create row (LINKS-06, D-14)", async ({ page }) => {
+  test("S8: [[Foo autocomplete shows matches + Create row (LINKS-06)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -741,7 +741,7 @@ test.describe("Phase 6 UAT — Wiki-links (LINKS-01..08)", () => {
     ).toBeVisible({ timeout: 8_000 });
   });
 
-  test("S12: Cmd+click navigates resolved link; plain click places caret only (LINKS-05, D-15)", async ({ page }) => {
+  test("S12: Cmd+click navigates resolved link; plain click places caret only (LINKS-05)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -822,7 +822,7 @@ test.describe("Phase 6 UAT — Wiki-links (LINKS-01..08)", () => {
 });
 
 
-test.describe("Phase 6 UAT — Cross-tab tag rewrite (D-33, D-35)", () => {
+test.describe("Cross-tab tag rewrite", () => {
   let jasper: JasperHandle;
 
   test.beforeEach(async () => {
@@ -833,7 +833,7 @@ test.describe("Phase 6 UAT — Cross-tab tag rewrite (D-33, D-35)", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("S13: cross-tab tag rename: tab B tag browser refreshes (D-33, D-35)", async ({ browser }) => {
+  test("S13: cross-tab tag rename: tab B tag browser refreshes", async ({ browser }) => {
     const setupCtx = await browser.newContext();
     const setupPage = await setupCtx.newPage();
     await setupPage.goto(jasper.baseURL);
@@ -887,7 +887,7 @@ test.describe("Phase 6 UAT — Cross-tab tag rewrite (D-33, D-35)", () => {
 });
 
 
-test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, LINKS-08)", () => {
+test.describe("Wiki-link resolution + backlinks (LINKS-02..04, LINKS-08)", () => {
   let jasper: JasperHandle;
 
   test.beforeEach(async () => {
@@ -945,7 +945,7 @@ test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, L
     expect(backlinkFound).toBe(true);
   });
 
-  test("S15: wiki-links inside fenced code blocks stay literal / not decorated (D-19)", async ({ page }) => {
+  test("S15: wiki-links inside fenced code blocks stay literal / not decorated", async ({ page }) => {
     await openApp(page, jasper.baseURL, true);
 
     await typeIntoEditor(
@@ -979,7 +979,7 @@ test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, L
     expect(wikiLinksInsideCode).toBe(false);
   });
 
-  test("S16: backlinks panel shows referrer row with excerpt (LINKS-08, D-27, D-30)", async ({ page }) => {
+  test("S16: backlinks panel shows referrer row with excerpt (LINKS-08)", async ({ page }) => {
     await page.goto(jasper.baseURL);
     await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
       "data-status",
@@ -1045,8 +1045,8 @@ test.describe("Phase 6 UAT — Wiki-link resolution + backlinks (LINKS-02..04, L
 });
 
 
-test.describe("Phase 6 UAT — Rename failure banner (D-36)", () => {
-  test("S17: rename rewrite failure shows persistent banner + Dismiss (D-36)", async ({ page }) => {
+test.describe("Rename failure banner", () => {
+  test("S17: rename rewrite failure shows persistent banner + Dismiss", async ({ page }) => {
     const jasper = await spawnJasper({ env: { JASPER_TEST_FAIL_REWRITE: "1" } });
     try {
       // Register the vault so the app bypasses the first-run picker.

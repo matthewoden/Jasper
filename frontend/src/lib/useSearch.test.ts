@@ -23,7 +23,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useSearch (parameter-driven, Plan 07-18)", () => {
+describe("useSearch (parameter-driven)", () => {
   it("returns empty results and isSearching=false when query.length < 2", () => {
     const { result } = renderHook(() => useSearch("a", null));
     expect(result.current.results).toEqual([]);
@@ -139,7 +139,7 @@ describe("useSearch (parameter-driven, Plan 07-18)", () => {
     expect(searchApi.searchNotes).toHaveBeenCalledTimes(2);
   });
 
-  it("source file contains the D-08 INTENTIONAL DESIGN comment (WS-free contract)", async () => {
+  it("source file contains the INTENTIONAL DESIGN comment (WS-free contract)", async () => {
     const { useSearch: imported } = await import("./useSearch");
     expect(typeof imported).toBe("function");
     const { result } = renderHook(() => imported("", null));

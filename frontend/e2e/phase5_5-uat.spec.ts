@@ -1,22 +1,22 @@
 /**
- * Phase 5.5 UAT — Sidebar & Editor Shell Polish.
+ * Sidebar & Editor Shell Polish.
  *
  * Scenarios:
- *   UX-07 : save on blur / visibilitychange / beforeunload
- *   UX-08 : live H1 → sidebar label sync
- *   UX-09 : resizable sidebar with localStorage persistence
- *   UX-10 : full-bleed editor + click-anywhere-to-type
- *   UX-11 : reading-width line wrap (max-width 72ch)
- *   UX-12 : create-at-current-level (toolbar + right-click)
- *   UX-13 : multi-select + batch delete + multi-drag
- *   UX-14 : tree-fetch coalescing (≤2 GET /tree per CRUD session)
- *   UX-15 : heading + body share left edge off-cursor
- *   UX-16 : bullet column stable across cursor on/off
+ * save on blur / visibilitychange / beforeunload
+ * live H1 → sidebar label sync
+ * resizable sidebar with localStorage persistence
+ * full-bleed editor + click-anywhere-to-type
+ * reading-width line wrap (max-width 72ch)
+ * create-at-current-level (toolbar + right-click)
+ * multi-select + batch delete + multi-drag
+ * tree-fetch coalescing (≤2 GET /tree per CRUD session)
+ * heading + body share left edge off-cursor
+ * bullet column stable across cursor on/off
  *
- * UX-14 uses `page.on("request", ...)` to count `/api/v1/tree` GETs from
+ * uses `page.on("request", ...)` to count `/api/v1/tree` GETs from
  * the browser side (no log file access needed).
  *
- * UX-07's `beforeunload` keepalive path cannot be verified end-to-end via
+ * The `beforeunload` keepalive path cannot be verified end-to-end via
  * Playwright; it is covered at the unit level. See `test.fixme()` blocks.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -103,8 +103,8 @@ function uniqueName(prefix: string): string {
 }
 
 
-test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
-  test("UX-07: editor blur flushes pending save", async ({ page }) => {
+test.describe("sidebar + editor shell polish", () => {
+  test("editor blur flushes pending save", async ({ page }) => {
     await openApp(page);
     await typeIntoEditor(page, "blur-flush content");
 
@@ -116,7 +116,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await waitForSaved(page, 5_000);
   });
 
-  test("UX-07: visibilitychange→hidden flushes pending save", async ({
+  test("visibilitychange→hidden flushes pending save", async ({
     page,
   }) => {
     await openApp(page);
@@ -143,13 +143,13 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   test.fixme(
-    "UX-07: beforeunload keepalive flush (covered by unit test, not E2E)",
+    "beforeunload keepalive flush (covered by unit test, not E2E)",
     async () => {
       // Intentionally empty — see comment block above.
     },
   );
 
-  test("UX-08: typing H1 updates sidebar label pre-save", async ({ page }) => {
+  test("typing H1 updates sidebar label pre-save", async ({ page }) => {
     await openApp(page);
 
     const firstRow = page.locator('[data-tree-row-kind="note"]').first();
@@ -172,7 +172,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(labelBefore).not.toMatch(/live title/i);
   });
 
-  test("UX-09: drag handle resizes sidebar; width persists across reload", async ({
+  test("drag handle resizes sidebar; width persists across reload", async ({
     page,
   }) => {
     await openApp(page);
@@ -229,7 +229,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(Math.abs(widthReloaded - widthAfter)).toBeLessThan(8);
   });
 
-  test("UX-09: cannot shrink sidebar below the default minimum width", async ({
+  test("cannot shrink sidebar below the default minimum width", async ({
     page,
   }) => {
     await openApp(page);
@@ -258,7 +258,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(navWidth).toBeGreaterThanOrEqual(260);
   });
 
-  test("Bug A — editor pane left edge tracks sidebar resize (UX-09)", async ({
+  test("Bug A — editor pane left edge tracks sidebar resize", async ({
     page,
   }) => {
     await openApp(page);
@@ -292,7 +292,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(editorLeftAfter - editorLeftBefore).toBeGreaterThanOrEqual(80);
   });
 
-  test("UX-10: editor has no focus ring and clicking below last line places caret in editor", async ({
+  test("editor has no focus ring and clicking below last line places caret in editor", async ({
     page,
   }) => {
     await openApp(page);
@@ -325,7 +325,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(activeIsEditor).toBe(true);
   });
 
-  test("UX-11: long line wraps inside reading width; no horizontal scroll", async ({
+  test("long line wraps inside reading width; no horizontal scroll", async ({
     page,
   }) => {
     await openApp(page);
@@ -340,7 +340,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(overflowStat.sw).toBeLessThanOrEqual(overflowStat.cw + 1);
   });
 
-  test("UX-12: toolbar New note creates inside the selected folder", async ({
+  test("toolbar New note creates inside the selected folder", async ({
     page,
   }) => {
     await openApp(page);
@@ -393,7 +393,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
       .toBeGreaterThanOrEqual(1);
   });
 
-  test("Bug B — toolbar create targets selected folder (UX-12)", async ({
+  test("Bug B — toolbar create targets selected folder", async ({
     page,
   }) => {
     await openApp(page);
@@ -480,7 +480,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(rootNotesAfter.length).toBe(1);
   });
 
-  test("UX-12: right-click 'New note' inside expanded folder does NOT collapse the folder", async ({
+  test("right-click 'New note' inside expanded folder does NOT collapse the folder", async ({
     page,
   }) => {
     await openApp(page);
@@ -548,7 +548,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     // create-at-folder contract; the DOM-collapse is a separate bug.
   });
 
-  test("Bug C — Cmd-click multi-select + multi-delete (UX-13)", async ({
+  test("Bug C — Cmd-click multi-select + multi-delete", async ({
     page,
   }) => {
     await openApp(page);
@@ -598,7 +598,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     await expect(noteRows).toHaveCount(1, { timeout: 5_000 });
   });
 
-  test("UX-13: Cmd+click toggles multi-selection without switching active note", async ({
+  test("Cmd+click toggles multi-selection without switching active note", async ({
     page,
   }) => {
     await openApp(page);
@@ -662,7 +662,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     }
   });
 
-  test("UX-13: Shift+click selects a contiguous range", async ({ page }) => {
+  test("Shift+click selects a contiguous range", async ({ page }) => {
     await openApp(page);
 
     for (let i = 0; i < 3; i++) {
@@ -694,7 +694,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(selectedCount).toBe(3);
   });
 
-  test("UX-13: batch delete prompts once and removes all selected items", async ({
+  test("batch delete prompts once and removes all selected items", async ({
     page,
   }) => {
     await openApp(page);
@@ -729,14 +729,14 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
   });
 
   test.fixme(
-    "UX-13: drag two folders into a third folder (multi-folder DnD)",
+    "drag two folders into a third folder (multi-folder DnD)",
     async ({ page }) => {
       await openApp(page);
       // Intentionally empty body.
     },
   );
 
-  test("UX-14: typical CRUD session issues ≤2 GET /api/v1/tree calls", async ({
+  test("typical CRUD session issues ≤2 GET /api/v1/tree calls", async ({
     page,
   }) => {
     const treeFetches: string[] = [];
@@ -855,7 +855,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(sizes.scrollerClientH).toBeLessThanOrEqual(sizes.htmlClientH);
   });
 
-  test("UX-15: H1, H2, and body paragraph share the same left x-coordinate when off-cursor", async ({
+  test("H1, H2, and body paragraph share the same left x-coordinate when off-cursor", async ({
     page,
   }) => {
     await openApp(page);
@@ -897,7 +897,7 @@ test.describe("Phase 5.5 UAT — sidebar + editor shell polish", () => {
     expect(maxX - minX).toBeLessThanOrEqual(1);
   });
 
-  test("UX-16: bullet column does NOT shift when cursor enters/leaves a list line", async ({
+  test("bullet column does NOT shift when cursor enters/leaves a list line", async ({
     page,
   }) => {
     await openApp(page);

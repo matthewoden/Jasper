@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe("<SettingsMenu />", () => {
-  it("renders the trigger button with locked aria-label, no native title (Tooltip-migrated, D-07)", () => {
+  it("renders the trigger button with locked aria-label, no native title (Tooltip-migrated)", () => {
     renderSettingsMenu();
     const btn = screen.getByTestId("settings-menu-trigger");
     expect(btn).toHaveAttribute("aria-label", "Settings");

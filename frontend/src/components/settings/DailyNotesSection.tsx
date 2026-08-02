@@ -6,7 +6,7 @@
  * field it wrote had zero functional consumers — daily-note creation
  * hardcodes "daily/".
  *
- * The inline "Reset to default" link was dropped (IN-02, owner 2026-07-30):
+ * The inline "Reset to default" link was dropped (owner, 2026-07-30):
  * once the pane held a single control it duplicated the pane-header Reset,
  * which writes the identical patch via buildResetPatch's dailyNotes case.
  */

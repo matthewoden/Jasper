@@ -613,7 +613,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 // human-readable reason for the admin/status mcp.reason field. Mirrors
 // the net.Listen / error-string basis doctor.go's checkPortAvailable
 // already uses for "port in use" detection — do not invent a parallel
-// classifier (24-PATTERNS.md).
+// classifier.
 func classifyMCPBindErr(err error, port int) string {
 	if err == nil {
 		return ""

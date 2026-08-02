@@ -10,7 +10,7 @@ import {
   moveFile,
 } from "./filesApi";
 
-describe("filesApi.uploadFile (Plan 07-34)", () => {
+describe("filesApi.uploadFile", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -147,7 +147,7 @@ describe("filesApi.uploadFile (Plan 07-34)", () => {
   });
 });
 
-describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
+describe("filesApi.deleteFile", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -194,7 +194,7 @@ describe("filesApi.deleteFile (Plan 07-38 R7b)", () => {
   });
 });
 
-describe("filesApi.moveFile (Plan 07-38 R7b)", () => {
+describe("filesApi.moveFile", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });

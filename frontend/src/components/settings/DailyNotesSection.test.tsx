@@ -57,7 +57,7 @@ describe("DailyNotesSection", () => {
     expect(saveConfig).toHaveBeenCalledTimes(0);
   });
 
-  // IN-02 (owner, 2026-07-30): the inline link duplicated the pane-header
+  // Owner feedback (2026-07-30): the inline link duplicated the pane-header
   // Reset, which writes the identical patch. The surviving affordance is
   // covered by SettingsDialogShell.test.tsx "Daily notes: confirming resets
   // only dailyNotes.template to the exact default".

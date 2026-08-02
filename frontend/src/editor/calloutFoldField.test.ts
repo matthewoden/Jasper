@@ -1,6 +1,6 @@
 /**
  * calloutFoldField.test.ts — vitest suite for the callout fold StateField
- * (READ-02/D-07).
+ * (READ-02).
  *
  * Verifies: foldable ("[!type]-") callouts start collapsed on load,
  * toggleCalloutFold flips fold state per-blockquote (position-keyed,

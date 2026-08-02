@@ -1,5 +1,5 @@
 /**
- * Phase 9 UAT — vault storage path unification.
+ * vault storage path unification.
  *
  * All synchronization uses deterministic points — no polling loops with
  * timeouts.
@@ -44,7 +44,7 @@ async function fileSize(p: string): Promise<number> {
   return stat.size;
 }
 
-test.describe("Phase 9 F2 — vault path unification (@phase9-f2)", () => {
+test.describe("vault path unification (@phase9-f2)", () => {
   test.describe("@phase9-f2-1 — POST /api/v1/setup writes .jasper/, no storage/", () => {
     let jasper: JasperHandle;
 

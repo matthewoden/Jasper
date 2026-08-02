@@ -1,5 +1,5 @@
 /**
- * TreeRow tests — UI-SPEC §Tree row anatomy + §Active row + §Hover state.
+ * TreeRow tests — row anatomy, active row, hover state.
  *
  * The component receives a stub NodeApi shape (we cast as any since
  * react-arborist's NodeApi class is internal). Tests cover folder vs.
@@ -285,7 +285,7 @@ describe("<TreeRow />", () => {
     expect(label.getAttribute("title")).toBe("Scratchpad");
   });
 
-  describe("D-15 indent guides", () => {
+  describe("indent guides", () => {
     it("level-0 row renders no indent guides", () => {
       const node = makeFolderNode({ path: "projects", name: "projects", level: 0 });
       const { container } = render(
@@ -364,7 +364,7 @@ describe("<TreeRow />", () => {
     ).toBe("projects/jasper");
   });
 
-  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=35 (base=3 + 16*level, Phase 27 follow-up fix round item 3)", () => {
+  it("TestRow_IndentScalesWithLevel — level=2 → paddingLeft=35 (base=3 + 16*level follow-up fix round item 3)", () => {
     const node = makeFolderNode({ level: 2 });
     const { container } = render(
       <TreeRow
@@ -417,7 +417,7 @@ describe("<TreeRow />", () => {
     expect(folderRow.style.paddingLeft).toBe("19px");
   });
 
-  it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening per T-03-04-05/T-03-06-01", () => {
+  it("TestRow_DoesNotUseDangerouslySetInnerHTML — XSS hardening", () => {
     const FORBIDDEN = "dangerously" + "SetInnerHTML";
     expect(treeRowSource).not.toContain(FORBIDDEN);
   });
@@ -760,8 +760,8 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("UX-08 live H1 label override", () => {
-    it("UX-08: note row renders liveLabels[id] when present", () => {
+  describe("live H1 label override", () => {
+    it("note row renders liveLabels[id] when present", () => {
       useTreeStore.setState({
         liveLabels: { "n-1": "Live Title" },
       });
@@ -781,7 +781,7 @@ describe("<TreeRow />", () => {
       expect(label.getAttribute("title")).toBe("Live Title");
     });
 
-    it("UX-08: note row falls back to data.title when liveLabel is absent", () => {
+    it("note row falls back to data.title when liveLabel is absent", () => {
       useTreeStore.setState({ liveLabels: {} });
       const node = makeNoteNode({ id: "n-1", title: "Disk Title" });
       const { container } = render(
@@ -799,7 +799,7 @@ describe("<TreeRow />", () => {
       expect(label.getAttribute("title")).toBe("Disk Title");
     });
 
-    it("UX-08: folder row ignores liveLabels (uses data.name) — defense-in-depth", () => {
+    it("folder row ignores liveLabels (uses data.name) — defense-in-depth", () => {
       useTreeStore.setState({
         liveLabels: { "projects/jasper": "Should NOT show" },
       });
@@ -823,8 +823,8 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("UX-13 modifier-aware multi-select click delegation (Plan 07)", () => {
-    it("UX-13: Cmd+click delegates to node.handleClick and does NOT call onSelectNote", () => {
+  describe("modifier-aware multi-select click delegation", () => {
+    it("Cmd+click delegates to node.handleClick and does NOT call onSelectNote", () => {
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
       const node = makeNoteNode({ id: "uuid-cmd", handleClick });
@@ -843,7 +843,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
 
-    it("UX-13: Ctrl+click delegates to node.handleClick (cross-platform)", () => {
+    it("Ctrl+click delegates to node.handleClick (cross-platform)", () => {
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
       const node = makeNoteNode({ id: "uuid-ctrl", handleClick });
@@ -862,7 +862,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
 
-    it("UX-13: Shift+click delegates to node.handleClick", () => {
+    it("Shift+click delegates to node.handleClick", () => {
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
       const node = makeNoteNode({ id: "uuid-shift", handleClick });
@@ -881,7 +881,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
 
-    it("UX-13: plain click (no modifier) preserves existing single-select pipeline", () => {
+    it("plain click (no modifier) preserves existing single-select pipeline", () => {
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
       const node = makeNoteNode({ id: "uuid-plain", handleClick });
@@ -904,7 +904,7 @@ describe("<TreeRow />", () => {
       });
     });
 
-    it("UX-13: plain click on folder still toggles open (regression guard)", () => {
+    it("plain click on folder still toggles open (regression guard)", () => {
       const handleClick = vi.fn();
       const node = makeFolderNode({
         path: "projects",
@@ -926,7 +926,7 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("Phase 5.5 gap-closure Plan 10 — Mac Ctrl-click context-menu gate (WR-01)", () => {
+  describe("Mac Ctrl-click context-menu gate", () => {
     const originalNavigator = window.navigator;
 
     function setNavigatorPlatform(platform: string) {
@@ -945,7 +945,7 @@ describe("<TreeRow />", () => {
       });
     });
 
-    it("WR-01: Mac Ctrl-click does NOT delegate to node.handleClick (falls through to single-click branch)", () => {
+    it("Mac Ctrl-click does NOT delegate to node.handleClick (falls through to single-click branch)", () => {
       setNavigatorPlatform("MacIntel");
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
@@ -965,7 +965,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBe("uuid-mac-ctrl");
     });
 
-    it("WR-01: Mac Cmd-click STILL delegates to node.handleClick (multi-select preserved)", () => {
+    it("Mac Cmd-click STILL delegates to node.handleClick (multi-select preserved)", () => {
       setNavigatorPlatform("MacIntel");
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
@@ -985,7 +985,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
 
-    it("WR-01: non-Mac Ctrl-click STILL delegates to node.handleClick (cross-platform multi-select)", () => {
+    it("non-Mac Ctrl-click STILL delegates to node.handleClick (cross-platform multi-select)", () => {
       setNavigatorPlatform("Linux x86_64");
       const handleClick = vi.fn();
       const onSelectNote = vi.fn();
@@ -1005,7 +1005,7 @@ describe("<TreeRow />", () => {
       expect(useTreeStore.getState().activeNoteId).toBeNull();
     });
 
-    it("WR-01: non-Mac Ctrl-click on Win32 platform also delegates", () => {
+    it("non-Mac Ctrl-click on Win32 platform also delegates", () => {
       setNavigatorPlatform("Win32");
       const handleClick = vi.fn();
       const node = makeNoteNode({ id: "uuid-win-ctrl", handleClick });
@@ -1022,7 +1022,7 @@ describe("<TreeRow />", () => {
       expect(handleClick).toHaveBeenCalledTimes(1);
     });
 
-    it("WR-01: Shift-click delegates on every platform (range-select preserved)", () => {
+    it("Shift-click delegates on every platform (range-select preserved)", () => {
       setNavigatorPlatform("MacIntel");
       const handleClick = vi.fn();
       const node = makeNoteNode({ id: "uuid-mac-shift", handleClick });
@@ -1040,7 +1040,7 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("Phase 7 D-18: daily/ folder icon", () => {
+  describe("daily/ folder icon", () => {
     it("TestRow_DailyFolder_RooLevel_ShowsCalendarDaysIcon", () => {
       const node = makeFolderNode({ path: "daily", name: "daily" });
       const { container } = render(
@@ -1189,7 +1189,7 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("TR-file — kind='file' rendering (UAT-2 R1-7)", () => {
+  describe("TR-file — kind='file' rendering", () => {
     it("TR-file-1: renders Image icon for .png file", () => {
       const node = makeFileNode("img.png");
       const { container } = render(
@@ -1239,7 +1239,7 @@ describe("<TreeRow />", () => {
       useTreeStore.setState({ setActiveFilePath: origSet });
     });
 
-    it("TR-FILECLICK-2: clicking a file row does NOT call window.open (Plan 07-32b supersedes Plan 07-26 popup contract)", () => {
+    it("TR-FILECLICK-2: clicking a file row does NOT call window.open (supersedes popup contract)", () => {
       const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
       const node = makeFileNode("gallery/attachments/photo.png", "parent-note-uuid");
       render(
@@ -1309,7 +1309,7 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("Phase 19 — active row 12% accent tint + title-weight text (LSIDE-01)", () => {
+  describe("active row 12% accent tint + title-weight text (LSIDE-01)", () => {
     it("TR-ACTIVE-12PCT: active note row background uses 12% accent tint (bumped from 8%)", () => {
       useTreeStore.setState({ activeNoteId: "uuid-1" });
       const node = makeNoteNode({ id: "uuid-1" });
@@ -1355,7 +1355,7 @@ describe("<TreeRow />", () => {
     });
   });
 
-  describe("Phase 30 — Bookmark toggle is prop-driven, not a per-row useBookmarks() call (Rule 1 fix)", () => {
+  describe("Bookmark toggle is prop-driven, not a per-row useBookmarks() call (Rule 1 fix)", () => {
     it("passes isNoteBookmarked(id) through to the kebab menu's Bookmark item label", async () => {
       const node = makeNoteNode({ id: "uuid-1" });
       const { container } = render(

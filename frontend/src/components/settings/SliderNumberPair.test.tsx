@@ -49,7 +49,7 @@ describe("SliderNumberPair", () => {
     expect(onCommit).toHaveBeenCalledWith(20);
   });
 
-  it("keyUp after adjusting the range via keyboard commits exactly once, after a short settle delay (WR-02 debounce)", () => {
+  it("keyUp after adjusting the range via keyboard commits exactly once, after a short settle delay (debounce)", () => {
     vi.useFakeTimers();
     try {
       const { onCommit } = renderPair();
@@ -70,7 +70,7 @@ describe("SliderNumberPair", () => {
     }
   });
 
-  it("rapid/repeated arrow-key events coalesce into a single trailing commit, never one PUT per key event (WR-02)", () => {
+  it("rapid/repeated arrow-key events coalesce into a single trailing commit, never one PUT per key event", () => {
     vi.useFakeTimers();
     try {
       const { onCommit } = renderPair();
@@ -120,7 +120,7 @@ describe("SliderNumberPair", () => {
     }
   });
 
-  it("unmounting inside the debounce window flushes the pending keyboard commit instead of dropping it (32-REVIEW CR-01)", () => {
+  it("unmounting inside the debounce window flushes the pending keyboard commit instead of dropping it (32-REVIEW)", () => {
     vi.useFakeTimers();
     try {
       const { onCommit, unmount } = renderPair();
@@ -287,7 +287,7 @@ describe("SliderNumberPair", () => {
     }
   });
 
-  it("a parent re-render with an unchanged value but a fresh formatCssValue identity preserves in-progress input and the validation alert (32-REVIEW WR-01)", () => {
+  it("a parent re-render with an unchanged value but a fresh formatCssValue identity preserves in-progress input and the validation alert (32-REVIEW)", () => {
     // Every render passes a NEW inline arrow, exactly as an unmemoized call
     // site would. The sync effect must not treat that as a value change.
     const pair = () => (

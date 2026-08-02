@@ -128,7 +128,7 @@ export const TitleElement = ({ title, onTitleChange, onFocusHandoff }: TitleElem
           const el = ref.current;
           // Not on the last visual row — a wrapped row exists below the
           // caret; let the browser move the caret down within the title
-          // normally instead of crossing to the body (CR-01).
+          // normally instead of crossing to the body.
           if (el && !caretOnLastVisualRow(el)) return;
           e.preventDefault();
           onFocusHandoff(measureCaretX());

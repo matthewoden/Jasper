@@ -157,7 +157,7 @@ describe("tagClickPlugin", () => {
     expect(handler).toHaveBeenCalledWith("only-tag");
   });
 
-  it("TC7b: plain click (no modifier) triggers the tag handler — D-08 plain click model", () => {
+  it("TC7b: plain click (no modifier) triggers the tag handler — plain click model", () => {
     const handler = vi.fn();
     setTagClickHandler(handler);
 

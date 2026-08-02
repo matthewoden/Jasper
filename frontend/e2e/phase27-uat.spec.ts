@@ -1,5 +1,5 @@
 /**
- * Phase 27 UAT — Left Sidebar Navigation & Bookmarks (NAV-01..03, BOOK-01..05).
+ * Left Sidebar Navigation & Bookmarks (NAV-01..03, BOOK-01..05).
  *
  * Integration gate for the whole feature: proves the full-stack seam
  * (backend `internal/bookmarks` store -> API -> WS -> `useBookmarks()` ->
@@ -16,11 +16,11 @@
  *   BOOK-04  bookmarks persist across reload AND a full binary restart
  *            (`<vault>/.jasper/bookmarks.json`), and the bookmark keeps
  *            resolving to the same note across a rename AND a folder move
- *            (noteId identity, D-02) — the single most important
+ *            (noteId identity) — the single most important
  *            robustness property this phase ships
  *   BOOK-05  "No bookmarks yet." empty state when the bookmark list is empty
  *
- * Selector contract (see 27-03..07-SUMMARY.md "Selectors landed"):
+ * Selector contract (see "Selectors landed"):
  *   - Sidebar tab row:      [data-testid="sidebar-tab-row"]; tabs are
  *                           aria-label="Notes"|"Search"|"Bookmarks"
  *   - Sidebar collapse:     aria-label="Collapse sidebar" (header control)
@@ -418,7 +418,7 @@ test.describe("@phase27 BOOK-03: bookmark folder organization", () => {
 // ─── BOOK-04 — reload + full binary restart persistence, survives rename/move ─
 //
 // The single most important robustness property this phase ships: a
-// bookmark stores ONLY a noteId (D-02), and that noteId must keep resolving
+// bookmark stores ONLY a noteId, and that noteId must keep resolving
 // to the same note across (a) a page reload, (b) a FULL BINARY RESTART
 // (proving `<vault>/.jasper/bookmarks.json` round-trips through disk, not
 // just an in-memory Go struct a reload happens to still see), (c) an
@@ -543,7 +543,7 @@ test.describe("@phase27 BOOK-04: bookmark persistence + identity survives rename
     await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(1);
 
     // Clicking it opens the moved+renamed note in the active pane — full
-    // identity round-trip proof (D-02): same noteId, new path, new title.
+    // identity round-trip proof: same noteId, new path, new title.
     await movedRow.getByText("book04-renamed").click();
     await expect(
       page.locator('[data-testid="note-breadcrumb"]:visible').getByTestId("breadcrumb-segment"),

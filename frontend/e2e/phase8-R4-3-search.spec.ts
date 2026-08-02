@@ -108,7 +108,7 @@ function canonVaultPath(p: string): string {
   return process.platform === "darwin" ? real.toLowerCase() : real;
 }
 
-test.describe("Phase 8 R4-3 — search partial number + hyphen escape", () => {
+test.describe("search partial number + hyphen escape", () => {
   test("typing '123' surfaces note-00123; 'note-00123' doesn't 500", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-3-app-"));
     const vault = canonVaultPath(fs.mkdtempSync(path.join(os.tmpdir(), "jasper-r4-3-vault-")));

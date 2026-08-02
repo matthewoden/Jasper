@@ -56,7 +56,7 @@ describe("themeBridge", () => {
     expect(jasperSyntaxHighlighting).toBeTruthy();
   });
 
-  it("UX-10: theme strips focus outline on .cm-editor.cm-focused", () => {
+  it("theme strips focus outline on .cm-editor.cm-focused", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -99,7 +99,7 @@ describe("themeBridge", () => {
     parent.remove();
   });
 
-  it(".cm-list-bullet uses fixed-width inline-block (UX-16)", () => {
+  it(".cm-list-bullet uses fixed-width inline-block", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({
@@ -128,7 +128,7 @@ describe("themeBridge", () => {
     parent.remove();
   });
 
-  it(".cm-marker.cm-list-marker exists with same fixed-width as .cm-list-bullet (UX-16)", () => {
+  it(".cm-marker.cm-list-marker exists with same fixed-width as .cm-list-bullet", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     const view = new EditorView({

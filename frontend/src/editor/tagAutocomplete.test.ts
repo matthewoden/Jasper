@@ -107,7 +107,7 @@ describe("tagCompletionSource", () => {
     expect(labels).toContain("bar");
   });
 
-  it("TA5: NO Create row in tag autocomplete (D-44)", async () => {
+  it("TA5: NO Create row in tag autocomplete", async () => {
     const doc = "---\ntags: [newTag\n---\n# Body";
     const pos = doc.indexOf("newTag") + 6;
     const ctx = makeCtx(doc, pos);

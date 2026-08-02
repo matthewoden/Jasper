@@ -1,5 +1,5 @@
 /**
- * Tests for the MCP Unavailable Banner (D-05).
+ * Tests for the MCP Unavailable Banner.
  *
  * Validates:
  *   - Renders nothing when mcp is undefined (older/empty admin/status response)

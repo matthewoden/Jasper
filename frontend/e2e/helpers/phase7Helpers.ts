@@ -1,7 +1,7 @@
 /**
- * phase7Helpers.ts — Phase 7 UAT helper utilities.
+ * phase7Helpers.ts — UAT helper utilities.
  *
- * Reusable helpers for Phase 7 Playwright E2E scenarios:
+ * Reusable helpers for the Playwright E2E scenarios:
  * - pressShortcut: translates symbolic shortcuts to keyboard combos
  * - openCommandMenu: opens Cmd+O (notes) or Cmd+P (commands) modal
  * - apiCreateNote: creates a note via POST /api/v1/notes + PUT /api/v1/notes/{id}
@@ -174,8 +174,8 @@ export async function openCommandMenuAndType(
  * The 17 palette-visible commands (inPalette: true in shortcutsRegistry.ts,
  * locked by shortcutsRegistry.test.ts's "registry has all 17 locked Cmd+P
  * palette entries" test — updated here as more commands were added across
- * Phase 22/25/27/28 and "Switch / search notes" was relabeled to
- * "Quick switcher (notes)" in Phase 28 Plan 03):
+ * later phases and "Switch / search notes" was relabeled to
+ * "Quick switcher (notes)"):
  *   New note, Save, Today, Quick switcher (notes), Toggle theme,
  *   Refresh index, Reset and rebuild…, Show keyboard shortcuts,
  *   Show current note in file manager, Switch vault…, Toggle Zen Mode,
@@ -220,7 +220,7 @@ export async function expectPaletteVisibleWithNCommands(
     );
   }
 
-  // Cold-open (this test's original intent, Plan 07-27): the very first
+  // Cold-open (this test's original intent): the very first
   // command must render immediately — proves the palette isn't stuck on an
   // empty/null-tree state before the first fetch resolves.
   await expect(
@@ -229,7 +229,7 @@ export async function expectPaletteVisibleWithNCommands(
 
   // The palette list is virtualized (@tanstack/react-virtual, 36px rows,
   // 50vh max-height) — since the registry grew from 8 to 17 entries
-  // (Phase 22/25/27/28), the tail entries no longer render in the DOM
+  // (25/27/28), the tail entries no longer render in the DOM
   // without scrolling. ArrowDown moves selectedIdx, which the component's
   // own effect feeds into virtualizer.scrollToIndex — drive that real user
   // interaction and record every label as it becomes visible, bounded by
@@ -372,9 +372,9 @@ export async function seedNoteWithMtime(
  * set the active tag filter, then waits for the ActiveTagFilterChip to render.
  *
  * Locator chain (audited from RightRail.tsx / RightRailTabRow.tsx / Right-
- * RailTagsPanel.tsx + ActiveTagFilterChip.tsx, current as of the Phase 30
+ * RailTagsPanel.tsx + ActiveTagFilterChip.tsx, current as of the
  * rail rewrite — the rail is a one-panel-at-a-time icon-tab row, not the
- * old Phase 20 stacked/collapsible-sections layout):
+ * old stacked/collapsible-sections layout):
  *   1. If the rail is collapsed, the rightmost pane's tab-strip carries a
  *      "Show panels" reopen button — click it first.
  *   2. Click the "Tags" tab in the right-rail-tab-row testid to mount

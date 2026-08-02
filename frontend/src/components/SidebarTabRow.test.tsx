@@ -1,6 +1,6 @@
 /**
  * SidebarTabRow tests — 3 icon tabs (Notes/Search/Bookmarks) + collapse
- * control (Phase 27 NAV-01/NAV-03).
+ * control (NAV-01/NAV-03).
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";

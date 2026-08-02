@@ -1,5 +1,5 @@
 /**
- * Phase 8 vault picker E2E spec.
+ * vault picker E2E spec.
  *
  * Scenarios:
  *   1. No-vault boot shows picker with create+open tabs (default tab = create)
@@ -181,7 +181,7 @@ async function expectActuallyPainted(
   expect(box!.height, `${label}: height ${box!.height}px < ${minH}px (likely unstyled)`).toBeGreaterThanOrEqual(minH);
 }
 
-test.describe("Phase 8 vault picker — make-build smoke", () => {
+test.describe("vault picker — make-build smoke", () => {
   test("no-vault boot shows the picker with create+open tabs (default = create)", async ({ page }) => {
     const appHome = fs.mkdtempSync(path.join(os.tmpdir(), "jasper-vault-e2e-app-"));
     let handle: VaultHandle | undefined;
@@ -232,7 +232,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
       await page.getByTestId("vault-create-path-input").fill("/tmp/jasper-uat-2-1d-smoke");
       await expect(submitBtn).toBeEnabled();
 
-      // Theme live-preview toggle removed in v1.2 (Phase 17 D-01: Jasper is
+      // Theme live-preview toggle removed in v1.2 (Jasper is
       // dark-only). applyTheme() now sets data-theme="dark" unconditionally, so
       // the old light/dark radio preview assertions are obsolete. The app stays
       // dark regardless of selection.
@@ -507,7 +507,7 @@ test.describe("Phase 8 vault picker — make-build smoke", () => {
 });
 
 
-test.describe("Phase 8 vault switch — make-build smoke", () => {
+test.describe("vault switch — make-build smoke", () => {
   /**
    * Switch from vault A to vault B.
    *

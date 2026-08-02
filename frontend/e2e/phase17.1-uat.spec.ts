@@ -1,5 +1,5 @@
 /**
- * Phase 17.1 UAT — Settings Dialog UX Post-Redesign Fixes.
+ * Settings Dialog UX Post-Redesign Fixes.
  *
  * SET2-01: Settings dialog height ≤ viewport − 48px; header+footer stay sticky
  *   after scrolling body to the bottom. Currently RED: footer is inside the
@@ -52,8 +52,8 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
   test(
     "SET2-01: dialog height ≤ viewport − 48px and header+Close button remain visible after body scroll @SET2-01",
     async ({ page }) => {
-      // Phase 32 replaced the single scrollable-body dialog with a locked
-      // 920x628 frame (D-19) whose PaneHeader (56px, flexShrink: 0) and
+      // replaced the single scrollable-body dialog with a locked
+      // 920x628 frame whose PaneHeader (56px, flexShrink: 0) and
       // NavColumn are structurally OUTSIDE the per-pane scroll region — only
       // the content div below PaneHeader scrolls. A small viewport forces
       // the maxHeight: 82vh cap well below the natural 628px height,
@@ -73,7 +73,7 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
       expect(dialogBox).not.toBeNull();
       expect(dialogBox!.height).toBeLessThanOrEqual(viewportHeight - 48);
 
-      // PaneHeader's subtitle for the default Appearance pane (D-20) — the
+      // PaneHeader's subtitle for the default Appearance pane — the
       // element to prove stays put while the pane's OWN content scrolls.
       const paneSubtitle = dialog.getByText("Accent and typography", { exact: true });
       const closeBtn = dialog.getByRole("button", { name: "Close settings" });
@@ -107,8 +107,8 @@ test.describe("SET2-01: sticky Settings dialog (@phase17.1)", () => {
 // ---------------------------------------------------------------------------
 // SET2-05: display_name persists across page reload
 //
-// RETIRED (Phase 32, plan 32-11 gap-closure): Phase 32 plan 32-01 deleted
-// config.Config.DisplayName entirely (D-05) — a vault's display name is now
+// RETIRED (plan 32-11 gap-closure): plan 32-01 deleted
+// config.Config.DisplayName entirely — a vault's display name is now
 // always the derived filepath.Base of its data directory (see
 // PutConfig's app.json sync in backend/internal/api/config_handler.go),
 // never a free-text field the user can set. There is no remaining Settings

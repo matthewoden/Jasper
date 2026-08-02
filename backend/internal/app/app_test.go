@@ -107,7 +107,7 @@ func TestApp_UnknownAPIRouteIsNotHTML(t *testing.T) {
 		t.Fatalf("read body: %v", err)
 	}
 	if strings.Contains(strings.ToLower(string(body)), "<html") {
-		t.Errorf("Pitfall 13 regression: /api/v1/* returned HTML: %s", body)
+		t.Errorf("SPA-fallback regression: /api/v1/* returned HTML: %s", body)
 	}
 }
 
@@ -476,10 +476,10 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 	}
 }
 
-// TestApp_MCPBindFailure_RecordsStatusAndAdminStatusReports — D-05
+// TestApp_MCPBindFailure_RecordsStatusAndAdminStatusReports
 // regression guard. Pre-configures the vault's MCP listener to bind on a
 // port that is already held, forcing StartMCPListener to fail synchronously.
-// Asserts: (1) the HTTP server still boots and serves normally (D-04 — MCP
+// Asserts: (1) the HTTP server still boots and serves normally (MCP
 // never hard-fails boot), (2) a.McpStatus() reports up=false with a
 // non-empty reason, and (3) GET /api/v1/admin/status surfaces the same
 // mcp{up, reason} object to the frontend banner.
@@ -520,7 +520,7 @@ func TestApp_MCPBindFailure_RecordsStatusAndAdminStatusReports(t *testing.T) {
 	if err := waitFor(t, 5*time.Second, probe); err != nil {
 		cancel()
 		<-runErr
-		t.Fatalf("listener did not come up despite MCP bind failure (D-04 violated): %v", err)
+		t.Fatalf("listener did not come up despite MCP bind failure: %v", err)
 	}
 
 	up, reason := a.McpStatus()

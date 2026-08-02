@@ -105,7 +105,7 @@ describe("useVaultSwitch", () => {
     expect(reloadMock).toHaveBeenCalledTimes(1);
   });
 
-  it("markSwitching clears every hydrated resource's cache entry (T-32.2-01)", async () => {
+  it("markSwitching clears every hydrated resource's cache entry", async () => {
     const cached = createResource(
       "test-vault-switch-cached",
       vi.fn().mockResolvedValue("cached-value"),

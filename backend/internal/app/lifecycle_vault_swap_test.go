@@ -32,7 +32,7 @@ func setupSwapVault(t *testing.T) string {
 }
 
 // writeVaultMCPConfig writes a vault config with the given MCP port. Since
-// Phase 24 (D-06) the MCP listener always starts on boot — there is no
+// The MCP listener always starts on boot — there is no
 // enable/disable toggle — so callers pass port=0 for "dynamic/don't-care"
 // or a specific port when a test needs to observe the real listener.
 func writeVaultMCPConfig(t *testing.T, vaultDir string, port int) {
@@ -67,14 +67,14 @@ func newSwapApp(t *testing.T, dataDir string) *App {
 	return a
 }
 
-// TestSwap_McpReleased — V-TEST-1.
+// TestSwap_McpReleased.
 // Vault A has a simulated MCP listener held on a free port. After SwitchVault
 // to vault B (whose config uses a dynamic port, port=0), the old fixed port
 // is released — the listener always restarts on the new vault's own port,
-// never keeps the previous vault's port bound (Phase 24: MCP always starts).
+// never keeps the previous vault's port bound (MCP always starts).
 func TestSwap_McpReleased(t *testing.T) {
 	if testing.Short() {
-		t.Skip("V-TEST-1: integration test; requires real net.Listen")
+		t.Skip("integration test; requires real net.Listen")
 	}
 
 	appHome := t.TempDir()
@@ -106,7 +106,7 @@ func TestSwap_McpReleased(t *testing.T) {
 	_ = freeLn.Close()
 	mcpLn, listenErr := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", mcpPort))
 	if listenErr != nil {
-		t.Fatalf("V-TEST-1: could not listen on free port %d: %v", mcpPort, listenErr)
+		t.Fatalf("could not listen on free port %d: %v", mcpPort, listenErr)
 	}
 
 	held := true
@@ -132,18 +132,18 @@ func TestSwap_McpReleased(t *testing.T) {
 
 	ln2, listenErr2 := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", mcpPort))
 	if listenErr2 != nil {
-		t.Fatalf("V-TEST-1 FAIL: port %d still held after switch to non-MCP vault: %v", mcpPort, listenErr2)
+		t.Fatalf("port %d still held after switch to non-MCP vault: %v", mcpPort, listenErr2)
 	}
 	_ = ln2.Close()
 }
 
-// TestSwap_McpBoundOnSwitch — V-TEST-2.
+// TestSwap_McpBoundOnSwitch.
 // Vault A never had its own MCP started (test harness bypasses lifecycle.Run).
 // After SwitchVault to vault B, the always-on MCP listener binds on vault B's
-// configured port and responds to HTTP (Phase 24: no enable gate).
+// configured port and responds to HTTP (there is no enable gate).
 func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	if testing.Short() {
-		t.Skip("V-TEST-2: integration test; requires real net.Listen")
+		t.Skip("integration test; requires real net.Listen")
 	}
 
 	appHome := t.TempDir()
@@ -214,7 +214,7 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
-		t.Fatalf("V-TEST-2 FAIL: MCP not bound after switch to MCP-enabled vault: %v", err)
+		t.Fatalf("MCP not bound after switch to MCP-enabled vault: %v", err)
 	}
 	_ = resp.Body.Close()
 
@@ -225,7 +225,7 @@ func TestSwap_McpBoundOnSwitch(t *testing.T) {
 	}
 }
 
-// TestSwap_GrantsAreVaultScoped — V-TEST-3.
+// TestSwap_GrantsAreVaultScoped.
 // After SwitchVault to vault B, a.pair is vault B's DB — grant DB scoping is
 // guaranteed by construction (each vault has its own sqlite.Pair). Verify that
 // a.pair changes to point to vault B's DB (different object pointer).
@@ -270,10 +270,10 @@ func TestSwap_GrantsAreVaultScoped(t *testing.T) {
 	}
 
 	if a.pair == nil {
-		t.Fatal("V-TEST-3 FAIL: a.pair is nil after switch")
+		t.Fatal("a.pair is nil after switch")
 	}
 	if a.pair == pairA {
-		t.Fatal("V-TEST-3 FAIL: a.pair still points to vault A's DB after switch; grants are NOT vault-scoped")
+		t.Fatal("a.pair still points to vault A's DB after switch; grants are NOT vault-scoped")
 	}
 }
 
@@ -365,7 +365,7 @@ func TestSwap_HandlerIsNilDuringSwap(t *testing.T) {
 	}
 }
 
-// TestSwap_DrainsMcpWriteInFlight — V-TEST-4.
+// TestSwap_DrainsMcpWriteInFlight.
 // An in-flight write holds a.inFlightWrites.Add(1) for ~500ms before Done().
 // SwitchVault must wait for the write to complete (>= 400ms elapsed) before
 // tearing down.
@@ -417,7 +417,7 @@ func TestSwap_DrainsMcpWriteInFlight(t *testing.T) {
 	}
 
 	if switchDuration < 400*time.Millisecond {
-		t.Errorf("V-TEST-4 FAIL: switch returned in %v; expected >= 400ms (drain did not wait for in-flight write)",
+		t.Errorf("switch returned in %v; expected >= 400ms (drain did not wait for in-flight write)",
 			switchDuration)
 	}
 
@@ -425,6 +425,6 @@ func TestSwap_DrainsMcpWriteInFlight(t *testing.T) {
 	case <-writeDone:
 
 	case <-time.After(2 * time.Second):
-		t.Error("V-TEST-4: write goroutine did not complete within 2s")
+		t.Error("write goroutine did not complete within 2s")
 	}
 }

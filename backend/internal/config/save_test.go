@@ -100,7 +100,7 @@ func TestSaveMerged_NestedUnknownKeySurvives(t *testing.T) {
 	}
 	spellCheckRaw, ok := editor["spellCheck"]
 	if !ok {
-		t.Error("WR-01: editor.spellCheck was dropped by SaveMerged (nested unknown key not preserved)")
+		t.Error("editor.spellCheck was dropped by SaveMerged (nested unknown key not preserved)")
 	} else {
 		var sc bool
 		if err := json.Unmarshal(spellCheckRaw, &sc); err != nil || !sc {
@@ -376,7 +376,7 @@ func rawValueAtPath(doc map[string]json.RawMessage, path []string) (json.RawMess
 	return nil, false
 }
 
-// TestConcurrentPartialSaves_NoLostUpdate — D-06's Go half. 24 goroutines
+// TestConcurrentPartialSaves_NoLostUpdate. 24 goroutines
 // call SaveMergedPartial simultaneously (barrier-gated on a single closed
 // channel, no sleeps — [no-flaky-tests]), each writing one distinct field.
 // The package mutex serialises every writer's read->merge->write cycle, so
@@ -386,7 +386,7 @@ func rawValueAtPath(doc map[string]json.RawMessage, path []string) (json.RawMess
 // Pre-lock RED evidence (mu.Lock()/defer mu.Unlock() commented out of
 // SaveMergedPartial): `go test ./internal/config/ -run
 // TestConcurrentPartialSaves_NoLostUpdate -count=5` failed 5/5 runs, each
-// naming several lost probe_NN and editor.* keys — see 32.1-01-SUMMARY.md
+// naming several lost probe_NN and editor.* keys
 // for the captured output. Restored before this commit.
 func TestConcurrentPartialSaves_NoLostUpdate(t *testing.T) {
 	t.Parallel()

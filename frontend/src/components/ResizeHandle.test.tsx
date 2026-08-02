@@ -21,7 +21,7 @@ function dispatchPointerUp() {
   document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
 }
 
-describe("<ResizeHandle /> — Phase 6.6 UX-CHROME-04 generic handle", () => {
+describe("<ResizeHandle /> — generic handle", () => {
   afterEach(() => {
     dispatchPointerUp();
   });

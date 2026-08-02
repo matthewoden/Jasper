@@ -1,5 +1,5 @@
 /**
- * Phase 6.6 UAT — Rail Chrome Polish.
+ * Rail Chrome Polish.
  *
  * All scenarios share a single `bin/jasper` instance. Scenarios run in
  * declaration order; use unique note/tag names to avoid cross-scenario
@@ -19,23 +19,23 @@
  *   S8 (@UX-CHROME-06) : Tag rows show "#tagname (count)"; no Key icon in header.
  *   S9 (@UX-CHROME-07) : Tag filter chip spans full width; × clears the filter.
  *   S10 (@breadcrumbs) : Nested note → breadcrumbs shows path; click folder → sidebar.
- *   S11 (@phase-6.5-regression): Phase 6.5 features still work.
+ * S11 (@phase-6.5-regression): features still work.
  *
- * Selector notes (current as of Phase 30's rail rework — 30-05/30-13):
+ * Selector notes (current as of's rail rework — 30-05/30-13):
  *   - CM6 editor is contenteditable — use keyboard.type(), not .fill().
  *   - TopBar: data-testid="top-bar"
  *   - StatusBar: data-testid="status-bar" aria-label="Status bar"
  *   - Refresh button: aria-label="Reindex notes"
  *   - Left sidebar collapse/reopen: aria-label="Collapse sidebar" (header,
- *     SidebarTabRow) / "Show sidebar" (pane-corner reopen button, Phase 27
+ * SidebarTabRow) / "Show sidebar" (pane-corner reopen button
  *     NAV-03)
  *   - Right rail collapse/reopen: aria-label="Collapse panels" (header,
  *     RightRailTabRow) / "Show panels" (tab-strip right cluster, rendered
- *     only while collapsed — Phase 30-13 / quick task 260721-cjt)
+ * only while collapsed)
  *   - Right rail tab row: data-testid="right-rail-tab-row"; tabs are
  *     aria-label "Outline" / "Linked mentions" / "Tags" — exactly ONE panel
  *     is mounted at a time (no independent per-panel collapse anymore; the
- *     Phase 20 SectionHeader/InterPanelDivider machinery was removed
+ * The SectionHeader/InterPanelDivider machinery was removed
  *     entirely in 30-05)
  *   - Tag row: data-testid="tag-row-{name}"
  *   - ActiveTagFilterChip: role="status" aria-label="Active filter: #tagname"
@@ -118,7 +118,7 @@ async function apiCreateNote(
 /**
  * Ensure the right rail is expanded.
  *
- * Phase 30 (30-05/30-13) replaced the Phase 20 always-mounted three-section
+ * The tab-row rework replaced the earlier always-mounted three-section
  * stacked layout (independent SectionHeader collapse per section) with a
  * tab row + single-mounted-panel model: RightRailTabRow hosts Outline /
  * Linked mentions / Tags icon tabs (exactly one panel renders at a time) plus
@@ -153,7 +153,7 @@ async function ensureTagsPanelVisible(page: Page): Promise<void> {
     .getByRole("button", { name: "Tags", exact: true });
   await tagsTab.click();
 
-  // Phase 31 D-01 retired the "Tags" sub-header (RightRailSubHeader) this
+  // A later trim retired the "Tags" sub-header (RightRailSubHeader) this
   // helper originally waited on — the panel is now header-less, a single
   // vault-wide `<ul role="list">`. Wait for that list to mount instead.
   await expect(page.locator("ul[role='list']")).toBeVisible({
@@ -175,7 +175,7 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
 test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows notes sidebar", async ({ page }) => {
   await openApp(page, true);
 
-  // Phase 20 (D-04) dissolved the single `top-bar` shell, and Phase 27/30
+  // dissolved the single `top-bar` shell, and later reworks
   // (NAV-03, 30-13) moved each sidebar's own collapse control into its own
   // tab-row header — "Collapse sidebar" (left, SidebarTabRow) / "Collapse
   // panels" (right, RightRailTabRow) — with dedicated reopen affordances
@@ -209,8 +209,8 @@ test("S1 @UX-CHROME-01: chrome affordances render; sidebar toggle hides/shows no
 
 
 test("S2 @panel-selector: RightRailTabRow switches panels; rail toggle hides/shows the rail", async ({ page }) => {
-  // Phase 20 (D-01) removed the panel-selector dropdown and per-panel × close
-  // buttons. Phase 30 (30-05) went further and removed the always-mounted
+  // removed the panel-selector dropdown and per-panel × close
+  // buttons. The tab-row rework went further and removed the always-mounted
   // three-section stacked layout entirely (each section's independent
   // SectionHeader collapse toggle has no analog anymore) in favor of a tab
   // row + single-mounted-panel model: RightRailTabRow's Outline/Linked
@@ -223,7 +223,7 @@ test("S2 @panel-selector: RightRailTabRow switches panels; rail toggle hides/sho
 
   const railTabRow = page.getByTestId("right-rail-tab-row");
 
-  // Switch to Tags — Phase 31 D-01 removed every right-rail sub-header
+  // Switch to Tags — every right-rail sub-header was removed
   // (including the "Tags"/"Outline" labels this originally asserted); the
   // Tags tab now mounts a single vault-wide `<ul role="list">` with no
   // header of its own.
@@ -307,7 +307,7 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
   await expect(refreshBtn).toBeEnabled({ timeout: 10_000 });
   void observedDisabled;
 
-  // Settings gear (Phase 31 UAT #3): the StatusBar's duplicate gear was
+  // Settings gear (UAT #3): the StatusBar's duplicate gear was
   // removed — ActivityRibbon's own gear is now the sole entry point,
   // reachable via the same E2E-stable `settings-menu-trigger` testid.
   const settingsBtn = page.getByTestId("settings-menu-trigger");
@@ -324,7 +324,7 @@ test("S4 @UX-CHROME-02-refresh: refresh button briefly disables during reindex; 
 });
 
 
-test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radius/inset (mock parity, 23-03 D-06)", async ({ page }) => {
+test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radius/inset (mock parity, 23-03)", async ({ page }) => {
   await openApp(page, false);
 
   const sidebarNav = page.getByRole("navigation", { name: "Notes navigation" });
@@ -333,7 +333,7 @@ test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radiu
   const innerCard = sidebarNav.locator("div").first();
   await expect(innerCard).toBeVisible({ timeout: 3_000 });
 
-  // Owner adjudicated the floating card away in Phase 23 (D-06): flush to the
+  // Owner adjudicated the floating card away: flush to the
   // mock's file-tree rail — 0 radius, no margin, border-right only.
   const radiusNum = parseFloat(
     (await innerCard.evaluate((el) => window.getComputedStyle(el).borderRadius)) ?? "0",
@@ -365,10 +365,10 @@ test("S5 @UX-CHROME-03: sidebar is a flush panel — border-right only, no radiu
 
 
 test("S6 @UX-CHROME-04: resize-handle cursor affordances have no visible background band (row-resize inter-panel divider removed in 30-05)", async ({ page }) => {
-  // Phase 30 (30-05) replaced the three-section stacked/resizable rail with
+  // The tab-row rework replaced the three-section stacked/resizable rail with
   // a tab row + single-mounted-panel model. The draggable row-resize
   // InterPanelDivider between adjacent sections has no analog in that model
-  // and was removed entirely (RightRail.tsx's Phase 30 rework header comment
+  // and was removed entirely (RightRail.tsx's rework header comment
   // documents this explicitly) — there is no longer any row-resize divider
   // anywhere in the app. [owner review: possibly obsolete — no current
   // surface offers row-resize panel-height adjustment at all.] The nearest
@@ -509,7 +509,7 @@ test("S8 @UX-CHROME-06: tag rows render '#tagname' + badge count; no Key icon in
   expect(hashColor).toBeTruthy();
 
   // Removed: the "no Key icon in panel header" assertion targeted the
-  // RightRailSubHeader container, which Phase 31 D-01 retired entirely —
+  // RightRailSubHeader container, which was retired entirely —
   // the Tags panel has no header of its own anymore, so there is no
   // surviving container to scope a stray-icon check to. Tag-row rendering
   // (checked above) is the coverage that remains in scope.
@@ -683,7 +683,7 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
     .filter({ hasText: /Reg65NoteA/i });
   await expect(noteARow).toBeVisible({ timeout: 8_000 });
   await noteARow.click();
-  // v1.2 keeps one EditorPane mounted per open tab (D-01), so once a second tab
+  // v1.2 keeps one EditorPane mounted per open tab, so once a second tab
   // opens there are multiple `.cm-content` nodes — all but the active one are
   // hidden. Wait for (and later target) only the visible pane.
   await page.waitForSelector(".cm-content:visible", { timeout: 8_000 });
@@ -708,7 +708,7 @@ test("S11 @phase-6.5-regression: inline #tag click filters; backlinks populate; 
   }
   expect(
     savedTexts,
-    `Phase 6.5 regression BUG-03: "Saved" appeared on note switch without edits: ${savedTexts.join(", ")}`,
+    `regression BUG-03: "Saved" appeared on note switch without edits: ${savedTexts.join(", ")}`,
   ).toHaveLength(0);
 
   const cm = page.locator(".cm-content:visible").first();

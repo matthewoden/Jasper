@@ -1,6 +1,6 @@
 /**
  * openNoteInLeaf tests (30-02 Task 2): "New note to the right" must clamp
- * its insertion index to the pinned/unpinned boundary (D-16) — a freshly
+ * its insertion index to the pinned/unpinned boundary — a freshly
  * created (always-unpinned) tab can never land inside a leaf's pinned group,
  * even when invoked on a pinned tab with more pinned tabs after it.
  */
@@ -10,7 +10,7 @@ import { _findLeaf } from "./paneTree";
 import { usePaneStore } from "./usePaneStore";
 import { openNoteInLeaf } from "./openNoteInLeaf";
 
-describe("openNoteInLeaf clamps insertion to the pinned boundary (D-16, Phase 30)", () => {
+describe("openNoteInLeaf clamps insertion to the pinned boundary", () => {
   beforeEach(() => {
     usePaneStore.getState().clearAll();
   });

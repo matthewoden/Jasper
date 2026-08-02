@@ -1,7 +1,7 @@
 /**
  * SidebarToolbar tests — note-navigation controls: New note, New folder,
- * Sort notes (Phase 29, SORT-01). Today and Search moved to the activity
- * ribbon (Phase 18/19).
+ * Sort notes (SORT-01). Today and Search moved to the activity
+ * ribbon.
  *
  * SidebarToolbar now self-wires NotesSortMenu via useWorkspace(), which
  * calls useToast() — every render() below must be wrapped in <ToastProvider>.
@@ -46,7 +46,7 @@ function renderToolbar(
   });
 }
 
-describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phase 7 + Phase 19)", () => {
+describe("<SidebarToolbar /> — note-navigation controls only", () => {
   it("TestToolbar_RendersNewNoteButton", () => {
     renderToolbar(
       <SidebarToolbar
@@ -91,7 +91,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(onNewFolder).toHaveBeenCalledTimes(1);
   });
 
-  it("TestToolbar_NoNativeTitle_NewNoteAndNewFolder (D-07: migrated to shared Tooltip)", () => {
+  it("TestToolbar_NoNativeTitle_NewNoteAndNewFolder (migrated to shared Tooltip)", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -167,7 +167,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.getByRole("button", { name: "New folder" })).not.toBeDisabled();
   });
 
-  it("TestToolbar_DoesNotRenderConnectionStatusDot (D-08)", () => {
+  it("TestToolbar_DoesNotRenderConnectionStatusDot", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -177,7 +177,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByTestId("connection-status-dot")).toBeNull();
   });
 
-  it("TestToolbar_DoesNotRenderReindexButton (D-08)", () => {
+  it("TestToolbar_DoesNotRenderReindexButton", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -188,7 +188,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByLabelText(/Refresh/i)).toBeNull();
   });
 
-  it("TestToolbar_DoesNotRenderSettingsMenu (D-08)", () => {
+  it("TestToolbar_DoesNotRenderSettingsMenu", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -198,7 +198,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByTestId("settings-menu-trigger")).toBeNull();
   });
 
-  it("TestToolbar_DoesNotRenderTodayButton (Phase 19: ribbon owns Today)", () => {
+  it("TestToolbar_DoesNotRenderTodayButton (ribbon owns Today)", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -210,7 +210,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     ).toBeNull();
   });
 
-  it("TestToolbar_DoesNotRenderSearchButton (Phase 19: ribbon owns Search)", () => {
+  it("TestToolbar_DoesNotRenderSearchButton (ribbon owns Search)", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}
@@ -220,7 +220,7 @@ describe("<SidebarToolbar /> — note-navigation controls only (Phase 6.6 + Phas
     expect(screen.queryByLabelText("Search notes")).toBeNull();
   });
 
-  it("TestToolbar_RendersExactlyThreeButtons — New note + New folder + Sort notes (Phase 29)", () => {
+  it("TestToolbar_RendersExactlyThreeButtons — New note + New folder + Sort notes", () => {
     renderToolbar(
       <SidebarToolbar
         onNewNote={vi.fn()}

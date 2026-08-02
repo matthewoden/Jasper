@@ -106,7 +106,7 @@ describe("vaultApi openapi-fetch wrappers", () => {
     expect(result).toEqual(entry);
   });
 
-  it("getCurrent coalesces concurrent callers into one client.GET (D-05)", async () => {
+  it("getCurrent coalesces concurrent callers into one client.GET", async () => {
     let resolveGet!: (v: { data: unknown; error: undefined }) => void;
     mockGet.mockImplementationOnce(
       () =>

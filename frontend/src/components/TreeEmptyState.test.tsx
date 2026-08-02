@@ -1,5 +1,5 @@
 /**
- * TreeEmptyState tests — UI-SPEC §Surface 1 §Empty state.
+ * TreeEmptyState tests — the tree's empty state.
  *
  * Locked copy:
  *   "No notes yet."

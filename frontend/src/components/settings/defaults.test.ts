@@ -15,9 +15,9 @@ describe("DEFAULT_CONFIG", () => {
   // ORPHANED 2026-07-26 (ADR-002 v2): no production code reads
   // DEFAULT_CONFIG.server since buildResetPatch's `case "server"` was
   // deleted, so this guards a shape nothing consumes. Parked alongside the
-  // field itself for Phase 36's Server pane rather than deleted, so the
+  // field itself for a future Server pane rather than deleted, so the
   // constraint it encodes is not silently lost.
-  describe("server (parked for Phase 36)", () => {
+  describe("server (parked for)", () => {
     it("never carries server.port or server.dataDir — a Reset must not touch them", () => {
       expect("port" in DEFAULT_CONFIG.server).toBe(false);
       expect("dataDir" in DEFAULT_CONFIG.server).toBe(false);

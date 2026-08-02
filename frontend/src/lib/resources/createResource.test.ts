@@ -264,7 +264,7 @@ describe("createResource — coalescer", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("REGRESSION pass-through invalidate with zero subscribers still fetches (D-06): a pass-through resource has no persistent subscriber by construction, so the zero-subscriber stale-mark shortcut must not apply to it", async () => {
+  it("REGRESSION pass-through invalidate with zero subscribers still fetches: a pass-through resource has no persistent subscriber by construction, so the zero-subscriber stale-mark shortcut must not apply to it", async () => {
     const fetcher = vi.fn((id: string) => Promise.resolve(`fresh-${id}`));
     const keyed = createKeyedResource("test-pass-through-invalidate", fetcher, {
       mode: "pass-through",

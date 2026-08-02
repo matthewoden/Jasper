@@ -133,7 +133,7 @@ func TestNewNoteContent_Format(t *testing.T) {
 }
 
 // TestNewNoteContent_MatchesUISpec verifies that the scaffold exactly matches
-// the UI-SPEC §Copywriting Contract > Frontmatter scaffold:
+// the canonical frontmatter scaffold:
 //
 //	---
 //	tags: []
@@ -147,6 +147,6 @@ func TestNewNoteContent_MatchesUISpec(t *testing.T) {
 	const expected = "---\ntags: []\n---\n\n# My Note\n\n"
 	got := string(NewNoteContent(title))
 	if got != expected {
-		t.Errorf("NewNoteContent does not match UI-SPEC scaffold:\n  got  %q\n  want %q", got, expected)
+		t.Errorf("NewNoteContent does not match the canonical scaffold:\n  got  %q\n  want %q", got, expected)
 	}
 }

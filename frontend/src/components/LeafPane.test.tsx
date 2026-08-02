@@ -1,12 +1,12 @@
 /**
- * LeafPane tests (Phase 26 Plan 02 Task 2):
+ * LeafPane tests:
  *   - The root renders `data-droppane={leaf.id}` so TabStrip's cross-pane
  *     `elementFromPoint` hit-testing resolves this leaf (WS-01/WS-02).
- *   - The translucent drop-region overlay (D-10) renders ONLY while a drag
+ *   - The translucent drop-region overlay renders ONLY while a drag
  *     is active AND usePaneDragStore's hover targets THIS leaf; it renders
  *     nothing for a different leaf's hover, and nothing when no drag is
  *     active at all.
- *   - Overlay geometry matches UI-SPEC per region (half-pane for split
+ *   - Overlay geometry matches the spec per region (half-pane for split
  *     regions, full-pane inset:0 for center) and never intercepts pointer
  *     events.
  *
@@ -22,13 +22,13 @@ import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
 import type { Tab } from "../lib/useTabStore";
 
-// LeafPane mounts TabStrip, which now calls useToast() (D-14 pinned refuse
+// LeafPane mounts TabStrip, which now calls useToast() (the pinned-refuse
 // toast) — stub it so no render site here needs a real <ToastProvider>.
 vi.mock("./toast.utils", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
-// CR-03 needs each mocked EditorPane to expose a controllable
+// needs each mocked EditorPane to expose a controllable
 // EditorPaneHandlers instance (per noteId, stable across re-renders so a
 // mock's call history survives a tab-switch rerender) and a way to trigger
 // onOpenFind — vi.hoisted so the mock factory below (which vitest hoists
@@ -142,7 +142,7 @@ describe("<LeafPane /> no inactive-pane dim (readability)", () => {
   });
 });
 
-describe("<LeafPane /> active-pane inset accent cue (D-27/D-28, Phase 30)", () => {
+describe("<LeafPane /> active-pane inset accent cue", () => {
   it("multi=true active=true: the root carries the 35% inset box-shadow", () => {
     renderLeaf(leafA, { isActive: true, multi: true });
     const root = screen.getByTestId("leaf-pane");
@@ -171,7 +171,7 @@ describe("<LeafPane /> active-pane inset accent cue (D-27/D-28, Phase 30)", () =
   });
 });
 
-describe("<LeafPane /> drop-region overlay (D-10)", () => {
+describe("<LeafPane /> drop-region overlay", () => {
   it("renders nothing when no drag is active", () => {
     renderLeaf();
     expect(screen.queryByTestId("drop-overlay")).not.toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("<LeafPane /> drop-region overlay (D-10)", () => {
     expect(overlay.style.left).toBe("0px");
   });
 
-  it("uses the UI-SPEC accent fill and border color-mix tokens", () => {
+  it("uses the accent fill and border color-mix tokens", () => {
     usePaneDragStore.setState({
       activeDrag: { sourceLeafId: "leaf-other", tabId: "tab-x" },
       hover: { leafId: "leaf-a", region: "top" },
@@ -230,7 +230,7 @@ describe("<LeafPane /> drop-region overlay (D-10)", () => {
   });
 });
 
-describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", () => {
+describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change", () => {
   const tabB: Tab = { id: "tab-b", noteId: "note-b" };
   const twoTabLeaf: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA, tabB], active: "tab-a" };
 
@@ -304,7 +304,7 @@ describe("<LeafPane /> Find/Replace bar re-syncs on active-tab change (CR-03)", 
   });
 });
 
-describe("<LeafPane /> Find bar renders inside the active EditorPane (P26 polish, UI-SPEC line 151)", () => {
+describe("<LeafPane /> Find bar renders inside the active EditorPane", () => {
   it("the find bar is a DESCENDANT of the active tab's editor-pane-stub, not a LeafPane-level sibling above it", () => {
     renderLeaf();
 
@@ -328,7 +328,7 @@ describe("<LeafPane /> Find bar renders inside the active EditorPane (P26 polish
   });
 });
 
-describe("<LeafPane /> find chevrons/Enter no-op on empty query (Phase 27 follow-up fix round, item 6)", () => {
+describe("<LeafPane /> find chevrons/Enter no-op on empty query (follow-up fix round, item 6)", () => {
   // @codemirror/search's findNext/findPrevious open CM6's own built-in
   // search panel when given an invalid/empty query — Jasper replaces that
   // panel with FindReplaceBar, so it must never surface. LeafPane guards

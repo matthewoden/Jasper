@@ -20,7 +20,7 @@ describe("TagDeleteConfirmDialog", () => {
     expect(container.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
-  it("DC2: when open=true, renders title, body lines, and buttons per UI-SPEC Surface 7", () => {
+  it("DC2: when open=true, renders title, body lines, and buttons", () => {
     const onOpenChange = vi.fn();
     const onConfirm = vi.fn();
     render(

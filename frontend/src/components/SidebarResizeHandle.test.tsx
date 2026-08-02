@@ -27,7 +27,7 @@ function dispatchPointerUp() {
   document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
 }
 
-describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
+describe("<SidebarResizeHandle /> — pointer-events recipe", () => {
   beforeEach(() => {
     useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
   });
@@ -37,7 +37,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
     useTreeStore.setState({ sidebarWidth: SIDEBAR_WIDTH_DEFAULT });
   });
 
-  it("UX-09: renders with role=separator + aria-orientation + aria-label + col-resize cursor", () => {
+  it("renders with role=separator + aria-orientation + aria-label + col-resize cursor", () => {
     const { getByTestId } = render(<SidebarResizeHandle />);
     const handle = getByTestId("sidebar-resize-handle");
     expect(handle.getAttribute("role")).toBe("separator");
@@ -47,7 +47,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
     expect(handle.style.width).toBe("8px");
   });
 
-  it("UX-09: pointermove updates sidebarWidth when dragging", () => {
+  it("pointermove updates sidebarWidth when dragging", () => {
     const { getByTestId } = render(<SidebarResizeHandle />);
     const handle = getByTestId("sidebar-resize-handle");
     fireEvent.pointerDown(handle);
@@ -56,7 +56,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
     dispatchPointerUp();
   });
 
-  it("UX-09: clamps to MIN on pointermove (cannot shrink below default)", () => {
+  it("clamps to MIN on pointermove (cannot shrink below default)", () => {
     const { getByTestId } = render(<SidebarResizeHandle />);
     const handle = getByTestId("sidebar-resize-handle");
     fireEvent.pointerDown(handle);
@@ -65,7 +65,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
     dispatchPointerUp();
   });
 
-  it("UX-09: pointerup detaches listeners — subsequent pointermove is a no-op", () => {
+  it("pointerup detaches listeners — subsequent pointermove is a no-op", () => {
     const { getByTestId } = render(<SidebarResizeHandle />);
     const handle = getByTestId("sidebar-resize-handle");
     fireEvent.pointerDown(handle);
@@ -78,7 +78,7 @@ describe("<SidebarResizeHandle /> — UX-09 pointer-events recipe", () => {
 });
 
 
-describe("BL-03 narrow-viewport clamp (Phase 5.5 gap-closure Plan 11)", () => {
+describe("BL-03 narrow-viewport clamp", () => {
   const originalInnerWidth = Object.getOwnPropertyDescriptor(
     window,
     "innerWidth",

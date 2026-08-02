@@ -1,5 +1,5 @@
 /**
- * Phase 32.1 UAT spec (D-06 E2E half, WR-06): proves both halves of WR-06's
+ * (E2E half): proves both halves of the
  * exact reported scenario end-to-end against the real embedded binary — a
  * second commit from another session while the first is still unresolved
  * must not lose either edit, and an unedited tab-through of every Settings
@@ -29,7 +29,7 @@
  * stale-base spread. Two independent sessions have no such protection
  * (config changes are never pushed to other sessions — no WS broadcast
  * exists for `PATCH /config`), so this is also the more faithful
- * reproduction of "Settings is reachable from multiple sessions" (D-02's own
+ * reproduction of "Settings is reachable from multiple sessions" (the
  * stated reason server-side serialisation was chosen over a client-side
  * queue). Every timing-sensitive assertion here uses Playwright's own
  * auto-retrying `expect`/`expect.poll` plus the explicit route gate — no
@@ -69,7 +69,7 @@ async function pollConfigField<T>(
     .toBe(expected);
 }
 
-test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)", () => {
+test.describe("@phase32.1 concurrent settings edits + no-op writes", () => {
   let jasper: JasperHandle | undefined;
 
   test.afterEach(async () => {
@@ -88,7 +88,7 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // Two INDEPENDENT sessions (separate pages, each its own React tree and
     // its own `useConfig()` state) editing DIFFERENT leaves of the same
     // nested `editor` object (fontSize, autosaveMs) — this is the
-    // deterministic, faithful reproduction of WR-06 in the shipped codebase.
+    // deterministic, faithful reproduction of the bug in the shipped codebase.
     //
     // A single-tab "fire two edits fast" version (even one driven by
     // synchronous, zero-yield native DOM events dispatched from a single
@@ -108,7 +108,7 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     // (or any other) push of config changes to other sessions (verified —
     // `backend/internal/api/config_handler.go` never calls the broadcaster),
     // so session B's `config` state never learns about session A's edit
-    // without an explicit refetch. This is exactly the case D-02's own
+    // without an explicit refetch. This is exactly the case the
     // rationale names as unfixable client-side ("a client-side queue...
     // only holds within a single tab; Settings is reachable from multiple
     // sessions") — which is why the fix is the sparse payload (this test)
@@ -142,7 +142,7 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
       // Withhold session A's PATCH response until the test releases the
       // gate, so session B's own PATCH is guaranteed to be dispatched while
       // session A's write is still "unresolved" from session A's own point
-      // of view (D-06's exact wording) — a genuine overlap, not a race that
+      // of view ('s exact wording) — a genuine overlap, not a race that
       // depends on relative request speed.
       await firstResponseGate;
       await route.fulfill({ response });
@@ -167,7 +167,7 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     const dialogA = pageA.getByRole("dialog", { name: "Settings" });
     await pageA.getByTestId("settings-menu-trigger").click();
     await expect(dialogA).toBeVisible();
-    // Session A stays on Appearance — Settings always opens there (D-20), no
+    // Session A stays on Appearance — Settings always opens there, no
     // nav click needed.
 
     const dialogB = pageB.getByRole("dialog", { name: "Settings" });
@@ -247,7 +247,7 @@ test.describe("@phase32.1 D-06: concurrent settings edits + no-op writes (WR-06)
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Settings always opens on Appearance (D-20) — no nav click needed.
+    // Settings always opens on Appearance — no nav click needed.
     const fontSizeInput = dialog.getByRole("spinbutton", { name: "Font size" });
     await fontSizeInput.focus();
     await fontSizeInput.blur();

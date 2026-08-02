@@ -24,7 +24,7 @@ func TestLaunchdTemplateKeepAliveCrashedDict(t *testing.T) {
 
 	bad := "<key>KeepAlive</key>\n    <true/>"
 	if strings.Contains(launchdPlist, bad) {
-		t.Errorf("launchdPlist contains bool-form KeepAlive (Pitfall 1 regression!): %q", bad)
+		t.Errorf("launchdPlist contains bool-form KeepAlive (regression!): %q", bad)
 	}
 }
 

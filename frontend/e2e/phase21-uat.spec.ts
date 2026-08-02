@@ -1,5 +1,5 @@
 /**
- * Phase 21 UAT — Reading Surface & Markdown Extras.
+ * Reading Surface & Markdown Extras.
  *
  * READ-01: every full-pane reading surface (note body, the
  *   `editor-pane-placeholder` empty state, FilePreviewView) renders inside a
@@ -111,7 +111,7 @@ test.describe("@phase21 centered-column geometry: note surface, empty state, fil
     expect(Math.abs(leftInset - rightInset)).toBeLessThanOrEqual(CENTER_TOLERANCE_PX);
 
     // UAT evidence: wide-viewport screenshot proving the column is centered,
-    // not left-hugging (RESEARCH Pitfall 1 warning-sign check).
+    // not left-hugging (RESEARCH warning-sign check).
     await page.screenshot({
       path: path.join(__dirname, ".artifacts", "phase21-centered-column.png"),
       fullPage: false,
@@ -260,7 +260,7 @@ test.describe("@phase21 centered-column geometry: note surface, empty state, fil
 
 
 // ─── READ-02: Callouts — render, unknown fallback, auto-title, per-line ────
-// reveal, and fold-click (D-05/D-06/D-07/D-08/D-09). Fold interaction is
+// reveal, and fold-click. Fold interaction is
 // driven by real page.mouse (never dispatchEvent/synthetic events) per the
 // verify-dnd-with-real-mouse memory; zero fixed sleeps throughout.
 
@@ -362,7 +362,7 @@ test.describe("@phase21 callouts", () => {
       .toBe(true);
     await expect(titleLine).toContainText("[!tip] Reveal me");
 
-    // The colored border stays present at all times, even while editing (D-06).
+    // The colored border stays present at all times, even while editing.
     await expect
       .poll(() => titleLine.evaluate((el) => getComputedStyle(el).borderLeftColor))
       .toBe(CALLOUT_RGB.tip);
@@ -412,11 +412,11 @@ test.describe("@phase21 callouts", () => {
 });
 
 // ─── READ-04: Token styling — headings, wiki-links, tag pills, snippet ─────
-// parity with the editor's ==highlight== accent tint (D-12/D-13/D-18).
+// parity with the editor's ==highlight== accent tint.
 
 /**
  * The standalone ribbon Search TOGGLE this test originally clicked was
- * removed in Phase 27 NAV-02 (D-09/D-10) — panel selection now lives
+ * removed by NAV-02 — panel selection now lives
  * entirely in the sidebar's SidebarTabRow (see ActivityRibbon.tsx's header
  * comment). Its current equivalent is the sidebar's own "Search" tab.
  */
@@ -444,7 +444,7 @@ test.describe("@phase21 typography", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("headings, broken wiki-links, tag pills, and snippet-mark match the D-18/D-12/D-13 tokens", async ({
+  test("headings, broken wiki-links, tag pills, and snippet-mark match the design tokens", async ({
     page,
   }) => {
     const uniqueToken = "typographysearchtoken";
@@ -537,7 +537,7 @@ test.describe("@phase21 typography", () => {
 });
 
 // ─── READ-04: GFM tables — cursor-aware widget/raw flip + contained ────────
-// horizontal scroll (D-11/D-15). Cursor entry is driven by real
+// horizontal scroll. Cursor entry is driven by real
 // page.mouse (never dispatchEvent/synthetic events) per the
 // verify-dnd-with-real-mouse memory; zero fixed sleeps throughout.
 

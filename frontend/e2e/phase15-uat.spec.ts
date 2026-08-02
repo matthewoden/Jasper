@@ -1,5 +1,5 @@
 /**
- * Phase 15 UAT — Tab System (TAB-01/02/05/07/10).
+ * Tab System (TAB-01/02/05/07/10).
  *
  * Covers the end-to-end tab behaviors that are observable in the browser:
  *   TAB-01/02  open notes from the tree as tabs; re-opening an already-open
@@ -278,9 +278,9 @@ test.describe("@phase15 TAB-10: tabs persist across reload", () => {
 
     // Tab persistence is debounced (~250ms). Poll localStorage until BOTH tab
     // UUIDs are written before reloading — deterministic, never a fixed sleep.
-    // Phase 25: persistence moved from the flat jasper.tabs.<vault> key to the
+    // persistence moved from the flat jasper.tabs.<vault> key to the
     // pane-tree's jasper.layout.<vault> key (usePaneStore) — the old key is
-    // never written or migrated (D-11/D-18, pre-launch: no back-compat burden).
+    // never written or migrated (pre-launch: no back-compat burden).
     await expect
       .poll(
         () =>
@@ -314,7 +314,7 @@ test.describe("@phase15 TAB-10: tabs persist across reload", () => {
   });
 });
 
-// ─── Vault-swap clear (TAB-10 / D-09) ────────────────────────────────────────
+// ─── Vault-swap clear (TAB-10) ────────────────────────────────────────
 //
 // This needs two vaults under one JASPER_APP_HOME so the StatusBar vault picker
 // can switch between them. Self-contained spawn helper mirrors phase8-vault.
@@ -477,12 +477,12 @@ test.describe("@phase15 TAB-10: vault swap clears the tab strip", () => {
   });
 });
 
-// ─── UAT-15.1: tab UX fixes (DnD, width, X-pin, breadcrumb) ──────────────────
+// ─── Tab UX fixes (DnD, width, X-pin, breadcrumb) ───────────────────────────
 
 // UAT-DND: drag-to-reorder (pointer-event implementation — real page.mouse drag)
 // Synthetic DragEvent dispatch via page.evaluate is BANNED (round 1 false positive).
 // All reorder proofs use page.mouse so the pointer-event handlers fire natively.
-test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
+test.describe("@phase15 drag-to-reorder tabs", () => {
   let jasper: JasperHandle;
   let appHome: string;
   let idAlpha: string;
@@ -793,11 +793,11 @@ test.describe("@phase15 UAT-15.1-DND: drag-to-reorder tabs", () => {
   });
 });
 
-// UAT-15.1: tooltip (#1), overlap (#5), alignment (#6) — all need overflow
+// tooltip (#1), overlap (#5), alignment (#6) — all need overflow
 // Notes are created ONCE in beforeAll via direct API fetch (no page); each test
 // opens them from the tree so fresh pages can re-establish the overflow state.
 test.describe(
-  "@phase15 UAT-15.1-TOOLTIP/OVERLAP/ALIGN: overflow context fixes",
+  "@phase15 overflow context fixes",
   () => {
     let jasper: JasperHandle;
     let appHome: string;
@@ -832,12 +832,12 @@ test.describe(
       ).toBeVisible({ timeout: 15_000 });
     }
 
-    test("UAT-15.1-TOOLTIP: overflow trigger has an accessible 'Show all tabs' name", async ({
+    test("overflow trigger has an accessible 'Show all tabs' name", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
       await openOverflowNotes(page);
-      // Phase 31 D-07: native title= migrated to a shared Radix Tooltip +
+      // Native title= migrated to a shared Radix Tooltip +
       // aria-label (no more native title attribute on this control).
       const overflowBtn = page.getByRole("button", { name: "Show all tabs" });
       await expect(overflowBtn).toBeVisible();
@@ -845,7 +845,7 @@ test.describe(
       await expect(overflowBtn).not.toHaveAttribute("title", /.+/);
     });
 
-    test("UAT-15.1-OVERLAP: overflow trigger does not intersect the last visible pill", async ({
+    test("overflow trigger does not intersect the last visible pill", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
@@ -873,7 +873,7 @@ test.describe(
         .toBe(true);
     });
 
-    test("UAT-15.1-ALIGN: close X, new-tab +, and overflow chevron centers are within ~2px", async ({
+    test("close X, new-tab +, and overflow chevron centers are within ~2px", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
@@ -939,9 +939,9 @@ test.describe(
   },
 );
 
-// UAT-15.1: active styling (#3) and opaque inactive background (#4)
+// active styling (#3) and opaque inactive background (#4)
 test.describe(
-  "@phase15 UAT-15.1-ACTIVE/OPAQUE: active brightness and opaque inactive pill",
+  "@phase15 active brightness and opaque inactive pill",
   () => {
     let jasper: JasperHandle;
     let appHome: string;
@@ -953,7 +953,7 @@ test.describe(
       if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
     });
 
-    test("UAT-15.1-ACTIVE: active title has same font-weight as inactive, but brighter color", async ({
+    test("active title has same font-weight as inactive, but brighter color", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
@@ -1011,7 +1011,7 @@ test.describe(
       void inactivePill;
     });
 
-    test("UAT-15.1-OPAQUE: inactive pill has an opaque background (not transparent)", async ({
+    test("inactive pill has an opaque background (not transparent)", async ({
       page,
     }) => {
       await waitForConnected(page, jasper.baseURL);
@@ -1041,7 +1041,7 @@ test.describe(
 );
 
 // UAT-WIDTH: responsive width — editor stays within viewport
-test.describe("@phase15 UAT-15.1-WIDTH: responsive editor width", () => {
+test.describe("@phase15 responsive editor width", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -1100,7 +1100,7 @@ test.describe("@phase15 UAT-15.1-WIDTH: responsive editor width", () => {
 });
 
 // UAT-XPIN: close X is pinned to the pill's right edge
-test.describe("@phase15 UAT-15.1-XPIN: close X pinned to right edge", () => {
+test.describe("@phase15 close X pinned to right edge", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -1141,7 +1141,7 @@ test.describe("@phase15 UAT-15.1-XPIN: close X pinned to right edge", () => {
 });
 
 // UAT-BREADCRUMB: centered breadcrumb shows full path
-test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
+test.describe("@phase15 centered breadcrumb trail", () => {
   let jasper: JasperHandle;
   let appHome: string;
   test.beforeAll(async () => {
@@ -1171,8 +1171,8 @@ test.describe("@phase15 UAT-15.1-BREADCRUMB: centered breadcrumb trail", () => {
 
     // Open root note (only 1 tab — 1 breadcrumb element). The breadcrumb's
     // interactive path segments live in their own child row (word count moved
-    // out entirely, to the bottom StatusBar — Phase 31 UAT round 3 #6), which
-    // as of Phase 31 UAT round 3 (#4) is horizontally centered in the FULL
+    // out entirely, to the bottom StatusBar), which is now
+    // horizontally centered in the FULL
     // top-chrome bar rather than left-aligned to the title/body column.
     // Assert the path via the per-segment buttons (feature survived) rather
     // than any whole-nav textContent/alignment assumption.

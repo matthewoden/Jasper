@@ -2,10 +2,10 @@
  * Tests for usePaneStore — the layout-tree Zustand store built on paneTree.ts.
  *
  * Covers WS-08 (per-vault persistence round-trip of tree + activePaneId +
- * ratios, defensive-parse corruption/depth tolerance per T-25-V5), the
- * per-pane openInActivePane dedup primitive (D-16/D-17), closeTabInLeaf
- * collapse/final-pane rules (D-09/D-10), pruneLayoutForMissingNotes (D-13),
- * and focusCyclePane (D-08).
+ * ratios, defensive-parse corruption/depth tolerance), the
+ * per-pane openInActivePane dedup primitive, closeTabInLeaf
+ * collapse/final-pane rules, pruneLayoutForMissingNotes,
+ * and focusCyclePane.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,7 +50,7 @@ function buildDeepSplit(depth: number): PaneNode {
   return node;
 }
 
-describe("usePaneStore — splitActivePane (WS-04, D-15)", () => {
+describe("usePaneStore — splitActivePane (WS-04)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -65,7 +65,7 @@ describe("usePaneStore — splitActivePane (WS-04, D-15)", () => {
     expect(_leaves(s.tree)).toHaveLength(2);
   });
 
-  it("clones the active tab into the sibling under a new tab id (D-15/D-16)", () => {
+  it("clones the active tab into the sibling under a new tab id", () => {
     usePaneStore.getState().openInActivePane("note-1");
     usePaneStore.getState().splitActivePane("col");
     const leaves = _leaves(usePaneStore.getState().tree);
@@ -76,7 +76,7 @@ describe("usePaneStore — splitActivePane (WS-04, D-15)", () => {
   });
 });
 
-describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
+describe("usePaneStore — per-vault persistence (WS-08)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -97,7 +97,7 @@ describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
     usePaneStore.getState().initForVault(vault);
     usePaneStore.getState().openInActivePane("note-1");
     usePaneStore.getState().splitActivePane("row");
-    // Ratios persist now even though drag-resize ships in P26 (D-12).
+    // Ratios persist now even though drag-resize ships in P26.
     const withRatio = setRatioOnRoot(usePaneStore.getState().tree, 0.35);
     usePaneStore.setState({ tree: withRatio });
     const secondLeafId = _leaves(usePaneStore.getState().tree)[1].id;
@@ -162,7 +162,7 @@ describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
   });
 
   it.each([-4, 0, 1, 99, NaN, Infinity])(
-    "WR-03: a split with an out-of-range ratio (%s) is rejected to a default leaf",
+    "a split with an out-of-range ratio (%s) is rejected to a default leaf",
     (badRatio) => {
       const vault = `/vault/bad-ratio-${badRatio}`;
       const tree: PaneNode = {
@@ -186,7 +186,7 @@ describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
     },
   );
 
-  it("WR-03: an in-range ratio (0.35) still round-trips normally", () => {
+  it("an in-range ratio (0.35) still round-trips normally", () => {
     const vault = "/vault/good-ratio";
     const tree: PaneNode = {
       t: "split",
@@ -202,7 +202,7 @@ describe("usePaneStore — per-vault persistence (WS-08, T-25-V5)", () => {
   });
 });
 
-describe("usePaneStore — openInActivePane per-pane dedup (D-16/D-17)", () => {
+describe("usePaneStore — openInActivePane per-pane dedup", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -235,7 +235,7 @@ describe("usePaneStore — openInActivePane per-pane dedup (D-16/D-17)", () => {
   });
 });
 
-describe("usePaneStore — closeTabInLeaf collapse rules (D-09/D-10)", () => {
+describe("usePaneStore — closeTabInLeaf collapse rules", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -271,7 +271,7 @@ describe("usePaneStore — closeTabInLeaf collapse rules (D-09/D-10)", () => {
   });
 });
 
-describe("usePaneStore — pruneLayoutForMissingNotes (D-13)", () => {
+describe("usePaneStore — pruneLayoutForMissingNotes", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -322,7 +322,7 @@ describe("usePaneStore — pruneLayoutForMissingNotes (D-13)", () => {
   });
 });
 
-describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)", () => {
+describe("usePaneStore — dropTabOnPane (WS-01/WS-02)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -371,7 +371,7 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
     }
   });
 
-  it("dragging the ONLY tab out of leaf A onto leaf B collapses A and activates a survivor (D-06)", () => {
+  it("dragging the ONLY tab out of leaf A onto leaf B collapses A and activates a survivor", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const leafAId = usePaneStore.getState().activePaneId;
     usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling B, activates B
@@ -401,7 +401,7 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
     expect(_leaves(s.tree).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("CR-02: dropping a leaf's only tab onto an edge region of ITS OWN pane (2-leaf tree) still splits — does not vanish", () => {
+  it("dropping a leaf's only tab onto an edge region of ITS OWN pane (2-leaf tree) still splits — does not vanish", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const leafAId = usePaneStore.getState().activePaneId;
     usePaneStore.getState().splitActivePane("row"); // clones note-1 into sibling leaf B
@@ -422,7 +422,7 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
     expect(allNoteIds.filter((id) => id === "note-1")).toHaveLength(2); // leaf B's clone + the moved tab, nothing lost
   });
 
-  it("same-pane center drop is a no-op (D-08): reference identity preserved", () => {
+  it("same-pane center drop is a no-op: reference identity preserved", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const leafId = usePaneStore.getState().activePaneId;
     const tab = _leaves(usePaneStore.getState().tree)[0].tabs[0];
@@ -433,7 +433,7 @@ describe("usePaneStore — dropTabOnPane (WS-01/WS-02, D-05/D-06/D-07/D-08/D-10)
     expect(usePaneStore.getState().tree).toBe(before);
   });
 
-  it("center drop onto a pane already showing the noteId does NOT duplicate the tab (D-07)", () => {
+  it("center drop onto a pane already showing the noteId does NOT duplicate the tab", () => {
     usePaneStore.getState().openInActivePane("note-1");
     const leafAId = usePaneStore.getState().activePaneId;
     usePaneStore.getState().splitActivePane("row"); // clones note-1 into leaf B
@@ -548,7 +548,7 @@ describe("usePaneStore — dropTabAtIndex (P26 polish — positional foreign-str
   });
 });
 
-describe("usePaneStore — setPaneRatio (WS-05, D-13)", () => {
+describe("usePaneStore — setPaneRatio (WS-05)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -612,7 +612,7 @@ describe("usePaneStore — openNoteInNewSplit (P28 QUICK-03)", () => {
   });
 });
 
-describe("usePaneStore — openNotesInNewSplit (D-19, CTX-02 bulk menu)", () => {
+describe("usePaneStore — openNotesInNewSplit (CTX-02 bulk menu)", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -659,7 +659,7 @@ describe("usePaneStore — openNotesInNewSplit (D-19, CTX-02 bulk menu)", () => 
   });
 });
 
-describe("usePaneStore — focusCyclePane (D-08)", () => {
+describe("usePaneStore — focusCyclePane", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -689,7 +689,7 @@ describe("usePaneStore — focusCyclePane (D-08)", () => {
   });
 });
 
-describe("usePaneStore — togglePinTab (D-14)", () => {
+describe("usePaneStore — togglePinTab", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();
@@ -731,7 +731,7 @@ describe("usePaneStore — togglePinTab (D-14)", () => {
   });
 });
 
-describe("usePaneStore — isValidNode pinned validation (T-30-03)", () => {
+describe("usePaneStore — isValidNode pinned validation", () => {
   beforeEach(() => {
     localStorage.clear();
     resetStore();

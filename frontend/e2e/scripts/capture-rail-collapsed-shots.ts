@@ -3,7 +3,7 @@
  * capture-rail-collapsed-shots.ts — 260721-cjt Task 3 (owner UI review).
  *
  * Ad hoc (non-CI-gating) Playwright capture script, adapted from
- * capture-parity-shots.ts (Phase 23 PARITY-03): reuses spawnJasper() against
+ * capture-parity-shots.ts (PARITY-03): reuses spawnJasper() against
  * a freshly `make build`-rebuilt binary, captures four states of the right
  * rail's flush-collapse + tab-bar reopen toggle contract for the owner's
  * side-by-side review, and writes them to `.parity-shots/`.
@@ -11,7 +11,7 @@
  * This does NOT build a pixel-diff/visual-regression pipeline — these images
  * are for human review only, never an automated pass/fail gate.
  *
- * Pitfall (23-RESEARCH.md): a stale bin/jasper silently screenshots the
+ * Pitfall: a stale bin/jasper silently screenshots the
  * pre-fix UI. Always run `make build` immediately before this script.
  *
  * Usage: cd frontend && make -C .. build && npx tsx e2e/scripts/capture-rail-collapsed-shots.ts
@@ -80,7 +80,7 @@ async function shoot(page: Page, name: string): Promise<void> {
   log(`captured ${name}`);
 }
 
-/** Command palette "Split right" — clones the active leaf's active tab into a new sibling leaf (D-15). */
+/** Command palette "Split right" — clones the active leaf's active tab into a new sibling leaf. */
 async function splitRight(page: Page): Promise<void> {
   await page.keyboard.press(`${MOD}+p`);
   const input = page.getByPlaceholder("Type a command…");

@@ -1,5 +1,5 @@
 /**
- * Phase 11 UAT — Settings UI Panel.
+ * Settings UI Panel.
  *
  * All synchronization uses deterministic assertion-based waits
  * (expect(...).toBeVisible(), expect(...).toBeChecked(), waitForFunction).
@@ -13,7 +13,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
 
-test.describe("Phase 11 Settings panel (@phase11)", () => {
+test.describe("Settings panel (@phase11)", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -27,7 +27,7 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
   /**
    * SET-E2E-1: Open the gear → settings panel visible → toggle reading font to Serif →
    * assert --font-reading CSS var on <html> updates to include "Source Serif 4".
-   * Previous theme toggle removed — dark-only (D-01).
+   * Previous theme toggle removed — dark-only.
    */
   test("SET-E2E-1: open settings panel → toggle reading font Serif → --font-reading CSS var updates @phase11", async ({
     page,
@@ -75,10 +75,10 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Phase 32 replaced the old single-field "Editor font size" label with
+    // replaced the old single-field "Editor font size" label with
     // the Appearance pane's SliderNumberPair (aria-label "Font size", role
-    // spinbutton for the number half) — settings always opens on Appearance
-    // (D-20), so no extra nav click is needed.
+    // spinbutton for the number half) — settings always opens on
+    // Appearance, so no extra nav click is needed.
     const fontInput = page.getByRole("spinbutton", { name: "Font size" });
     await fontInput.clear();
     await fontInput.fill("18");
@@ -103,7 +103,7 @@ test.describe("Phase 11 Settings panel (@phase11)", () => {
    * then change a setting via the panel and assert the unmanaged key survives
    * the round-trip (SaveMerged must not clobber unknown fields).
    *
-   * Phase 32 removed config.Config.DisplayName entirely (D-05 — a vault's
+   * removed config.Config.DisplayName entirely (a vault's
    * name is its folder name, not a stored field), so the "Display name"
    * field this test originally drove no longer exists. The Editor pane's
    * autosave-interval field is the smallest still-existing control that

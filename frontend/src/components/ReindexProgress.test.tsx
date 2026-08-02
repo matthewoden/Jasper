@@ -33,7 +33,7 @@ describe("<ReindexProgress />", () => {
     expect(screen.getByLabelText("in progress")).toBeInTheDocument();
   });
 
-  it("RP3: shows the same headline for phase=starting (Phase 4 reserved value)", () => {
+  it("RP3: shows the same headline for phase=starting", () => {
     render(<ReindexProgress phase="starting" />);
     expect(screen.getByText("Rebuilding the index…")).toBeInTheDocument();
   });

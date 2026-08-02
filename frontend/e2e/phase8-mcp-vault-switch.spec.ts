@@ -242,7 +242,7 @@ class McpClient {
 }
 
 
-test.describe("Phase 8 Plan 08-24 — R4-14 MCP write during vault switch", () => {
+test.describe("R4-14 MCP write during vault switch", () => {
   test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 

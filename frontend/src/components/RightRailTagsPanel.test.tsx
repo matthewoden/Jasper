@@ -1,6 +1,6 @@
 /**
- * Tests for RightRailTagsPanel component (Phase 20 trim — body-only,
- * D-08/D-09: no filter input, no own header/close button).
+ * Tests for RightRailTagsPanel component (body-only,
+ * no filter input, no own header/close button).
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -69,7 +69,7 @@ beforeEach(() => {
   mockDeleteTag.mockReset();
 });
 
-describe("RightRailTagsPanel — body-only, single-list (D-01..D-05, no header/close/filter)", () => {
+describe("RightRailTagsPanel — body-only, single-list (no header/close/filter)", () => {
   it("does not render a header row", () => {
     renderPanel();
     expect(document.querySelector("header")).toBeNull();
@@ -103,7 +103,7 @@ describe("RightRailTagsPanel — body-only, single-list (D-01..D-05, no header/c
     }
   });
 
-  it("does not render its own 'Tags' sub-header or a count pill (D-01/D-02 retired)", () => {
+  it("does not render its own 'Tags' sub-header or a count pill", () => {
     renderPanel();
     expect(screen.queryByText("Tags")).toBeNull();
     expect(screen.queryByText("3")).toBeNull();
@@ -111,7 +111,7 @@ describe("RightRailTagsPanel — body-only, single-list (D-01..D-05, no header/c
 });
 
 describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
-  it("rows sorted count-desc with alphabetical ties, name + count badge (D-09)", () => {
+  it("rows sorted count-desc with alphabetical ties, name + count badge", () => {
     renderPanel();
 
     const tagItems = screen.getAllByRole("listitem");
@@ -173,14 +173,14 @@ describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
     expect(style).toContain("8%");
   });
 
-  it("inactive '#tagname' spans render plain fg — only the active tag gets accent (UI-SPEC)", () => {
+  it("inactive '#tagname' spans render plain fg — only the active tag gets accent", () => {
     renderPanel();
 
     const hashSpan = screen.getByText("#project");
     expect(hashSpan).toHaveStyle({ color: "var(--color-fg)" });
   });
 
-  it("the count is a plain muted number with aria-label='<N> notes' (D-04: no background pill)", () => {
+  it("the count is a plain muted number with aria-label='<N> notes' (no background pill)", () => {
     renderPanel();
 
     const row = screen.getByTestId("tag-row-project");
@@ -205,7 +205,7 @@ describe("RightRailTagsPanel — tag list behaviors (kept unchanged)", () => {
 });
 
 describe("RightRailTagsPanel — empty state (vault has zero tags)", () => {
-  it("empty state uses the mock-literal 'No tags in this vault' copy (D-10)", () => {
+  it("empty state uses the mock-literal 'No tags in this vault' copy", () => {
     mockedUseTagBrowser.mockReturnValue({
       tags: [],
       loading: false,

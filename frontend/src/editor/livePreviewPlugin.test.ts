@@ -171,7 +171,7 @@ describe("livePreviewPlugin / emphasis-marks", () => {
 });
 
 
-describe("livePreviewPlugin / multi-line-selection (D-06)", () => {
+describe("livePreviewPlugin / multi-line-selection", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -193,7 +193,7 @@ describe("livePreviewPlugin / multi-line-selection (D-06)", () => {
 });
 
 
-describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
+describe("livePreviewPlugin / code-fence-guard", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -215,7 +215,7 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
     expect(replaceAtFence.length).toBe(0);
   });
 
-  it("InlineCode is rendered as cm-inline-code mark; backticks hide off-line per UI-SPEC §Live Preview", () => {
+  it("InlineCode is rendered as cm-inline-code mark; backticks hide off-line", () => {
     const view = makeView(INLINE_CODE_PROD_DOC, 0);
     views.push(view);
 
@@ -236,7 +236,7 @@ describe("livePreviewPlugin / code-fence-guard (D-09)", () => {
 });
 
 
-describe("livePreviewPlugin / IME composing gate (D-07/D-31)", () => {
+describe("livePreviewPlugin / IME composing gate", () => {
   it("preserves decorations through u.changes when view.composing is true", () => {
     const parent = document.createElement("div");
     document.body.append(parent);
@@ -304,7 +304,7 @@ describe("computeCursorLines", () => {
 });
 
 
-describe("livePreviewPlugin / list-bullets (EDIT-04 / D-04)", () => {
+describe("livePreviewPlugin / list-bullets (EDIT-04)", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -456,7 +456,7 @@ describe("livePreviewPlugin / horizontal-rule (EDIT-07)", () => {
 });
 
 
-describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
+describe("livePreviewPlugin / heading trailing-space swallow", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -464,7 +464,7 @@ describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
     views.length = 0;
   });
 
-  it("UX-15: off-cursor HeaderMark range covers trailing space", () => {
+  it("off-cursor HeaderMark range covers trailing space", () => {
     const doc = "# heading\nbody";
     const view = makeView(doc, 10);
     views.push(view);
@@ -477,7 +477,7 @@ describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
     expect(replaceAtZero!.to).toBe(2);
   });
 
-  it("UX-15: off-cursor HeaderMark falls back to node.to when next char is not a space", () => {
+  it("off-cursor HeaderMark falls back to node.to when next char is not a space", () => {
     const doc = "#\nbody";
     const view = makeView(doc, 2);
     views.push(view);
@@ -494,7 +494,7 @@ describe("livePreviewPlugin / UX-15 heading trailing-space swallow", () => {
   });
 });
 
-describe("livePreviewPlugin / UX-16 cm-list-marker class", () => {
+describe("livePreviewPlugin / cm-list-marker class", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -502,7 +502,7 @@ describe("livePreviewPlugin / UX-16 cm-list-marker class", () => {
     views.length = 0;
   });
 
-  it("UX-16: on-cursor ListMark mark decoration carries cm-list-marker class", () => {
+  it("on-cursor ListMark mark decoration carries cm-list-marker class", () => {
     const doc = "- item";
     const view = makeView(doc, 3);
     views.push(view);
@@ -585,8 +585,8 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
     return view;
   }
 
-  it("TC-7 (D-02 reversed): task line '- [ ] task' DOES emit a bullet widget over the ListMark range (cursor OFF line)", () => {
-    // D-02 REVERSED: taskCheckboxPlugin now only owns the '[ ]' range.
+  it("TC-7 (reversed): task line '- [ ] task' DOES emit a bullet widget over the ListMark range (cursor OFF line)", () => {
+    // REVERSED: taskCheckboxPlugin now only owns the '[ ]' range.
     // livePreviewPlugin treats task-line ListMarks identically to regular list items:
     // off-cursor → bullet widget '•' replacing the '-'.
     // This gives the "• ☐ text" Obsidian-style layout.
@@ -617,7 +617,7 @@ describe("livePreviewPlugin / TC-7 task-line coexistence guard", () => {
   });
 
   it("TC-7 reveal: on-cursor task line emits a .cm-marker mark decoration over the ListMark range", () => {
-    // D-01 reveal model: when the cursor IS on the task line, livePreviewPlugin must emit
+    // reveal model: when the cursor IS on the task line, livePreviewPlugin must emit
     // a .cm-marker decoration on the ListMark range so the raw '-' is muted-but-visible.
     // taskCheckboxPlugin emits nothing on-cursor (per TC-10), so livePreviewPlugin owns
     // the on-cursor ListMark styling.
@@ -888,7 +888,7 @@ describe("livePreviewPlugin / callouts (READ-02)", () => {
 });
 
 
-describe("livePreviewPlugin / callout fold chevron (READ-02/D-07)", () => {
+describe("livePreviewPlugin / callout fold chevron (READ-02)", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {

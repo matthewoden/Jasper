@@ -180,7 +180,7 @@ func TestDefaultDataDir_NonEmpty(t *testing.T) {
 // TestDefaults_JSONRoundTrip — the marshalled defaults must round-trip
 // bit-for-bit and use the lowercase-first JSON keys required by
 // api/openapi.yaml (server, port, dataDir, mcp, bind). No "enabled" key
-// (Phase 24 D-06 removed the MCP listener toggle).
+// (the MCP listener toggle was removed).
 func TestDefaults_JSONRoundTrip(t *testing.T) {
 	t.Parallel()
 	d := Defaults()
@@ -243,7 +243,7 @@ func TestLoad_OldConfigWithoutServerOrMCP_BackCompat(t *testing.T) {
 	}
 }
 
-// TestLoad_ThemeLightCoercedToDark — D-02: any persisted theme:"light"
+// TestLoad_ThemeLightCoercedToDark: any persisted theme:"light"
 // is coerced to "dark" on Load. The "light" value is still accepted on
 // the wire (kept in OpenAPI enum) but the runtime is always dark.
 func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
@@ -267,7 +267,7 @@ func TestLoad_ThemeLightCoercedToDark(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.Theme != "dark" {
-		t.Errorf("Theme: got %q, want %q (D-02 coercion)", cfg.Theme, "dark")
+		t.Errorf("Theme: got %q, want %q (dark-only coercion)", cfg.Theme, "dark")
 	}
 }
 
@@ -422,11 +422,11 @@ func TestDefaults_AccentAndReadingFont(t *testing.T) {
 	}
 }
 
-// TestLoad_UnknownFieldsAreDroppedNotFatal — D-13: an unrecognized key,
+// TestLoad_UnknownFieldsAreDroppedNotFatal: an unrecognized key,
 // top-level or nested, is silently dropped; every recognized field
 // (including nested siblings of the unrecognized key) keeps its on-disk
 // value. This replaces the prior strict-decoding contract, which asserted
-// the exact opposite behavior D-13 inverts.
+// the exact opposite behavior the lenient read path inverts.
 func TestLoad_UnknownFieldsAreDroppedNotFatal(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -523,7 +523,7 @@ func TestLoad_WrongTypedFieldFallsBackPerField(t *testing.T) {
 	}
 }
 
-// TestLoad_OutOfRangeFallsBackNotClamped — D-14: a well-typed but
+// TestLoad_OutOfRangeFallsBackNotClamped: a well-typed but
 // out-of-range value reverts to the field's default, never clamped to the
 // nearest bound.
 func TestLoad_OutOfRangeFallsBackNotClamped(t *testing.T) {
@@ -618,7 +618,7 @@ func TestLoad_InvalidEnumFallsBackToDefault(t *testing.T) {
 	}
 }
 
-// TestLoad_FallbackLogsWarn — D-15: a per-field fallback logs a warning
+// TestLoad_FallbackLogsWarn: a per-field fallback logs a warning
 // naming the offending field path, and that log is the only surfacing
 // mechanism (no other side channel is asserted or expected here).
 func TestLoad_FallbackLogsWarn(t *testing.T) {
@@ -645,9 +645,9 @@ func TestLoad_FallbackLogsWarn(t *testing.T) {
 	}
 }
 
-// TestLoad_NullScalarFieldWarnsAndFallsBack — CR-01: a literal JSON null on
+// TestLoad_NullScalarFieldWarnsAndFallsBack: a literal JSON null on
 // a single scalar field is a successful no-op for encoding/json (err == nil,
-// target untouched), so it must be checked explicitly or D-15's "every
+// target untouched), so it must be checked explicitly or the "every
 // fallback is logged" guarantee has a silent hole. Sibling fields in the
 // same section must still decode normally.
 func TestLoad_NullScalarFieldWarnsAndFallsBack(t *testing.T) {
@@ -683,7 +683,7 @@ func TestLoad_NullScalarFieldWarnsAndFallsBack(t *testing.T) {
 	}
 }
 
-// TestLoad_NullSectionWarnsAndFallsBack — CR-01: "server": null must revert
+// TestLoad_NullSectionWarnsAndFallsBack: "server": null must revert
 // the whole ServerConfig block (including DataDir) to defaults with a warn,
 // not silently — a silent revert of dataDir is indistinguishable from data
 // loss to the user. Sibling top-level sections must survive.

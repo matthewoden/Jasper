@@ -988,7 +988,7 @@ func TestUpdateNoteIfMatchRequired(t *testing.T) {
 // JASPER_MCP_TEST_DELAY env var widens the create_note write window by the
 // configured number of milliseconds. The hook exists exclusively so the
 // phase8-mcp-vault-switch.spec.ts deterministic-timing test can reproduce
-// the V-TEST-4 race; production builds never set this env var.
+// the vault-swap drain race; production builds never set this env var.
 func TestCreateNoteRespectsTestDelay(t *testing.T) {
 	const delayMS = 200
 	t.Setenv("JASPER_MCP_TEST_DELAY", strconv.Itoa(delayMS))

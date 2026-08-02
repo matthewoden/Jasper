@@ -102,7 +102,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   // saveError is cleared here too: a caller that keeps the shell mounted
   // across close (SettingsMenu) would otherwise reopen onto a stale error
   // banner from the previous session. ActivityRibbon unmounts the dialog
-  // instead, so both entry points now behave identically (32-REVIEW IN-03).
+  // instead, so both entry points now behave identically.
   const handleOpenChange = useCallback(
     (next: boolean) => {
       if (!next) {

@@ -1,5 +1,5 @@
 /**
- * PaneCornerReopenButton tests (Phase 27 Plan 04 Task 1, D-12):
+ * PaneCornerReopenButton tests:
  *   - Renders null when notesSidebarVisible is true.
  *   - Renders a "Show sidebar" button when notesSidebarVisible is false.
  *   - Click sets notesSidebarVisible true.

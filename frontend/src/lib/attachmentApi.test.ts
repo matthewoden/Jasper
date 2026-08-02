@@ -133,7 +133,7 @@ describe("attachmentApi / uploadAttachment", () => {
   });
 });
 
-describe("UA-session-header — uploadAttachment includes X-Session-ID (UAT-2 N8)", () => {
+describe("UA-session-header — uploadAttachment includes X-Session-ID", () => {
   it("attaches X-Session-ID header equal to generateOrLoadSessionId()", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

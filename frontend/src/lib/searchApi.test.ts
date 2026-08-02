@@ -153,7 +153,7 @@ describe("searchApi.searchNotes", () => {
     expect(call[1].params.query.sort).toBeUndefined();
   });
 
-  it("D-05: two concurrent identical searchNotes calls issue exactly one client.GET; two differing calls issue two", async () => {
+  it("two concurrent identical searchNotes calls issue exactly one client.GET; two differing calls issue two", async () => {
     let resolveFetch!: (v: unknown) => void;
     const pending = new Promise((resolve) => {
       resolveFetch = resolve;

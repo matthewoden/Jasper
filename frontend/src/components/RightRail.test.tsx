@@ -1,6 +1,6 @@
 /**
  * RightRail tests — tab-row + single-mounted-panel shell (TAGS-01;
- * Phase 31 D-01..D-05 collapsed the Tags tab to a single vault-wide list
+ * The Tags tab is a single vault-wide list
  * and retired all panel sub-headers/counts): RightRailTabRow at the top,
  * exactly ONE of Outline/LinkedMentions/RightRailTagsPanel mounted below
  * it, driven by the rightPanel slice. No independent per-section
@@ -13,7 +13,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TooltipProvider } from "./Tooltip";
 
 /** Every RightRail render is wrapped in TooltipProvider — RightRailTabRow's
- *  tab buttons now migrate to the shared Tooltip (D-07). */
+ *  tab buttons now migrate to the shared Tooltip. */
 function render(ui: ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 }
@@ -206,7 +206,7 @@ describe("RightRail — tab row + single-panel shell", () => {
     expect(verticalHandle).toHaveAttribute("aria-label", "Resize backlinks panel");
   });
 
-  it("expanded rail background is --color-surface, flush (no inset padding), mock parity 23-03 D-06", () => {
+  it("expanded rail background is --color-surface, flush (no inset padding), mock parity", () => {
     const { container } = render(<RightRail activeNoteId={null} />);
     const aside = container.querySelector("aside");
     expect(aside).toBeTruthy();
@@ -253,7 +253,7 @@ describe("RightRail — tab row + single-panel shell", () => {
   });
 
   it.each(["outline", "backlinks", "tags"] as const)(
-    "rightPanel='%s' renders no in-panel sub-header (D-01 retired app-wide)",
+    "rightPanel='%s' renders no in-panel sub-header (retired app-wide)",
     (panel) => {
       mockRightPanel = panel;
       render(<RightRail activeNoteId="note-1" />);

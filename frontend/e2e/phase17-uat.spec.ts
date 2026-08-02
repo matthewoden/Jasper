@@ -1,5 +1,5 @@
 /**
- * Phase 17 UAT — Design Tokens & Theme Foundation.
+ * Design Tokens & Theme Foundation.
  *
  * THEME-01: Dark token palette applied across all surfaces
  *   Editor bg #1e1e21, sidebar/chrome #1a1a1c, body #d4d4d8, muted #6a6a72.
@@ -9,7 +9,7 @@
  *   aria-label="Sky" swatch sets --color-accent to #7dd3fc; survives page reload.
  * THEME-04: Code font = JetBrains Mono; reading-font toggle reflects in note surface.
  *   Code fence computed font-family contains "JetBrains Mono"; after "Serif" toggle,
- *   prose surface switches to "Source Serif 4" while code stays mono (D-04).
+ *   prose surface switches to "Source Serif 4" while code stays mono.
  *
  * These tests are in RED state until Waves 2–3 land. Do NOT weaken assertions to
  * make them pass prematurely.
@@ -210,10 +210,10 @@ test.describe("THEME-03: Accent picker (@phase17)", () => {
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Click the "Sky" accent swatch. The aria-label comes from the UI-SPEC Copywriting Contract.
+    // Click the "Sky" accent swatch. The aria-label is locked copy.
     await page.getByRole("button", { name: "Sky" }).click();
 
-    // --color-accent must update to #7dd3fc (Sky hex from UI-SPEC Accent System table).
+    // --color-accent must update to #7dd3fc (the Sky accent hex).
     await expect
       .poll(
         () =>
@@ -338,7 +338,7 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
     // A code fence line inside the CM6 editor uses .cm-codeblock (themeBridge).
-    // The computed font-family must contain "JetBrains Mono" (D-04).
+    // The computed font-family must contain "JetBrains Mono".
     const codeFontFamily = await page.evaluate(() => {
       const codeblock = document.querySelector(".cm-codeblock");
       if (!codeblock) return null;
@@ -368,14 +368,14 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     await page.waitForSelector(".cm-content", { timeout: 8_000 });
 
     // Open Settings and toggle reading font to "Serif".
-    // The UI-SPEC Copywriting Contract defines:
+    // The locked copy defines:
     //   - Group aria-label: "Reading font"
     //   - Option: "Serif" (alternate)
     await page.getByTestId("settings-menu-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Settings" });
     await expect(dialog).toBeVisible();
 
-    // Click the "Serif" button inside the "Reading font" group (D-03, D-04).
+    // Click the "Serif" button inside the "Reading font" group.
     const readingFontGroup = page.getByRole("group", { name: "Reading font" });
     await readingFontGroup.getByRole("button", { name: "Serif" }).click();
 
@@ -383,7 +383,7 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
     await expect(dialog).not.toBeVisible();
 
     // After toggling Serif, the rendered .cm-content should compute "Source
-    // Serif 4" (D-03). Assert on .cm-content, never .cm-editor — .cm-editor
+    // Serif 4". Assert on .cm-content, never .cm-editor — .cm-editor
     // (the &-rule) already carries var(--font-reading) pre-fix and doesn't
     // prove the value reaches the rendered text (the exact false-green).
     const proseContentFontFamily = await page
@@ -397,7 +397,7 @@ test.describe("THEME-04: Font delivery and reading-font toggle (@phase17)", () =
       .poll(() => proseLine.evaluate((el) => getComputedStyle(el).fontFamily))
       .toContain("Source Serif 4");
 
-    // Code fences must still use JetBrains Mono regardless of reading-font choice (D-04).
+    // Code fences must still use JetBrains Mono regardless of reading-font choice.
     const codeFontFamilyAfterToggle = await page.evaluate(() => {
       const codeblock = document.querySelector(".cm-codeblock");
       if (!codeblock) return null;

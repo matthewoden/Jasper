@@ -73,7 +73,7 @@ describe("notesApi", () => {
     expect(result.data?.id).toBe(ScratchpadUUID);
   });
 
-  it("N3: ScratchpadUUID matches the locked byte-for-byte constant from D-06", () => {
+  it("N3: ScratchpadUUID matches the locked byte-for-byte constant", () => {
     expect(ScratchpadUUID).toBe("00000000-0000-4000-a000-000000000001");
   });
 
@@ -105,7 +105,7 @@ describe("notesApi", () => {
     });
   });
 
-  it("N6 (D-05): two concurrent getNote() calls for the same id issue exactly one client.GET and both resolve from it", async () => {
+  it("N6: two concurrent getNote() calls for the same id issue exactly one client.GET and both resolve from it", async () => {
     let resolveFetch!: (v: unknown) => void;
     const pending = new Promise((resolve) => {
       resolveFetch = resolve;
@@ -124,7 +124,7 @@ describe("notesApi", () => {
     expect(r1).toBe(r2);
   });
 
-  it("N7 (D-05): getNote() for two different ids issues two client.GET calls", async () => {
+  it("N7: getNote() for two different ids issues two client.GET calls", async () => {
     getMock.mockResolvedValue({
       data: { id: "id", path: "a.md", content: "x", updated_at: "" },
       error: undefined,
@@ -141,7 +141,7 @@ describe("notesApi", () => {
     });
   });
 
-  it("N8 (D-12): getNoteFresh issued while a getNote read is in flight never joins it — issues a second request and resolves against that", async () => {
+  it("N8: getNoteFresh issued while a getNote read is in flight never joins it — issues a second request and resolves against that", async () => {
     let resolveStale!: (v: unknown) => void;
     const stale = new Promise((resolve) => {
       resolveStale = resolve;
@@ -214,7 +214,7 @@ describe("notesApi", () => {
     expect(result.data?.id).toBe(ScratchpadUUID);
   });
 
-  it("N11 (D-05): two concurrent getNoteByPath() calls for the same path issue exactly one client.GET", async () => {
+  it("N11: two concurrent getNoteByPath() calls for the same path issue exactly one client.GET", async () => {
     let resolveFetch!: (v: unknown) => void;
     const pending = new Promise((resolve) => {
       resolveFetch = resolve;

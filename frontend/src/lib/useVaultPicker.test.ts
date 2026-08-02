@@ -103,7 +103,7 @@ describe("useVaultPicker", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("refresh() swallows a rejected getCurrent/getRecent without an unhandled rejection (IN-02)", async () => {
+  it("refresh() swallows a rejected getCurrent/getRecent without an unhandled rejection", async () => {
     const unhandledRejections: unknown[] = [];
     const onUnhandledRejection = (e: PromiseRejectionEvent) => {
       unhandledRejections.push(e.reason);
@@ -133,7 +133,7 @@ describe("useVaultPicker", () => {
     }
   });
 
-  it("refresh has a stable identity across rerenders (IN-02)", async () => {
+  it("refresh has a stable identity across rerenders", async () => {
     const { result, rerender } = renderHook(() => useVaultPicker());
 
     await act(async () => {
@@ -145,7 +145,7 @@ describe("useVaultPicker", () => {
     expect(result.current.refresh).toBe(firstRefresh);
   });
 
-  it("a fetch resolving after unmount does not apply state (IN-02)", async () => {
+  it("a fetch resolving after unmount does not apply state", async () => {
     let resolveCurrent!: (v: null) => void;
     vi.mocked(vaultApi.getCurrent).mockReturnValueOnce(
       new Promise((resolve) => {

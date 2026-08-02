@@ -217,7 +217,7 @@ func TestPostReveal_VaultRootScope_EmptyDataDir_Returns400(t *testing.T) {
 	}
 }
 
-// TestPostReveal_VaultRootScope_IgnoresHostilePath is the T-32-05 pin: a
+// TestPostReveal_VaultRootScope_IgnoresHostilePath pins the contract: a
 // hostile path in vaultRoot scope must be completely ignored — the
 // platform function must receive filepath.Clean(dataDir), never a
 // traversed path derived from the request body.

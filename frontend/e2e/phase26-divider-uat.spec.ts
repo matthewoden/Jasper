@@ -1,11 +1,11 @@
 /**
- * Phase 26 Plan 03 — Divider resize (WS-05).
+ * Divider resize (WS-05).
  *
  * Proves the interactive pane divider end-to-end against a rebuilt binary:
- *   1. Resize (D-13): dragging the divider live-reflows both panes.
- *   2. Clamp (D-14): dragging past a pane's edge stops at the 160px minimum
+ *   1. Resize: dragging the divider live-reflows both panes.
+ *   2. Clamp: dragging past a pane's edge stops at the 160px minimum
  *      rather than crushing the pane.
- *   3. Persistence (D-13): the final ratio survives a full page reload via
+ *   3. Persistence: the final ratio survives a full page reload via
  *      the existing debounced per-vault layout write.
  *
  * Selector contract (mirrors phase25-uat.spec.ts):
@@ -133,7 +133,7 @@ async function dragDividerTo(page: Page, targetClientX: number): Promise<void> {
   await page.mouse.up();
 }
 
-// ─── WS-05 / D-13 — live resize ──────────────────────────────────────────────
+// ─── WS-05 — live resize ────────────────────────────────────────────────────
 
 test.describe("@phase26 @divider WS-05: divider resize", () => {
   let jasper: JasperHandle;
@@ -146,7 +146,7 @@ test.describe("@phase26 @divider WS-05: divider resize", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("dragging the divider resizes both panes live — WS-05/D-13", async ({ page }) => {
+  test("dragging the divider resizes both panes live — WS-05", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await waitForConnected(page, jasper.baseURL);
     const { left, right } = await setupSplit(page, jasper.baseURL);
@@ -181,7 +181,7 @@ test.describe("@phase26 @divider WS-05: divider resize", () => {
   });
 });
 
-// ─── WS-05 / D-14 — 160px clamp ──────────────────────────────────────────────
+// ─── WS-05 — 160px clamp ────────────────────────────────────────────────────
 
 test.describe("@phase26 @divider WS-05: divider clamp", () => {
   let jasper: JasperHandle;
@@ -194,7 +194,7 @@ test.describe("@phase26 @divider WS-05: divider clamp", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("dragging past the left pane's edge stops at the 160px minimum — WS-05/D-14", async ({
+  test("dragging past the left pane's edge stops at the 160px minimum — WS-05", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -214,7 +214,7 @@ test.describe("@phase26 @divider WS-05: divider clamp", () => {
   });
 });
 
-// ─── WS-05 / D-13 — persistence across reload ────────────────────────────────
+// ─── WS-05 — persistence across reload ──────────────────────────────────────
 
 test.describe("@phase26 @divider WS-05: divider resize persistence", () => {
   let jasper: JasperHandle;
@@ -227,7 +227,7 @@ test.describe("@phase26 @divider WS-05: divider resize persistence", () => {
     if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
   });
 
-  test("the resized ratio survives a full page reload — WS-05/D-13", async ({ page }) => {
+  test("the resized ratio survives a full page reload — WS-05", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await waitForConnected(page, jasper.baseURL);
     const { left } = await setupSplit(page, jasper.baseURL);

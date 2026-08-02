@@ -1,12 +1,12 @@
 /**
- * Phase 6.5 UAT — Tags + Rails Polish.
+ * Tags + Rails Polish.
  *
  * All scenarios share a single `bin/jasper` instance (beforeAll / afterAll) to
  * reduce runtime. Scenarios run in declaration order; data created earlier is
  * visible to later scenarios. Use unique tag/title names to avoid interference.
  *
  * Scenarios:
- *   S1 (@UX-T-01) : REWRITTEN (Phase 30 tab-row rework removed the original
+ * S1 (@UX-T-01) : REWRITTEN (tab-row rework removed the original
  *                   "panel cards + draggable inter-panel divider" design) —
  *                   now guards the current equivalent: right-rail tab
  *                   switching (Outline/Linked mentions/Tags swap the single
@@ -19,7 +19,7 @@
  *                   Cmd-Shift-Y → raw shown; Cmd-Shift-Y → hidden; note switch
  *                   resets to hidden
  *   S5 (@UX-T-05) : RETIRED in v1.2 — the Tags panel substring-filter input was
- *                   removed in the Phase 20 RightRail redesign (no replacement).
+ * removed in the RightRail redesign (no replacement).
  *   S6 (@BUG-01)  : Save with new tag → Tags panel updates within 2s (no reload)
  *   S7 (@BUG-02)  : Open note with incoming [[...]] → Backlinks panel shows row
  *                   within 2s
@@ -28,7 +28,7 @@
  *   S9 (@autocomplete-polish) : `[[` popup and `#` popup have border-radius 8px
  *                               and foreground-contrast text
  *
- * Selector notes (Phase 30 right-rail tab-row rework, 30-05/30-08):
+ * Selector notes (right-rail tab-row rework, 30-05/30-08):
  *   - CM6 editor is contenteditable — use keyboard.type(), not .fill(). Tabs
  *     keep every open note's EditorPane mounted (inactive = display:none), so
  *     `.cm-content` can match several elements — target `.cm-content:visible`.
@@ -37,7 +37,7 @@
  *   - Right-rail panels: RightRailTabRow renders icon-only Outline / Linked
  *     mentions / Tags tab buttons (aria-label = the panel name); exactly ONE
  *     panel is mounted below at a time, driven by the persisted rightPanel
- *     field (useWorkspace). The Phase 20 three-section stacked/collapsible
+ * field (useWorkspace). The earlier three-section stacked/collapsible
  *     rail (independent SectionHeader "Collapse/Expand <Title> panel"
  *     toggles, InterPanelDivider height-ratio persistence) was removed
  *     entirely — no per-section collapse state, no inter-panel divider.
@@ -80,7 +80,7 @@ async function openApp(page: Page, openFirstNote = true): Promise<void> {
 /**
  * Wait for the ACTIVE tab's editor to be mounted and visible.
  *
- * Post-redesign (Phase 18 tabs) each open tab keeps its own CM6 EditorPane
+ * Post-redesign (tabs) each open tab keeps its own CM6 EditorPane
  * mounted; inactive tabs are display:none keep-alive panes. So `.cm-content`
  * can resolve to several elements — only the active tab's pane is visible.
  * The `:visible` filter selects that one.
@@ -119,8 +119,8 @@ async function waitForSaved(page: Page, timeoutMs = 10_000): Promise<void> {
  * Select a right-rail tab (Outline / Linked mentions / Tags) and reveal the
  * rail first if it is collapsed.
  *
- * Phase 30's tab-row rework (30-05/30-08, TAGS-01 D-01/D-02) replaced the
- * Phase 20 three-section stacked/collapsible rail (independent SectionHeader
+ * the tab-row rework (30-05/30-08, TAGS-01) replaced the
+ * three-section stacked/collapsible rail (independent SectionHeader
  * "Expand/Collapse <Title> panel" toggles, two draggable inter-panel
  * dividers) with a single-panel-at-a-time model: RightRailTabRow renders
  * icon-only Outline / Linked mentions / Tags tabs (aria-label = the panel
@@ -195,8 +195,8 @@ async function apiCreateNote(
 /**
  * Ensure the Tags panel is the active right-rail tab (S3, BUG-01).
  *
- * The Tags panel is one of three tab-driven right-rail panels (Phase 30
- * tab-row rework). Phase 31 D-03/D-05 deleted the upper active-note
+ * The Tags panel is one of three tab-driven right-rail panels (the
+ * tab-row rework). A later trim deleted the upper active-note
  * "Note tags" section this helper originally waited on (and its
  * useNoteTagsStore live-parse machinery) — the Tags tab is now a single
  * vault-wide list (RightRailTagsPanel, `<ul role="list">`, rows via
@@ -212,7 +212,7 @@ async function ensureTagsPanelExpanded(page: Page): Promise<void> {
 
 
 test("S1 @UX-T-01: right-rail tab row switches panels; active tab persists across reload", async ({ page }) => {
-  // REWRITTEN (Rule 3): the Phase 20 "panel cards + draggable inter-panel
+  // REWRITTEN: the earlier "panel cards + draggable inter-panel
   // divider" design this scenario originally guarded was removed by Phase
   // 30's tab-row rework (30-05/30-08) — RightRail.tsx now mounts exactly one
   // panel at a time (no stacked cards, no InterPanelDivider, no per-section
@@ -224,7 +224,7 @@ test("S1 @UX-T-01: right-rail tab row switches panels; active tab persists acros
 
   // Default panel is Outline (RIGHT_PANEL_DEFAULT). No note is open in this
   // scenario (openApp(page, false)), so the panel renders its "No headings"
-  // empty state (Phase 31 D-01 removed the "Outline" sub-header label this
+  // empty state (the "Outline" sub-header label this
   // originally asserted — that heading no longer exists anywhere in the DOM).
   await selectRightRailTab(page, "Outline");
   await expect(page.getByText("No headings", { exact: true })).toBeVisible({ timeout: 8_000 });
@@ -233,7 +233,7 @@ test("S1 @UX-T-01: right-rail tab row switches panels; active tab persists acros
   ).toHaveCount(0);
 
   // Switching to Tags swaps the mounted panel — Outline's content unmounts,
-  // the single vault-wide tag list (Phase 31 D-03/D-05; no "Note tags"
+  // the single vault-wide tag list (no "Note tags"
   // section — that concept is fully deleted) mounts in its place.
   await selectRightRailTab(page, "Tags");
   await expect(page.locator("ul[role='list']")).toBeVisible({ timeout: 5_000 });
@@ -442,7 +442,7 @@ test("S4 @UX-T-04: frontmatter block hidden by default; Cmd-Shift-Y toggles raw 
 
 // S5 (@UX-T-05) DELETED in v1.2: the Tags panel's substring-filter input
 // (input[aria-label="Filter tag list"]) was intentionally removed in the
-// Phase 20 RightRail redesign. Per RightRailTagsPanel.tsx: "No own header, no ×
+// RightRail redesign. Per RightRailTagsPanel.tsx: "No own header, no ×
 // close button, no substring filter input." Tag-list substring filtering is no
 // longer an affordance — clicking a tag row now sets an activeTagFilter over
 // NOTES, a different capability. Nothing to re-point; the tested affordance is

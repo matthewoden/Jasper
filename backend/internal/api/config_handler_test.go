@@ -86,7 +86,7 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	// PUT echoes the PERSISTED document, matching PATCH. "light" is accepted by
-	// the wire enum but D-02 pins the loaded theme to "dark", so the echo must
+	// the wire enum but the loaded theme is pinned to "dark", so the echo must
 	// already say "dark" — echoing the request verbatim here would hand the
 	// client a config the server does not have (it becomes replaceConfig's
 	// rebase base for later Resets).
@@ -104,14 +104,14 @@ func TestPutConfig_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(getBody, &got); err != nil {
 		t.Fatal(err)
 	}
-	// GET reloads through config.Load, which under D-02 (Phase 17) pins Theme to
+	// GET reloads through config.Load, which pins Theme to
 	// "dark" regardless of the persisted value — so the effective theme is dark.
 	if string(got.Theme) != "dark" {
 		t.Errorf("after GET — Theme: got %q, want %q", got.Theme, "dark")
 	}
-	// The WR-06 invariant itself: the PUT echo and the immediately-following GET
+	// The invariant itself: the PUT echo and the immediately-following GET
 	// describe the same on-disk state. Asserted as an equality rather than two
-	// independent literal checks so it keeps holding if D-02's coercion changes.
+	// independent literal checks so it keeps holding if the coercion changes.
 	if !bytes.Equal(putBody, getBody) {
 		t.Errorf("PUT echo and subsequent GET disagree:\n PUT: %s\n GET: %s", putBody, getBody)
 	}
@@ -160,7 +160,7 @@ func TestPutConfig_ThemeEnum_400(t *testing.T) {
 	}
 }
 
-// TestPutConfig_DisplayNameField_Rejected400 — D-05: config.Config.DisplayName
+// TestPutConfig_DisplayNameField_Rejected400: config.Config.DisplayName
 // is deleted; the Config schema is additionalProperties:false, so a body
 // carrying the legacy "display_name" key is now an unknown field and must be
 // rejected with 400, not silently accepted.
@@ -250,7 +250,7 @@ func TestPutConfig_MissingRequiredSection_Rejected400(t *testing.T) {
 	}
 }
 
-// TestPutConfig_V14FieldsRoundTrip — PUTs every new D-17 field with
+// TestPutConfig_V14FieldsRoundTrip — PUTs every newer config field with
 // non-default values and asserts the 200 response echoes them back
 // unchanged, and that a subsequent GET /config returns the same values.
 // This is the runtime proof that the three-file lockstep (openapi.yaml,
@@ -370,17 +370,17 @@ func TestLineHeightRoundTrip_Precision(t *testing.T) {
 	}
 	const want = 1.6
 	if got.Editor.LineHeight != want {
-		t.Errorf("lineHeight round-trip precision: got %v, want %v (CR-01 float32 truncation)", got.Editor.LineHeight, want)
+		t.Errorf("lineHeight round-trip precision: got %v, want %v (float32 truncation)", got.Editor.LineHeight, want)
 	}
 }
 
-// TestPutConfig_SyncsAppJSONToDirBasename — D-05: config.Config.DisplayName is
+// TestPutConfig_SyncsAppJSONToDirBasename: config.Config.DisplayName is
 // gone; PUT /config unconditionally syncs the app.json RecentVaults entry's
 // display name to filepath.Base(dataDir), regardless of any prior value. The
 // vault's name is its folder name — there is no client-supplied override.
 //
 // Isolation: t.Setenv("JASPER_APP_HOME", t.TempDir()) prevents any writes to
-// the real ~/.jasper/app.json (T-17.1-01).
+// the real ~/.jasper/app.json.
 func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 	// Isolate app.json writes to a test-controlled directory.
 	appHome := t.TempDir()
@@ -441,7 +441,7 @@ func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 		t.Fatalf("RecentVaults entry for %q not found after PUT", dataDir)
 	}
 	if updatedEntry.DisplayName != wantName {
-		t.Errorf("app.json display_name after PUT: got %q, want %q (D-05: vault name is its folder name)", updatedEntry.DisplayName, wantName)
+		t.Errorf("app.json display_name after PUT: got %q, want %q (a vault's name is its folder name)", updatedEntry.DisplayName, wantName)
 	}
 
 	// GET /vault/current must also reflect the folder-basename name.
@@ -473,7 +473,7 @@ func TestPutConfig_SyncsAppJSONToDirBasename(t *testing.T) {
 
 // TestPutConfig_PreservesUnknownFields — a PUT must preserve an unmanaged
 // key that was already on disk (merge-on-write). The dailyNotes.folder entry
-// is the retired-key case (UAT-6): the migration-safety property most likely
+// is the retired-key case: the migration-safety property most likely
 // to be hit in practice is an existing user's config.json meeting a Settings
 // Reset, which writes via PUT. fromWireConfig emits only
 // {"template":...} for that section, so preservation depends on
@@ -522,7 +522,7 @@ func TestPutConfig_PreservesUnknownFields(t *testing.T) {
 	}
 	val, ok := onDisk["_jasper_unmanaged"]
 	if !ok {
-		t.Error("unmanaged key '_jasper_unmanaged' was dropped by PUT (D-09 regression)")
+		t.Error("unmanaged key '_jasper_unmanaged' was dropped by PUT")
 	} else {
 		var s string
 		if err := json.Unmarshal(val, &s); err != nil || s != "preserve-me" {
@@ -611,7 +611,7 @@ func TestPatchConfig_SparseWriteLeavesOtherFieldsUnchanged(t *testing.T) {
 	if got.AppName != "Jasper" {
 		t.Errorf("appName: got %q, want %q (unmentioned by PATCH)", got.AppName, "Jasper")
 	}
-	// GET reloads through config.Load, which pins Theme to "dark" (D-02) —
+	// GET reloads through config.Load, which pins Theme to "dark" —
 	// consistent with the seed PUT's own value, so this doesn't prove much
 	// on its own but documents the field survived the PATCH regardless.
 	if string(got.Theme) != "dark" {

@@ -229,7 +229,7 @@ describe("useBookmarks", () => {
     );
   });
 
-  it("B9: rapid double-toggle for the same noteId ignores the second call while the first is in flight (WR-07)", async () => {
+  it("B9: rapid double-toggle for the same noteId ignores the second call while the first is in flight", async () => {
     getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
 
     const { result } = renderHook(() => useBookmarks(), { wrapper });
@@ -440,7 +440,7 @@ describe("useBookmarks", () => {
     );
   });
 
-  it("B18: five mounted consumers produce exactly one fetcher call (D-11/D-14 fetch-once)", async () => {
+  it("B18: five mounted consumers produce exactly one fetcher call (fetch-once)", async () => {
     getBookmarksMock.mockResolvedValue({
       folders: [],
       bookmarks: [bookmarkA],

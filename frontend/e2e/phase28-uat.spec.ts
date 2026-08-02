@@ -1,24 +1,23 @@
 /**
- * Phase 28 UAT — Quick Switcher Reconciliation (QUICK-01..04).
+ * Quick Switcher Reconciliation (QUICK-01..04).
  *
  * Closes the Wave 0 E2E gap identified in 28-VALIDATION.md: proves the
  * restyled Cmd+O quick switcher end-to-end against the embedded binary.
  *
  *   QUICK-01  Restyle smoke: `#quick-switcher-listbox` renders; note rows
- *             carry a leading "Note" kind badge (D28.1, reverses Phase 28
- *             D-14); a matched query highlights
- *             characters via inline `<span>` nodes (D-15); the input
+ * carry a leading "Note" kind badge; a matched query highlights
+ *             characters via inline `<span>` nodes; the input
  *             placeholder reads "Find or create a note…"; the always-on
- *             footer legend (D-13) shows "open"/"create"/"split".
- *   QUICK-02  Shift+Enter (D-05/D-07/D-09): a novel query creates a note by
+ *             footer legend shows "open"/"create"/"split".
+ *   QUICK-02  Shift+Enter: a novel query creates a note by
  *             that name and opens it; an existing title (different case)
  *             opens the existing note instead of creating a duplicate; the
  *             synthetic "Create "{query}"" row (`#qs-option-create`) only
  *             appears for a novel, non-empty query.
- *   QUICK-03  Cmd/Ctrl+Shift+Enter (D-10/D-11): opens the selected note in a
+ *   QUICK-03  Cmd/Ctrl+Shift+Enter: opens the selected note in a
  *             NEW split — leaf-pane count increases by 1, and the new pane
  *             becomes active with that note visible.
- *   QUICK-04  Cmd+K is retired (D-02, mode="all" removed outright) — it must
+ *   QUICK-04  Cmd+K is retired (mode="all" removed outright) — it must
  *             open nothing at all.
  *
  * Harness mirrors phase22/26/27-uat.spec.ts: spawnJasper() per describe
@@ -70,8 +69,8 @@ function leafPanes(page: Page): Locator {
  * mounted per open tab (hidden via CSS, never unmounted), so a plain
  * `:visible` filter is ambiguous once a split makes >1 pane simultaneously
  * visible on screen -- scope to the pane LeafPane marks
- * `data-active-pane="true"` (mirrors phase22-uat.spec.ts's CR-01 rationale,
- * extended for the multi-pane case Phase 25/26 introduced).
+ * `data-active-pane="true"` (mirrors phase22-uat.spec.ts's rationale,
+ * extended for the multi-pane case).
  */
 function activeEditorTitle(page: Page): Locator {
   return page
@@ -131,7 +130,7 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
     const dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    // D28.1 (reverses Phase 28 D-14): listbox exists with the contracted
+    // D28.1 (reverses): listbox exists with the contracted
     // id/role, and note rows carry a leading accent "Note" kind badge.
     const listbox = dialog.locator("#quick-switcher-listbox");
     await expect(listbox).toBeVisible({ timeout: 5_000 });
@@ -146,7 +145,7 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
       fullPage: false,
     });
 
-    // D-15: a matching query highlights the matched characters via inline <span>s.
+    // a matching query highlights the matched characters via inline <span>s.
     await dialog.getByRole("combobox").fill("restylealphaqs");
     const matchedRow = dialog.locator('[data-row-kind="note"]').filter({ hasText: "restylealphaqs" }).first();
     await expect(matchedRow).toBeVisible({ timeout: 5_000 });
@@ -154,7 +153,7 @@ test.describe("@phase28 QUICK-01: quick switcher restyle smoke", () => {
     // The matched row still carries the leading "Note" badge (D28.1).
     await expect(matchedRow.getByText("Note", { exact: true })).toHaveCount(1);
 
-    // D-13: the always-on footer legend, sibling AFTER the scrollable listbox.
+    // the always-on footer legend, sibling AFTER the scrollable listbox.
     await expect(dialog.getByText("open", { exact: true })).toBeVisible();
     await expect(dialog.getByText("create", { exact: true })).toBeVisible();
     await expect(dialog.getByText("split", { exact: true })).toBeVisible();
@@ -202,7 +201,7 @@ test.describe("@phase28 QUICK-02: Shift+Enter create-or-open", () => {
       .toBe(1);
 
     // The create row disappears once the exact title now exists (case-insensitive
-    // exact-match, D-07) -- typing the SAME casing shows no create row.
+    // exact-match) -- typing the SAME casing shows no create row.
     await pressCmdO(page);
     dialog = page.getByRole("dialog", { name: "Quick switcher" });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -210,7 +209,7 @@ test.describe("@phase28 QUICK-02: Shift+Enter create-or-open", () => {
     await expect(dialog.locator("#qs-option-create")).toHaveCount(0);
 
     // Differently-cased query for the SAME title -> Shift+Enter opens the
-    // EXISTING note (D-07) rather than creating a duplicate; no create row
+    // EXISTING note rather than creating a duplicate; no create row
     // for this query either.
     const differentCase = novelTitle.toUpperCase();
     await dialog.getByRole("combobox").fill(differentCase);
@@ -308,7 +307,7 @@ test.describe("@phase28 QUICK-04: Cmd+K opens nothing", () => {
     if (jasper) await jasper.kill();
   });
 
-  test("Cmd+K is unbound (D-02, mode='all' retired) -- no palette dialog opens", async ({
+  test("Cmd+K is unbound (mode='all' retired) -- no palette dialog opens", async ({
     page,
   }) => {
     await page.goto(jasper.baseURL);

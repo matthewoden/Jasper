@@ -28,7 +28,7 @@ describe("PaneHeader", () => {
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 
-  it("renders no Reset button when showReset is false (About pane, D-08)", () => {
+  it("renders no Reset button when showReset is false (About pane)", () => {
     renderHeader({ showReset: false });
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   });

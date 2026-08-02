@@ -433,7 +433,7 @@ func TestPostVaultCreate_HappyPath_CreatesDotJasper(t *testing.T) {
 	// config.Save + app.json register only.
 	dbPath := filepath.Join(jasperDir, "app.db")
 	if _, err := os.Stat(dbPath); err == nil {
-		t.Fatalf("CreateVault should NOT create app.db (D-04); got file at %s", dbPath)
+		t.Fatalf("CreateVault should NOT create app.db; got file at %s", dbPath)
 	}
 }
 

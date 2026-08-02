@@ -1,16 +1,16 @@
 /**
- * Phase 19 UAT — Breadcrumb & Left Sidebar.
+ * Breadcrumb & Left Sidebar.
  *
  * BREAD-01/02: the breadcrumb band (above the page title, y=40/h=26 per the
- *   Phase 18 POLISH-09 pin) shows `folder / title` segments (muted,
+ * POLISH-09 pin) shows `folder / title` segments (muted,
  *   ellipsized, clickable — SET2-06/07) on the left and a live, right-aligned
  *   word count ("N words" / "1 word") on the right that ticks up as the user
  *   types.
  * LSIDE-01: the active tree row shows the 12% accent-tint background +
  *   title-weight (--color-fg-title) label text; folder rows expose
  *   aria-expanded state (chevron swap) on toggle.
- * LSIDE-02 (D-01..D-07, D-17): the sidebar's own "Search" tab (SidebarTabRow
- *   — Phase 27 NAV-02 removed the Activity ribbon's Files/Search toggles
+ * LSIDE-02: the sidebar's own "Search" tab (SidebarTabRow
+ * — NAV-02 removed the Activity ribbon's Files/Search toggles
  *   entirely; panel selection now lives solely in the sidebar header) opens
  *   the Search panel (input focused). Panel switching (Notes/Search tabs)
  *   and the dedicated "Collapse sidebar" control replace the old
@@ -96,7 +96,7 @@ function tabPills(page: Page) {
   return tabStrip(page).getByRole("tab");
 }
 
-// Phase 27 NAV-02 (D-09/D-10) removed the Activity ribbon's Files/Search
+// NAV-02 removed the Activity ribbon's Files/Search
 // toggles entirely — panel selection lives solely in the sidebar's own
 // SidebarTabRow header (Notes/Search/Bookmarks icon tabs + a dedicated
 // "Collapse sidebar" control). These helpers target that current surface.
@@ -137,7 +137,7 @@ test.describe("@phase19 BREAD-01/02: breadcrumb trail + live word count", () => 
     if (jasper) await jasper.kill();
   });
 
-  test("breadcrumb shows folder/title segments; live word count (Phase 31 UAT round 3: now in the bottom status bar) ticks up while typing", async ({
+  test("breadcrumb shows folder/title segments; live word count (UAT round 3: now in the bottom status bar) ticks up while typing", async ({
     page,
   }) => {
     const folderPath = await createFolder(jasper, "projects");
@@ -159,7 +159,7 @@ test.describe("@phase19 BREAD-01/02: breadcrumb trail + live word count", () => 
     ]);
 
     // Word count moved out of the breadcrumb bar entirely, into the bottom
-    // StatusBar (Phase 31 UAT round 3 #6) — it reflects the FOCUSED note.
+    // StatusBar (UAT round 3 #6) — it reflects the FOCUSED note.
     const wordCount = page.getByTestId("status-bar-word-count");
     await expect(wordCount).toBeVisible();
     await expect(wordCount).toHaveText(/^[\d,]+ words?$/);
@@ -235,7 +235,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
     if (jasper) await jasper.kill();
   });
 
-  test("D-01: sidebar Search tab opens the panel with input focused; typing shows a count label + result rows", async ({
+  test("sidebar Search tab opens the panel with input focused; typing shows a count label + result rows", async ({
     page,
   }) => {
     const noteId = await createNote(jasper, "searchable-alpha");
@@ -252,7 +252,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
     // "focusSearch" phase7 event. The pre-Phase-27 ribbon Search button
     // explicitly dispatched it on click (commit b73b9ed9), and the
     // still-passing Cmd+Shift+F path (appShortcuts.ts's
-    // handleAppCmdShiftF, D-05) still does today — this assertion
+    // handleAppCmdShiftF) still does today — this assertion
     // correctly encodes current design intent (input focused on open,
     // regardless of entry method) and is intentionally left red per this
     // cluster's no-app-code-changes scope. See cluster-C-REPORT.md.
@@ -268,7 +268,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
     await expect(resultRow.locator(".search-result-excerpt")).toBeVisible();
   });
 
-  test("D-17 / SC4: with 2 tabs already open, clicking a search result activates it as the active tab", async ({
+  test("SC4: with 2 tabs already open, clicking a search result activates it as the active tab", async ({
     page,
   }) => {
     const idOne = await createNote(jasper, "d17-tab-one");
@@ -283,7 +283,7 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
 
     await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
-    // HALT (260721-suite Rule 2 — same genuine app regression as D-01 above):
+    // HALT (260721-suite Rule 2 — same genuine app regression as above):
     // clicking the sidebar Search tab does not focus the input. This blocks
     // reaching the SC4 result-click-activates-tab assertion below, which is
     // otherwise unrelated and unverified by this regression. See
@@ -301,9 +301,9 @@ test.describe("@phase19 LSIDE-02/SC3/SC4: sidebar Search tab opens+focuses panel
   });
 });
 
-// ─── D-02/D-03: dedicated collapse control + Notes/Search switch-in-place ──
+// ─── Dedicated collapse control + Notes/Search switch-in-place ─────────────
 
-test.describe("@phase19 D-02/D-03: dedicated collapse control; Notes switches panel in place", () => {
+test.describe("@phase19 dedicated collapse control; Notes switches panel in place", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -314,14 +314,14 @@ test.describe("@phase19 D-02/D-03: dedicated collapse control; Notes switches pa
     if (jasper) await jasper.kill();
   });
 
-  // Phase 27 (NAV-01..03) removed the old "click the active toggle again to
+  // NAV-01..03 removed the old "click the active toggle again to
   // collapse" model along with the Activity ribbon's Files/Search buttons
   // entirely: SidebarTabRow's tab clicks now ALWAYS switch panel + reopen
   // the sidebar (never collapse — a tab click while collapsed must never
   // no-op, since the collapse control lives in this same row). The current
   // equivalent surface for "collapse the sidebar while Search is showing"
   // is the dedicated "Collapse sidebar" control in that same header row.
-  test("D-02: the dedicated collapse control hides the sidebar while Search is showing", async ({ page }) => {
+  test("the dedicated collapse control hides the sidebar while Search is showing", async ({ page }) => {
     await waitForConnected(page, jasper.baseURL);
 
     await sidebarSearchTab(page).click();
@@ -332,7 +332,7 @@ test.describe("@phase19 D-02/D-03: dedicated collapse control; Notes switches pa
     await expect(sidebarNav(page)).toHaveCount(0, { timeout: 5_000 });
   });
 
-  test("D-03: clicking Notes while Search is showing switches to the Notes panel, sidebar stays open", async ({
+  test("clicking Notes while Search is showing switches to the Notes panel, sidebar stays open", async ({
     page,
   }) => {
     await waitForConnected(page, jasper.baseURL);
@@ -349,9 +349,9 @@ test.describe("@phase19 D-02/D-03: dedicated collapse control; Notes switches pa
   });
 });
 
-// ─── D-04: panel-memory persists across reload ──────────────────────────────
+// ─── Panel-memory persists across reload ───────────────────────────────────
 
-test.describe("@phase19 D-04: sidebar panel memory persists across reload", () => {
+test.describe("@phase19 sidebar panel memory persists across reload", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -382,9 +382,9 @@ test.describe("@phase19 D-04: sidebar panel memory persists across reload", () =
   });
 });
 
-// ─── D-05: Cmd+Shift+F open+focus, refocus+select on repeat ────────────────
+// ─── Cmd+Shift+F open+focus, refocus+select on repeat ──────────────────────
 
-test.describe("@phase19 D-05: Cmd+Shift+F opens+focuses Search; repeat refocuses+selects", () => {
+test.describe("@phase19 Cmd+Shift+F opens+focuses Search; repeat refocuses+selects", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -419,9 +419,9 @@ test.describe("@phase19 D-05: Cmd+Shift+F opens+focuses Search; repeat refocuses
   });
 });
 
-// ─── D-06: two-stage Escape (clear, then blur) ─────────────────────────────
+// ─── Two-stage Escape (clear, then blur) ───────────────────────────────────
 
-test.describe("@phase19 D-06: Escape clears query first, then blurs on second press", () => {
+test.describe("@phase19 Escape clears query first, then blurs on second press", () => {
   let jasper: JasperHandle;
 
   test.beforeAll(async () => {
@@ -439,7 +439,7 @@ test.describe("@phase19 D-06: Escape clears query first, then blurs on second pr
 
     await sidebarSearchTab(page).click();
     const input = searchPanelInput(page);
-    // HALT (260721-suite Rule 2 — same genuine app regression as D-01 above):
+    // HALT (260721-suite Rule 2 — same genuine app regression as above):
     // clicking the sidebar Search tab does not focus the input, blocking the
     // rest of this two-stage-Escape scenario from ever exercising a focused
     // input. See cluster-C-REPORT.md.

@@ -1,5 +1,5 @@
 /**
- * RenameInput tests — UI-SPEC §Surface 3 inline rename.
+ * RenameInput tests — inline rename.
  *
  * Verifies validation rules (empty / illegal char / collision),
  * Enter / Esc / Tab / click-outside key handling, and server-error

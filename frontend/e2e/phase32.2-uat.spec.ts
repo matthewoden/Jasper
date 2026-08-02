@@ -1,6 +1,6 @@
 /**
- * Phase 32.2 UAT spec — the request-count acceptance cases from
- * `32.2-INVESTIGATION.md`'s Definition of Done (#1-#4), plus a D-07 baseline
+ * the request-count acceptance cases from
+ * Definition of Done (#1-#4), plus a standing-budget baseline
  * census of the never-measured sibling endpoints (§ "baseline census" below).
  *
  * CRITICAL (memory e2e-needs-make-build): run `make build` (NOT `npm run
@@ -10,7 +10,7 @@
  * DoD #6 discipline: these four cases were proven FAILING against the
  * pre-migration code before being converted to `test.fixme`. The verbatim
  * RED transcript (actual observed request counts, not a claim) is recorded
- * in `32.2-02-SUMMARY.md`. `test.fixme` reports as skipped, so the
+ * in the plan. `test.fixme` reports as skipped, so the
  * committed tree stays green while the executable assertion is already in
  * place — plan 03 flips each back to `test(...)` once `useMcpGrants`/
  * `useTagBrowser` migrate onto the shared `createResource` primitive.
@@ -46,7 +46,7 @@ async function apiCreateFolder(
 }
 
 /**
- * Seed the scratch-vault shape `32.2-INVESTIGATION.md` measured: 12 root
+ * Seed the scratch-vault shape measured: 12 root
  * folders + 9 root notes (21 initial tree rows). 4 of the 12 folders each
  * get one child note, so expanding all 12 folders reveals exactly 4
  * additional rows — matching the measured "25 rows after expand" baseline.
@@ -118,7 +118,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 
   test(
     // Flipped by plan 03: useMcpGrants now migrates onto createResource
-    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "grants: page load issues 1 request",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -137,7 +136,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 
   test(
     // Flipped by plan 03: useMcpGrants now migrates onto createResource
-    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "grants: folder expand issues 0 additional",
     async ({ page }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -169,8 +167,7 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 
   test(
     // Flipped by plan 03: useMcpGrants now migrates onto createResource
-    // (D-13 event-bus fan-out fix). Pre-fix RED transcript:
-    // 32.2-02-SUMMARY.md.
+    // (event-bus fan-out fix).
     "grants: one WS event issues 1 refetch",
     async ({ page, context }) => {
       await seedInvestigationVault(page, jasper.baseURL);
@@ -205,7 +202,6 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 
   test(
     // Flipped by plan 03: useTagBrowser now migrates onto createResource
-    // (D-11). Pre-fix RED transcript: 32.2-02-SUMMARY.md.
     "tags: split pane issues 1 request",
     async ({ page }) => {
       const { firstNoteId } = await seedInvestigationVault(page, jasper.baseURL);
@@ -231,13 +227,13 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
 });
 
 /**
- * D-07 standing per-endpoint request budget.
+ * standing per-endpoint request budget.
  *
- * `32.2-INVESTIGATION.md` root-caused fetch-on-mount with zero sharing; the
+ * root-caused fetch-on-mount with zero sharing; the
  * ESLint gate (32.2-09 task 1) catches a NEW raw `client.GET` call, but it
  * structurally cannot catch a NEW mount effect that calls an
  * already-legitimate wrapper on every mount — only a request-count
- * assertion closes that half of the defect class (D-07's rationale).
+ * assertion closes that half of the defect class ('s rationale).
  *
  * One scripted session drives every endpoint plan 02's before-count table
  * measured: open the app, open a note, expand every folder, open the
@@ -247,11 +243,11 @@ test.describe("@phase32.2 DoD request-count acceptance", () => {
  * binary (not guesses) — see each `expect(...)` call's inline comment for
  * its source. `toBe` is used wherever the migration makes the count
  * deterministic; `toBeLessThanOrEqual` only for `/tree`, which
- * `phase5_5-uat.spec.ts`'s UX-14 comment already documents as carrying a
+ * `phase5_5-uat.spec.ts` already documents as carrying a
  * genuine race window (a joiner that arrives while a fetch is in flight can
  * cost one extra GET when the never-join invalidation path is hit).
  */
-test.describe("@phase32.2 standing request budget (D-07)", () => {
+test.describe("@phase32.2 standing request budget", () => {
   let jasper: JasperHandle;
 
   test.use({ viewport: { width: 1280, height: 1400 } });
@@ -351,13 +347,13 @@ test.describe("@phase32.2 standing request budget (D-07)", () => {
     }
     // Printed unconditionally so a CI failure's actual counts are visible
     // in the log without re-running locally.
-    console.log("D-07 standing budget — observed counts:", JSON.stringify(results, null, 2));
+    console.log("standing budget — observed counts:", JSON.stringify(results, null, 2));
 
-    // Cached singleton resources: first-subscriber-triggers-fetch (D-14)
+    // Cached singleton resources: first-subscriber-triggers-fetch
     // means N mount sites (TreeRow x21, editor pane(s), right-rail panel,
     // settings shell) share exactly one fetch — no invalidating WS event
     // fires in this session (no grant/tag/bookmark/note/folder mutation
-    // through the UI). Plan 03 measured these exact-1 counts against the
+    // through the UI). These exact-1 counts were measured against the
     // migrated binary for the grants/tags DoD cases.
     expect(results["GET /mcp/grants"], JSON.stringify(counters["GET /mcp/grants"].urls())).toBe(1);
     expect(results["GET /tags"], JSON.stringify(counters["GET /tags"].urls())).toBe(1);
@@ -369,12 +365,12 @@ test.describe("@phase32.2 standing request budget (D-07)", () => {
     expect(results["GET /vault/about"], JSON.stringify(counters["GET /vault/about"].urls())).toBe(1);
     expect(results["GET /notes/{id}/backlinks"], JSON.stringify(counters["GET /notes/{id}/backlinks"].urls())).toBe(1);
 
-    // Boot-scoped /config (D-15) — one shared fetch across every
+    // Boot-scoped /config — one shared fetch across every
     // useConfig() mount site (App.tsx, SettingsDialogShell.tsx); no WS
     // invalidation exists for config, so it never refetches mid-session.
     expect(results["GET /config"], JSON.stringify(counters["GET /config"].urls())).toBe(1);
 
-    // Pass-through singletons (D-15 amended) — coalesced, never cached,
+    // Pass-through singletons (amended) — coalesced, never cached,
     // called imperatively from TWO independent, legitimate boot-time
     // mount sites that don't overlap in time (so they don't coalesce):
     // App.tsx's BootGate (its own inline getCurrent() call) AND
@@ -389,15 +385,15 @@ test.describe("@phase32.2 standing request budget (D-07)", () => {
     expect(results["GET /vault/current"], JSON.stringify(counters["GET /vault/current"].urls())).toBe(2);
     expect(results["GET /vault/recent"], JSON.stringify(counters["GET /vault/recent"].urls())).toBe(1);
 
-    // Cached, invalidatedBy: ["reindex:complete"] (D-15 amended) — one
+    // Cached, invalidatedBy: ["reindex:complete"] (amended) — one
     // useMigrationStatus() mount site (App.tsx); no reindex runs in this
     // session.
     expect(results["GET /admin/status"], JSON.stringify(counters["GET /admin/status"].urls())).toBe(1);
 
     // /tree carries a genuine race window (commit 7494174d /
-    // phase5_5-uat.spec.ts's UX-14 comment): a read that joins an
+    // phase5_5-uat.spec.ts): a read that joins an
     // in-flight fetch is occasionally followed by one extra never-join
-    // fetch if an invalidation lands in the same window. Plan 08 measured
+    // fetch if an invalidation lands in the same window. Measured
     // 2 for a session ending in a split pane (mount fetch + one further
     // legitimate fetch from the second useFileTree()-subscribing screen
     // transition); this session adds folder-expand and tag-panel steps

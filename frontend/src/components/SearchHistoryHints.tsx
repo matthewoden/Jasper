@@ -44,7 +44,7 @@ export function SearchHistoryHints({
       aria-label="Recent searches"
       // Keep focus on the search input: without this, mousedown on a row
       // blurs the input, the 0ms close timer unmounts the dropdown mid-press,
-      // and the click never lands (CR-02).
+      // and the click never lands.
       onMouseDown={(e) => e.preventDefault()}
       style={{
         position: "absolute",

@@ -1,5 +1,5 @@
 /**
- * Phase 8 — Offline operation.
+ * Offline operation.
  *
  * Asserts the SPA + setup wizard issue ZERO external network requests during
  * a full app exercise. Any leaked request to a CDN font, analytics pixel,

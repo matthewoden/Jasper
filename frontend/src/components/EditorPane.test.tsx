@@ -23,8 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../api/schema";
 import { TooltipProvider } from "./Tooltip";
 
-// NoteOptionsMenu's trigger (mounted beside the bookmark star, Plan 31-06)
-// wraps in the shared Tooltip (D-07), which throws without a TooltipProvider
+// NoteOptionsMenu's trigger (mounted beside the bookmark star)
+// wraps in the shared Tooltip, which throws without a TooltipProvider
 // ancestor — every render() in this file goes through this wrapper so no
 // individual call site needs updating. rerender() is wrapped too, since RTL's
 // rerender replaces the whole tree at the root (it would otherwise drop the
@@ -202,13 +202,13 @@ vi.mock("../lib/useBookmarks", () => ({
     }),
 }));
 
-// NoteOptionsMenu (mounted beside the bookmark star, Plan 30-09) pulls in
+// NoteOptionsMenu (mounted beside the bookmark star) pulls in
 // useReveal(), which calls useToast() unconditionally at the top level —
 // this file's existing render() calls never wrap in a <ToastProvider>, so
 // without this stub every test in this file would throw
 // "useToast must be used inside <ToastProvider>" as soon as the menu's
 // trigger button mounts. Mirrors the same stub added to TabStrip.test.tsx/
-// PaneTree.test.tsx/LeafPane.test.tsx in Plan 30-02 for the same reason.
+// PaneTree.test.tsx/LeafPane.test.tsx for the same reason.
 vi.mock("./toast.utils", () => ({
     useToast: () => ({ toast: vi.fn() }),
 }));
@@ -549,10 +549,10 @@ describe("<EditorPane />", () => {
         });
     });
 
-    it("E7: Cmd+S during the saved-sticky window is a no-op when there are no new edits (WR-01)", async () => {
-        // Pre-WR-01-fix, userHasEdited was never reset after a successful
+    it("E7: Cmd+S during the saved-sticky window is a no-op when there are no new edits", async () => {
+        // Before the fix, userHasEdited was never reset after a successful
         // save, so a second Cmd+S with NO intervening edit fired a redundant
-        // PUT — see 25-REVIEW.md WR-01. Now userHasEdited resets to false on
+        // PUT. Now userHasEdited resets to false on
         // saveSucceeded, so the second Cmd+S (no new edits) is a silent no-op,
         // and only a THIRD Cmd+S after a fresh edit issues another PUT.
         getNoteMock.mockResolvedValue(okGet("a"));
@@ -611,7 +611,7 @@ describe("<EditorPane />", () => {
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
 
-    it("Phase 2: when reindexing=true, performSave is blocked (reindexingRef guard)", async () => {
+    it("when reindexing=true, performSave is blocked (reindexingRef guard)", async () => {
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -660,7 +660,7 @@ describe("<EditorPane />", () => {
         }
     });
 
-    it("WR-05 regression (25-REVIEW.md): an INACTIVE pane keeps showing its own note, not the globally-active file preview", async () => {
+    it("regression: an INACTIVE pane keeps showing its own note, not the globally-active file preview", async () => {
         getNoteMock.mockResolvedValue(okGet("own note body"));
         useTreeStore.setState({
             activeFilePath: "gallery/attachments/photo.png",
@@ -710,7 +710,7 @@ describe("<EditorPane />", () => {
         );
     });
 
-    it("WR-02: pending debounce armed for note A is cleared on noteId change — no cross-note PUT", async () => {
+    it("pending debounce armed for note A is cleared on noteId change — no cross-note PUT", async () => {
         const NOTE_B = "00000000-0000-4000-a000-000000000002";
         getNoteMock.mockImplementation((id: string) =>
             Promise.resolve(okGet(`content for ${id}`)),
@@ -789,7 +789,7 @@ function errMove(code: string, message: string, status = 409): MoveReturn {
     } as MoveReturn;
 }
 
-describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
+describe("<EditorPane /> — H1→filename binding", () => {
     it("R2-6 T1: H1 change → moveNote fires BEFORE updateNote with the sanitized basename", async () => {
         getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
         postNoteMoveMock.mockResolvedValue(okMove("new title.md"));
@@ -990,7 +990,7 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
     });
 
-    it("CR-01: case-only H1 change → ZERO moveNote (would have 409'd as case_collision); updateNote still runs", async () => {
+    it("case-only H1 change → ZERO moveNote (would have 409'd as case_collision); updateNote still runs", async () => {
         getNoteMock.mockResolvedValue(okGet("# my plan\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
         getTreeMock.mockResolvedValue(okTree("my plan.md"));
@@ -1026,7 +1026,7 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
         ).not.toBeInTheDocument();
     });
 
-    it("CR-02: live tree path overrides the load-effect seed; H1 edit composes new path against the LIVE parent dir", async () => {
+    it("live tree path overrides the load-effect seed; H1 edit composes new path against the LIVE parent dir", async () => {
         getNoteMock.mockResolvedValue({
             data: {
                 id: ScratchpadUUID,
@@ -1107,7 +1107,7 @@ describe("<EditorPane /> — Plan 03-22 H1→filename binding", () => {
 });
 
 
-describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
+describe("<EditorPane /> — WebSocket handlers", () => {
     function renderEditorWithHandlers(noteId: string | null = ScratchpadUUID) {
         const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
         const view = render(
@@ -1233,7 +1233,7 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         expect(screen.queryByTestId("conflict-banner")).not.toBeInTheDocument();
     });
 
-    it("WR-01: silent-reload getNote API error (non-thrown) surfaces the conflict banner instead of dropping the update", async () => {
+    it("silent-reload getNote API error (non-thrown) surfaces the conflict banner instead of dropping the update", async () => {
         getNoteMock.mockResolvedValue(okGet("initial"));
         const { handlersRef } = renderEditorWithHandlers();
         await flushMicrotasks();
@@ -1260,7 +1260,7 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
         );
     });
 
-    it("WR-01: late-resolving silent reload for the PREVIOUS note does not clobber the new note", async () => {
+    it("late-resolving silent reload for the PREVIOUS note does not clobber the new note", async () => {
         const NOTE_B = "00000000-0000-4000-a000-000000000002";
         getNoteMock.mockResolvedValue(okGet("note A content"));
         const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
@@ -1419,8 +1419,8 @@ describe("<EditorPane /> — Phase 4 WebSocket handlers (Plan 04-05)", () => {
 });
 
 
-describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", () => {
-    it("clicking the host shell outside .cm-content focuses the editor and moves caret to end (UX-10)", async () => {
+describe("<EditorPane /> — click-anywhere-to-type host", () => {
+    it("clicking the host shell outside .cm-content focuses the editor and moves caret to end", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         const focusEndSpy = vi.fn();
         window.__jasperMockEditorFocusEnd = focusEndSpy;
@@ -1440,7 +1440,7 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
         delete window.__jasperMockEditorFocusEnd;
     });
 
-    it("clicking inside .cm-content does NOT trigger focusEnd (UX-10)", async () => {
+    it("clicking inside .cm-content does NOT trigger focusEnd", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         const focusEndSpy = vi.fn();
         window.__jasperMockEditorFocusEnd = focusEndSpy;
@@ -1471,12 +1471,12 @@ describe("<EditorPane /> — UX-10 click-anywhere-to-type host (Plan 05.5-01)", 
 });
 
 
-describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", () => {
+describe("<EditorPane /> — live H1 → sidebar label", () => {
     beforeEach(() => {
         useTreeStore.setState({ liveLabels: {} });
     });
 
-    it("UX-08: handleEditorH1Change sets liveLabels[noteId] when H1 string non-empty", async () => {
+    it("handleEditorH1Change sets liveLabels[noteId] when H1 string non-empty", async () => {
         getNoteMock.mockResolvedValue(okGet("body only"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -1497,7 +1497,7 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
         );
     });
 
-    it("UX-08: handleEditorH1Change clears liveLabel when H1 is null/empty", async () => {
+    it("handleEditorH1Change clears liveLabel when H1 is null/empty", async () => {
         getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -1520,7 +1520,7 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
         ).toBeUndefined();
     });
 
-    it("UX-08: switching to a new note clears the previous note's liveLabel when userHasEdited is true (Pitfall 6)", async () => {
+    it("switching to a new note clears the previous note's liveLabel when userHasEdited is true", async () => {
         getNoteMock.mockImplementation((id: string) =>
             Promise.resolve(okGet(`# Title for ${id}\n\nbody`)),
         );
@@ -1555,8 +1555,8 @@ describe("<EditorPane /> — UX-08 live H1 → sidebar label (Plan 05.5-04)", ()
 });
 
 
-describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () => {
-    it("UX-07: handleEditorBlur clears pending debounce and calls performSave", async () => {
+describe("<EditorPane /> — save-on-blur lifecycle", () => {
+    it("handleEditorBlur clears pending debounce and calls performSave", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -1587,7 +1587,7 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
     });
 
-    it("UX-07 / BL-04: visibilitychange→hidden fires a keepalive fetch (Plan 05.5-12)", async () => {
+    it("BL-04: visibilitychange→hidden fires a keepalive fetch", async () => {
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
         const fetchMock = vi.fn().mockResolvedValue(new Response());
@@ -1642,7 +1642,7 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
         }
     });
 
-    it("UX-07: beforeunload fires keepalive PUT when conditions met", async () => {
+    it("beforeunload fires keepalive PUT when conditions met", async () => {
         getNoteMock.mockResolvedValue(okGet("baseline"));
         updateNoteMock.mockResolvedValue(okPut());
         const fetchMock = vi.fn().mockResolvedValue(new Response());
@@ -1681,7 +1681,7 @@ describe("<EditorPane /> — UX-07 save-on-blur lifecycle (Plan 05.5-03)", () =>
         }
     });
 
-    it("UX-07: beforeunload skips when paused (connectionStatus !== connected)", async () => {
+    it("beforeunload skips when paused (connectionStatus !== connected)", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
         useTreeStore.setState({ connectionStatus: "reconnecting" });
@@ -1739,7 +1739,7 @@ function setVisibilityState(value: "hidden" | "visible"): () => void {
     };
 }
 
-describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
+describe("BL-04 keepalive-on-tab-close", () => {
     it("BL-04: visibilitychange→hidden while connected fires keepalive PUT", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
@@ -2074,9 +2074,9 @@ describe("BL-04 keepalive-on-tab-close (Phase 5.5 gap-closure Plan 12)", () => {
     });
 });
 
-describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closure Plan 12)", () => {
+describe("exhaustiveness + Save-anyway recovery", () => {
     /**
-     * Helper for the WR-06 tests: render the editor, simulate an edit + a
+     * Helper for the Save-anyway tests: render the editor, simulate an edit + a
      * note:updated WS event so the conflict banner mounts, and return a
      * handle for clicking "Save anyway".
      */
@@ -2110,7 +2110,7 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         return { editor, handlersRef };
     }
 
-    it("WR-05: Save-anyway click is a null-guarded no-op when noteIdRef.current is null", async () => {
+    it("Save-anyway click is a null-guarded no-op when noteIdRef.current is null", async () => {
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
@@ -2126,7 +2126,7 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         );
     });
 
-    it("WR-06: Save-anyway non-stale failure refreshes conflict banner with the latest server updated_at", async () => {
+    it("Save-anyway non-stale failure refreshes conflict banner with the latest server updated_at", async () => {
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
@@ -2167,7 +2167,7 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         );
     });
 
-    it("WR-06: Save-anyway non-stale failure when getNote ALSO fails surfaces a clear retry-on-next-sync hint", async () => {
+    it("Save-anyway non-stale failure when getNote ALSO fails surfaces a clear retry-on-next-sync hint", async () => {
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
@@ -2191,7 +2191,7 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
         expect(screen.getByTestId("conflict-banner")).toBeInTheDocument();
     });
 
-    it("WR-06: Save-anyway non-stale failure dispatches saveFailed (existing BL-03 contract)", async () => {
+    it("Save-anyway non-stale failure dispatches saveFailed (existing BL-03 contract)", async () => {
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         await setupConflictBanner();
@@ -2212,8 +2212,8 @@ describe("WR-04/05/06 exhaustiveness + Save-anyway recovery (Phase 5.5 gap-closu
     });
 });
 
-describe("WR-04 findNotePathInTree exhaustiveness (Phase 5.5 gap-closure Plan 12)", () => {
-    it("WR-04: live-tree path lookup returns the correct path for a note nested in a folder (exhaustive switch happy path)", async () => {
+describe("findNotePathInTree exhaustiveness", () => {
+    it("live-tree path lookup returns the correct path for a note nested in a folder (exhaustive switch happy path)", async () => {
         getNoteMock.mockResolvedValue(okGet("original"));
         updateNoteMock.mockResolvedValue(okPut());
         getTreeMock.mockResolvedValue({
@@ -2255,8 +2255,8 @@ describe("WR-04 findNotePathInTree exhaustiveness (Phase 5.5 gap-closure Plan 12
     });
 });
 
-describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure Plan 12)", () => {
-    it("WR-02: reconnecting → connected with buffered edits triggers performSave (reconnect-flush)", async () => {
+describe("connectionRestored flushes buffered edits", () => {
+    it("reconnecting → connected with buffered edits triggers performSave (reconnect-flush)", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2295,7 +2295,7 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         );
     });
 
-    it("WR-02: reconnecting → connected with NO buffered edits does NOT call updateNote (no spurious save)", async () => {
+    it("reconnecting → connected with NO buffered edits does NOT call updateNote (no spurious save)", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2318,7 +2318,7 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
 
-    it("WR-02: reconnecting → connected with noteId === null does NOT call updateNote (null-id guard)", async () => {
+    it("reconnecting → connected with noteId === null does NOT call updateNote (null-id guard)", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2339,7 +2339,7 @@ describe("WR-02 connectionRestored flushes buffered edits (Phase 5.5 gap-closure
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
 
-    it("WR-02: connected → reconnecting → connected reconnect-flush flushes the disconnect-buffered edit", async () => {
+    it("connected → reconnecting → connected reconnect-flush flushes the disconnect-buffered edit", async () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -2397,7 +2397,7 @@ vi.mock("../lib/useTagBrowser", () => ({
 }));
 
 // noteBufferController's local "tags:updated" notification moved from the
-// retired dispatchTagEvent() to the shared resource-layer event bus (D-13) —
+// retired dispatchTagEvent() to the shared resource-layer event bus —
 // only `publish` is stubbed here; every other resources export (createResource,
 // useResource, subscribe, ...) stays real so other hooks in this render tree
 // are unaffected.
@@ -2501,7 +2501,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
 });
 
 
-describe("<EditorPane /> — Phase 12 D-03 checkbox toggle immediate flush", () => {
+describe("<EditorPane /> — checkbox toggle immediate flush", () => {
     it("CHK-01 toggle → exactly one immediate save; debounce timer does not fire a second save", async () => {
         getNoteMock.mockResolvedValue(okGet("- [ ] task"));
         updateNoteMock.mockResolvedValue(okPut());
@@ -2583,7 +2583,7 @@ describe("<EditorPane /> — Phase 12 D-03 checkbox toggle immediate flush", () 
     });
 });
 
-describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)", () => {
+describe("EP-keepalive-session — keepalive PUT carries X-Session-ID", () => {
     it("visibilitychange keepalive PUT includes X-Session-ID header", async () => {
         getNoteMock.mockResolvedValue(okGet("original content"));
         updateNoteMock.mockResolvedValue(okPut());
@@ -2661,7 +2661,7 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID (UAT-2 N8)
 });
 
 
-describe("<EditorPane /> — Phase 15 keep-alive (hidden / isDeleted) (Plan 15-02)", () => {
+describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
     it("hidden=true sets display:none on the editor-pane root WITHOUT unmounting", async () => {
         getNoteMock.mockResolvedValue(okGet("base"));
 
@@ -2722,7 +2722,7 @@ describe("<EditorPane /> — Phase 15 keep-alive (hidden / isDeleted) (Plan 15-0
 });
 
 
-describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", () => {
+describe("<EditorPane /> — flush() ref method (TAB-13)", () => {
     function renderWithFlush(noteId: string | null = ScratchpadUUID) {
         const flushRef: { current: { flush: () => Promise<void> } | null } = {
             current: null,
@@ -2839,7 +2839,7 @@ describe("<EditorPane /> — Phase 15 flush() ref method (Plan 15-02, TAB-13)", 
     });
 });
 
-describe("<EditorPane /> — UAT-3: coalescing OUTCOME (flush-dialog race, DEBT-01)", () => {
+describe("<EditorPane /> — coalescing OUTCOME (flush-dialog race, DEBT-01)", () => {
     // These assert on the SETTLED outcome of flush() when it coalesces into an
     // already in-flight save — NOT on updateNote call count (E6 already proves
     // call count; it does not catch the optimistic `{ ok: true }` race).
@@ -2851,7 +2851,7 @@ describe("<EditorPane /> — UAT-3: coalescing OUTCOME (flush-dialog race, DEBT-
         return { ...view, flushRef };
     }
 
-    it("Test A: blur-started save fails while flush() coalesces into it → flush() REJECTS (UAT-3 repro)", async () => {
+    it("Test A: blur-started save fails while flush() coalesces into it → flush() REJECTS", async () => {
         getNoteMock.mockResolvedValue(okGet("base"));
 
         // A single shared, still-pending PUT represents "save #1" — every call
@@ -3094,7 +3094,7 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
 });
 
 
-describe("<EditorPane /> breadcrumb bookmark star (BOOK-01, D-14/D-15)", () => {
+describe("<EditorPane /> breadcrumb bookmark star (BOOK-01)", () => {
     it("shows an unfilled star when the note is not bookmarked", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
@@ -3277,8 +3277,8 @@ describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename titl
 });
 
 
-describe("<EditorPane /> — WR-03 global saveState ownership", () => {
-    it("WR-03: a hidden pane's background save does NOT touch the global saveState; becoming visible re-syncs it", async () => {
+describe("<EditorPane /> — global saveState ownership", () => {
+    it("a hidden pane's background save does NOT touch the global saveState; becoming visible re-syncs it", async () => {
         getNoteMock.mockResolvedValue(okGet("background content"));
         updateNoteMock.mockResolvedValue(okPut());
 
@@ -3314,8 +3314,8 @@ describe("<EditorPane /> — WR-03 global saveState ownership", () => {
 });
 
 
-describe("<EditorPane /> — WR-04 autosaveMs prop updates after mount", () => {
-    it("WR-04: autosaveMs arriving after mount (async config) drives the NEXT debounce, not the mount-time default", async () => {
+describe("<EditorPane /> — autosaveMs prop updates after mount", () => {
+    it("autosaveMs arriving after mount (async config) drives the NEXT debounce, not the mount-time default", async () => {
         getNoteMock.mockResolvedValue(okGet("content"));
         updateNoteMock.mockResolvedValue(okPut());
 

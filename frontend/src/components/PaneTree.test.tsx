@@ -1,12 +1,12 @@
 /**
- * PaneTree tests (Phase 25 Plan 06 Task 2):
+ * PaneTree tests:
  *   - A tree with N leaves renders N independent `[data-testid="leaf-pane"]`,
  *     each with its own `[data-testid="tab-strip"]`.
  *   - The active leaf carries `data-active-pane="true"`; an inactive leaf
  *     does not.
  *   - Clicking anywhere in an inactive leaf's chrome calls
- *     usePaneStore's setActivePane with that leaf's id (D-04).
- *   - A leaf with `active: null` (D-10, zero tabs) renders without crashing.
+ *     usePaneStore's setActivePane with that leaf's id.
+ *   - A leaf with `active: null` (zero tabs) renders without crashing.
  *   - Split nodes render a `[data-testid="pane-divider"]` between children.
  *
  * `EditorPane` is mocked to a lightweight stub — this suite exercises
@@ -20,7 +20,7 @@ import { TooltipProvider } from "./Tooltip";
 import { usePaneStore } from "../lib/usePaneStore";
 import { useTreeStore } from "../lib/useTreeStore";
 
-// PaneTree nests TabStrip, which now calls useToast() (D-14 pinned refuse
+// PaneTree nests TabStrip, which now calls useToast() (the pinned-refuse
 // toast) — stub it so no render site here needs a real <ToastProvider>.
 vi.mock("./toast.utils", () => ({
   useToast: () => ({ toast: vi.fn() }),
@@ -78,7 +78,7 @@ beforeEach(() => {
   useTreeStore.setState({ notesSidebarVisible: true, backlinksRailExpanded: true });
 });
 
-describe("<PaneTree /> pane-corner reopen button (Phase 27 D-12)", () => {
+describe("<PaneTree /> pane-corner reopen button", () => {
   it("with a 2-leaf split + collapsed sidebar, exactly one 'Show sidebar' button renders (top-left leaf only)", () => {
     useTreeStore.setState({ notesSidebarVisible: false });
     renderTree();
@@ -133,7 +133,7 @@ describe("<PaneTree /> two-leaf render", () => {
     expect(screen.getByTestId("pane-divider")).toBeInTheDocument();
   });
 
-  it("clicking an inactive leaf's chrome calls setActivePane with that leaf's id (D-04)", () => {
+  it("clicking an inactive leaf's chrome calls setActivePane with that leaf's id", () => {
     renderTree({ activePaneId: "leaf-a" });
     const setActivePaneSpy = vi.spyOn(usePaneStore.getState(), "setActivePane");
     const leaves = screen.getAllByTestId("leaf-pane");
@@ -150,7 +150,7 @@ describe("<PaneTree /> two-leaf render", () => {
     expect(noteIds).toEqual(["note-a", "note-b"]);
   });
 
-  it("D-27/D-28: in a two-leaf split, the active leaf carries the inset accent box-shadow and the inactive one does not", () => {
+  it("in a two-leaf split, the active leaf carries the inset accent box-shadow and the inactive one does not", () => {
     renderTree({ activePaneId: "leaf-a" });
     const leaves = screen.getAllByTestId("leaf-pane");
     const active = leaves.find((el) => el.dataset.activePane === "true")!;
@@ -160,8 +160,8 @@ describe("<PaneTree /> two-leaf render", () => {
   });
 });
 
-describe("<PaneTree /> divider accessibility (WR-01) and text-selection guard (WR-02)", () => {
-  it("WR-01: divider handle exposes role=separator, orientation, and the current ratio as aria-valuenow", () => {
+describe("<PaneTree /> divider accessibility and text-selection guard", () => {
+  it("divider handle exposes role=separator, orientation, and the current ratio as aria-valuenow", () => {
     renderTree(); // twoLeafTree: dir "row", ratio 0.5
     const handle = screen.getByTestId("pane-divider-handle");
     expect(handle.getAttribute("role")).toBe("separator");
@@ -169,19 +169,19 @@ describe("<PaneTree /> divider accessibility (WR-01) and text-selection guard (W
     expect(handle.getAttribute("aria-valuenow")).toBe("50");
     expect(handle.getAttribute("aria-valuemin")).toBe("0");
     expect(handle.getAttribute("aria-valuemax")).toBe("100");
-    // D-15 (locked): pointer-drag only, no keyboard resize — deliberately
+    // Locked: pointer-drag only, no keyboard resize — deliberately
     // NOT in the tab order (a focusable separator with no arrow-key support
     // would be a worse a11y experience than one that's absent from Tab order
     // but still announced to a screen reader's browse-mode cursor).
     expect(handle.getAttribute("tabindex")).toBeNull();
   });
 
-  it("WR-01: the pane-divider wrapper is no longer aria-hidden", () => {
+  it("the pane-divider wrapper is no longer aria-hidden", () => {
     renderTree();
     expect(screen.getByTestId("pane-divider").getAttribute("aria-hidden")).toBeNull();
   });
 
-  it("WR-02: pointerdown on the divider clears any accumulated text selection", () => {
+  it("pointerdown on the divider clears any accumulated text selection", () => {
     renderTree();
     const removeAllRanges = vi.fn();
     vi.spyOn(window, "getSelection").mockReturnValue({
@@ -198,7 +198,7 @@ describe("<PaneTree /> divider accessibility (WR-01) and text-selection guard (W
   });
 });
 
-describe("<PaneTree /> D-10 final-pane placeholder", () => {
+describe("<PaneTree /> final-pane placeholder", () => {
   it("a leaf with zero tabs (active: null) renders without crashing, via EditorPane noteId=null", () => {
     const emptyLeaf: LeafNode = { t: "leaf", id: "leaf-empty", tabs: [], active: null };
     expect(() => renderTree({ tree: emptyLeaf, activePaneId: "leaf-empty" })).not.toThrow();
@@ -215,7 +215,7 @@ describe("<PaneTree /> single-leaf render (no split)", () => {
     expect(screen.queryByTestId("pane-divider")).not.toBeInTheDocument();
   });
 
-  it("D-27/D-28: a single-pane layout shows no active-pane inset cue, even though it is trivially active", () => {
+  it("a single-pane layout shows no active-pane inset cue, even though it is trivially active", () => {
     renderTree({ tree: leafA, activePaneId: "leaf-a" });
     const leaf = screen.getByTestId("leaf-pane");
     expect(leaf.dataset.activePane).toBe("true");
@@ -223,7 +223,7 @@ describe("<PaneTree /> single-leaf render (no split)", () => {
   });
 });
 
-describe("<PaneTree /> CR-01 regression (25-REVIEW.md): unrelated sibling survives a further split", () => {
+describe("<PaneTree /> regression: unrelated sibling survives a further split", () => {
   it("splitting leaf-a does NOT remount leaf-b's EditorPane (no content-derived split-node key)", () => {
     renderTree({ tree: twoLeafTree, activePaneId: "leaf-a" });
 
@@ -232,7 +232,7 @@ describe("<PaneTree /> CR-01 regression (25-REVIEW.md): unrelated sibling surviv
     expect(leafBStubBefore).toBeDefined();
 
     // Split the OTHER leaf (leaf-a, the active pane) — leaf-b is completely
-    // uninvolved in this operation. This is exactly the CR-01 trigger: a
+    // uninvolved in this operation. This is exactly the trigger: a
     // child transitioning leaf -> split.
     act(() => {
       usePaneStore.getState().splitActivePane("row");
@@ -245,7 +245,7 @@ describe("<PaneTree /> CR-01 regression (25-REVIEW.md): unrelated sibling surviv
     const leafBStubAfter = stubsAfter.find((el) => el.dataset.noteId === "note-b");
     expect(leafBStubAfter).toBeDefined();
 
-    // Before the CR-01 fix, the split-node wrapper's content-derived key
+    // Before the fix, the split-node wrapper's content-derived key
     // (`` `${a-is-leaf?}|${b-is-leaf?}` ``) flipped from "leafA|leafB" to
     // "split|leafB" the moment leaf-a became a split node — forcing React to
     // unmount + remount the ENTIRE outer subtree, including the untouched

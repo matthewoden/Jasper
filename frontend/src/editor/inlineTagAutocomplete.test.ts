@@ -120,7 +120,7 @@ describe("inlineTagCompletionSource", () => {
     expect(result).toBeNull();
   });
 
-  it("IAC7: no 'Create new tag' entry in results (D-14)", async () => {
+  it("IAC7: no 'Create new tag' entry in results", async () => {
     const doc = "#xyz";
     const ctx = makeCtx(doc, 4);
 

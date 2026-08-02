@@ -274,7 +274,7 @@ VALUES('projects/x', 2, 1700000001, 'tree-context-menu')`)
 // TestMigration005_AllowsDuplicateSourceTargetTitle verifies that dropping
 // UNIQUE(source_id, target_title) lets two backlinks rows for the same
 // (source_id, target_title) pair coexist with different excerpts — the
-// storage shape D-16's per-mention-excerpt contract requires.
+// storage shape the per-mention-excerpt contract requires.
 func TestMigration005_AllowsDuplicateSourceTargetTitle(t *testing.T) {
 	db := applyAllMigrations(t)
 	ctx := context.Background()
@@ -348,7 +348,7 @@ ORDER BY name`
 
 // TestMigration006_BirthtimeColumnAdded verifies that applying all embedded
 // migrations produces a notes.birthtime_unix column defaulting to 0 (the
-// D-04 sentinel meaning "birthtime unavailable") for pre-existing rows.
+// sentinel meaning "birthtime unavailable") for pre-existing rows.
 func TestMigration006_BirthtimeColumnAdded(t *testing.T) {
 	db := applyAllMigrations(t)
 	ctx := context.Background()

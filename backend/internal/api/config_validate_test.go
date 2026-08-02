@@ -105,7 +105,7 @@ func TestConfigMiddleware_AutosaveMs(t *testing.T) {
 	}
 }
 
-// TestConfigMiddleware_DisplayNameField_Rejected400 — D-05: display_name is
+// TestConfigMiddleware_DisplayNameField_Rejected400: display_name is
 // deleted from the Config schema; the strictConfigValidator no longer
 // declares it, so any body carrying the legacy key is rejected as an
 // unknown field.
@@ -159,7 +159,7 @@ func TestConfigMiddleware_ServerBindAccepted(t *testing.T) {
 }
 
 // TestConfigStrictBody_AcceptsAllV14Fields — a PUT body carrying every new
-// D-17 field (templates.folder, editor.{showProperties,autoPair,foldGutter,
+// newer field (templates.folder, editor.{showProperties,autoPair,foldGutter,
 // lineNumbers,lineWidth}, mcp.auditLog) alongside the existing required
 // fields must pass the strict-body middleware (no 400).
 func TestConfigStrictBody_AcceptsAllV14Fields(t *testing.T) {
@@ -385,7 +385,7 @@ func collectJSONPaths(t reflect.Type, prefix string) map[string]bool {
 	return paths
 }
 
-// TestStrictConfigValidatorMatchesConfigStruct is the D-16 safety net: it
+// TestStrictConfigValidatorMatchesConfigStruct is the safety net: it
 // converts a drift between config.Config and strictConfigValidator from
 // "400s at runtime on the user's first save of a new field" into "fails in
 // CI the moment the second file is edited without the third". The three-file
@@ -424,7 +424,7 @@ func TestStrictConfigValidatorMatchesConfigStruct(t *testing.T) {
 	t.Errorf("config.Config and strictConfigValidator have drifted:\n%s", b.String())
 }
 
-// TestStrictConfigPatchValidatorMatchesConfigStruct is T-32.1-05's safety
+// TestStrictConfigPatchValidatorMatchesConfigStruct is the PATCH-side safety
 // net: ConfigPatch can't $ref Config and subtract `required` (OpenAPI 3.1
 // has no such subtraction operator), so a hand-maintained twin schema is
 // unavoidable. This test enforces 1:1 JSON-path parity across all three

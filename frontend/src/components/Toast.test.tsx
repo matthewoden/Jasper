@@ -7,7 +7,7 @@
  *   - close button (aria-label "Dismiss notification") removes the toast
  *   - description renders when provided
  *   - error variant uses --color-destructive border (sentinel test for the
- *     UI-SPEC "destructive surface for non-warning toasts" rule)
+ *     "destructive surface for non-warning toasts" rule)
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

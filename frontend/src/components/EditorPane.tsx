@@ -459,7 +459,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     });
   }, [controller]);
 
-  // CR-01/CR-02: keep the controller's rename-comparator path in sync with
+  // Keep the controller's rename-comparator path in sync with
   // the LIVE tree — the note may have moved (another session, a WS
   // folder/note move) since this pane's initial GET seeded hydrate()'s path,
   // and the H1-rename detector must compose the new path against the note's

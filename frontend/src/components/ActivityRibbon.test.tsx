@@ -2,7 +2,7 @@
  * ActivityRibbon tests — nav landmark, vault badge (letter + fallback), and
  * the three wired buttons (quick-switcher, daily-note, palette).
  *
- * Phase 27 NAV-02 (D-09/D-10): the Files/Search toggles are gone — panel
+ * NAV-02: the Files/Search toggles are gone — panel
  * selection now lives entirely in SidebarTabRow. The ribbon's quick-switcher
  * button opens today's existing unmodified Cmd+O switcher (mode="notes").
  */
@@ -98,13 +98,13 @@ describe("ActivityRibbon", () => {
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("J");
   });
 
-  it("shows the whole code point for an emoji-led vault name, not a broken half-surrogate (IN-01)", () => {
+  it("shows the whole code point for an emoji-led vault name, not a broken half-surrogate", () => {
     mockDisplayName = "📓 Notes";
     renderRibbon();
     expect(screen.getByLabelText(/^Vault:/).textContent).toBe("📓");
   });
 
-  it("exposes the vault badge to assistive tech via role=img (IN-02)", () => {
+  it("exposes the vault badge to assistive tech via role=img", () => {
     renderRibbon();
     expect(
       screen.getByRole("img", { name: /^Vault:/ }).textContent,
@@ -120,7 +120,7 @@ describe("ActivityRibbon", () => {
     expect(screen.queryByRole("button", { name: "Search notes" })).toBeNull();
   });
 
-  it("Phase 27 follow-up item 4: quick-switcher icon is distinct from the sidebar Search tab's Search glyph", () => {
+  it("quick-switcher icon is distinct from the sidebar Search tab's Search glyph", () => {
     renderRibbon();
     const btn = screen.getByRole("button", { name: "Quick switcher" });
     const svg = btn.querySelector("svg");
@@ -130,7 +130,7 @@ describe("ActivityRibbon", () => {
     expect(svg?.classList.contains("lucide-search")).toBe(false);
   });
 
-  it("D-10: clicking the quick-switcher sets paletteMode('notes') then paletteOpen(true)", () => {
+  it("clicking the quick-switcher sets paletteMode('notes') then paletteOpen(true)", () => {
     renderRibbon();
     fireEvent.click(screen.getByRole("button", { name: "Quick switcher" }));
     expect(mockSetPaletteMode).toHaveBeenCalledWith("notes");
@@ -172,7 +172,7 @@ describe("ActivityRibbon", () => {
     expect(mockSetPaletteOpen).toHaveBeenCalledWith(true);
   });
 
-  it("RibbonButton: hover tint clears when the button becomes disabled mid-hover (IN-01)", () => {
+  it("RibbonButton: hover tint clears when the button becomes disabled mid-hover", () => {
     const { rerender } = renderRibbon();
     const btn = screen.getByRole("button", { name: "Open today's daily note" });
 
@@ -187,7 +187,7 @@ describe("ActivityRibbon", () => {
     expect(btn.style.background).toBe("transparent");
   });
 
-  it("RibbonButton: hover tint stays cleared after a disable/re-enable cycle when the pointer left while disabled (IN-01)", () => {
+  it("RibbonButton: hover tint stays cleared after a disable/re-enable cycle when the pointer left while disabled", () => {
     const { rerender } = renderRibbon();
     const btn = screen.getByRole("button", { name: "Open today's daily note" });
 
@@ -202,7 +202,7 @@ describe("ActivityRibbon", () => {
     expect(btn.style.background).toBe("transparent");
   });
 
-  it("D-07: ribbon buttons have no native title (Tooltip-migrated), aria-labels preserved", () => {
+  it("ribbon buttons have no native title (Tooltip-migrated), aria-labels preserved", () => {
     renderRibbon();
     for (const name of [
       "Quick switcher",
@@ -215,7 +215,7 @@ describe("ActivityRibbon", () => {
     }
   });
 
-  it("tooltips derive the modifier glyphs from the shared shortcuts registry, not hardcoded ⌘ (IN-05)", () => {
+  it("tooltips derive the modifier glyphs from the shared shortcuts registry, not hardcoded ⌘", () => {
     renderRibbon();
     fireEvent.focus(screen.getByRole("button", { name: "Quick switcher" }));
     expect(screen.getByText("Quick switcher")).toBeInTheDocument();

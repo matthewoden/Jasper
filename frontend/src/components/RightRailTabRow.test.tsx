@@ -1,6 +1,6 @@
 /**
  * RightRailTabRow tests — three icon tabs (Outline/Linked mentions/Tags)
- * mirroring SidebarTabRow.tsx (Phase 30 TAGS-01, D-01/D-02).
+ * mirroring SidebarTabRow.tsx (TAGS-01).
  */
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";

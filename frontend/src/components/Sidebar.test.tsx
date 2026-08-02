@@ -133,7 +133,7 @@ beforeEach(async () => {
   mockedPostAdminReindex.mockReset();
   mockedUseTreeMutations.mockReset();
   mockedUseTreeMutations.mockReturnValue(defaultMutsResult());
-  // FileTree.tsx hoists a single useBookmarks() instance (D-08's
+  // FileTree.tsx hoists a single useBookmarks() instance (the
   // props-threading template), so bookmarksResource's fetcher must have a
   // default resolved value for every test in this file, not just the
   // BookmarksPanel-specific describe block below.
@@ -156,7 +156,7 @@ afterEach(() => {
   mockedUseTreeMutations.mockReset();
 });
 
-describe("<Sidebar /> — Phase 3 chassis", () => {
+describe("<Sidebar /> — chassis", () => {
   it("TestSidebar_RendersNavWithAriaLabel", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
@@ -168,7 +168,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.getByLabelText("Notes navigation")).toBeInTheDocument();
   });
 
-  it("TestSidebar_RendersTabRowHeader — 40px header hosts the SidebarTabRow (Phase 27 NAV-01, replaces the vault-name header)", () => {
+  it("TestSidebar_RendersTabRowHeader — 40px header hosts the SidebarTabRow (NAV-01, replaces the vault-name header)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -181,7 +181,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.queryByText("NOTES")).toBeNull();
   });
 
-  it("TestSidebar_RendersToolbar — New note + New folder buttons (Phase 6.6: Refresh moved to StatusBar)", () => {
+  it("TestSidebar_RendersToolbar — New note + New folder buttons (Refresh moved to StatusBar)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -212,7 +212,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(nav.style.width).toBe("260px");
   });
 
-  it("UX-09: width comes from useTreeStore.sidebarWidth (not a literal)", () => {
+  it("width comes from useTreeStore.sidebarWidth (not a literal)", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -226,7 +226,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(nav.style.position).toBe("relative");
   });
 
-  it("UX-09: SidebarResizeHandle is mounted as a child of the nav", () => {
+  it("SidebarResizeHandle is mounted as a child of the nav", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -239,7 +239,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(nav.contains(handle)).toBe(true);
   });
 
-  it("TestSidebar_NoStaticScratchpadRow — Phase 1 hardcoded row is gone", () => {
+  it("TestSidebar_NoStaticScratchpadRow — hardcoded row is gone", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -250,7 +250,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     expect(screen.queryByText("scratchpad")).toBeNull();
   });
 
-  it("TestSidebar_RefreshNotInSidebar — Phase 6.6: Refresh moved to StatusBar (D-08)", () => {
+  it("TestSidebar_RefreshNotInSidebar — Refresh moved to StatusBar", () => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
       loading: false,
@@ -316,7 +316,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
   });
 
-  describe("Phase 27 follow-up item 1 — Collapse-all becomes a toggle", () => {
+  describe("Collapse-all becomes a toggle", () => {
     it("renders ChevronsDownUp (Collapse all) by default", () => {
       mockedUseFileTree.mockReturnValue({
         tree: { root: [] },
@@ -377,8 +377,8 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
   });
 
-  describe("Phase 6.5 — TagBrowserSection removed from sidebar (D-04)", () => {
-    it("SI-REMOVED: TagBrowserSection is NOT present inside the nav (removed in Phase 6.5)", () => {
+  describe("TagBrowserSection removed from sidebar", () => {
+    it("SI-REMOVED: TagBrowserSection is NOT present inside the nav", () => {
       mockedUseFileTree.mockReturnValue({
         tree: { root: [] },
         loading: false,
@@ -414,8 +414,8 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
     });
   });
 
-  describe("UX-12 — create-at-current-level (toolbar path)", () => {
-    it("UX-12: toolbar New note with no selection creates at root", async () => {
+  describe("create-at-current-level (toolbar path)", () => {
+    it("toolbar New note with no selection creates at root", async () => {
       const muts = defaultMutsResult();
       muts.createNote.mockResolvedValue({
         id: "n-new",
@@ -439,7 +439,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       });
     });
 
-    it("UX-12: toolbar New note with folder selection creates inside that folder", async () => {
+    it("toolbar New note with folder selection creates inside that folder", async () => {
       const muts = defaultMutsResult();
       muts.createNote.mockResolvedValue({
         id: "n-new",
@@ -481,7 +481,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       });
     });
 
-    it("UX-12: toolbar New note with note selection creates in the note's parent folder", async () => {
+    it("toolbar New note with note selection creates in the note's parent folder", async () => {
       const muts = defaultMutsResult();
       muts.createNote.mockResolvedValue({
         id: "n-new",
@@ -541,7 +541,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
       });
     });
 
-    it("UX-12: toolbar New folder follows the same selection-aware rule", async () => {
+    it("toolbar New folder follows the same selection-aware rule", async () => {
       const muts = defaultMutsResult();
       muts.createFolder.mockResolvedValue({
         kind: "folder",
@@ -578,7 +578,7 @@ describe("<Sidebar /> — Phase 3 chassis", () => {
 });
 
 
-describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.6-11)", () => {
+describe("<Sidebar /> — floating-panel + visibility gating", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
@@ -609,7 +609,7 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
     expect(card!.style.background).toBe("var(--color-surface)");
     expect(card!.style.borderRight).toBe("1px solid var(--color-border)");
     expect(card!.style.overflow).toBe("hidden");
-    // Phase 23-03 flush redesign superseded the Phase 6.6 floating card:
+    // The flush redesign superseded the earlier floating card:
     // no margin, no full border shorthand, no border-radius.
     expect(card!.style.margin).toBe("");
     expect(card!.style.border).toBe("");
@@ -641,7 +641,7 @@ describe("<Sidebar /> — Phase 6.6 floating-panel + visibility gating (Plan 06.
 });
 
 
-describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () => {
+describe("<Sidebar /> — reversal of Sidebar Search UI", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
@@ -733,7 +733,7 @@ describe("<Sidebar /> — Plan 07-40 reversal of Sidebar Search UI (UAT-6)", () 
   });
 });
 
-describe("<Sidebar /> — Phase 27 Plan 06: BookmarksPanel wiring", () => {
+describe("<Sidebar /> — BookmarksPanel wiring", () => {
   beforeEach(() => {
     mockedUseFileTree.mockReturnValue({
       tree: { root: [] },
@@ -747,7 +747,7 @@ describe("<Sidebar /> — Phase 27 Plan 06: BookmarksPanel wiring", () => {
     });
   });
 
-  it("renders <BookmarksPanel/> (bookmarks empty state), not the Plan 03 placeholder", () => {
+  it("renders <BookmarksPanel/> (bookmarks empty state), not the old placeholder", () => {
     renderWithProvider(<Sidebar />);
     expect(screen.queryByTestId("bookmarks-panel-placeholder")).toBeNull();
     expect(screen.getByTestId("bookmarks-empty-state")).toBeDefined();

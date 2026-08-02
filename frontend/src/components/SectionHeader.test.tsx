@@ -1,6 +1,6 @@
 /**
  * Tests for SectionHeader — unified whole-row-clickable collapse header
- * (Phase 20, RSIDE-01/RSIDE-02).
+ * (RSIDE-01/RSIDE-02).
  */
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
@@ -137,7 +137,7 @@ describe("SectionHeader", () => {
     expect(screen.getByRole("button")).toHaveAccessibleName("Expand Tags");
   });
 
-  it("Test 8: entire header is a single <button> element (whole-row-clickable, D-03)", () => {
+  it("Test 8: entire header is a single <button> element (whole-row-clickable)", () => {
     const { container } = render(
       <SectionHeader
         title="Outline"
@@ -152,7 +152,7 @@ describe("SectionHeader", () => {
     expect(screen.getByText("Outline").closest("button")).toBe(buttons[0]);
   });
 
-  it("Test 9: does not render an X close icon (D-01)", () => {
+  it("Test 9: does not render an X close icon", () => {
     const { container } = render(
       <SectionHeader
         title="Outline"
