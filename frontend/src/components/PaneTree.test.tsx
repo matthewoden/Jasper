@@ -1,17 +1,7 @@
 /**
- * PaneTree tests:
- *   - A tree with N leaves renders N independent `[data-testid="leaf-pane"]`,
- *     each with its own `[data-testid="tab-strip"]`.
- *   - The active leaf carries `data-active-pane="true"`; an inactive leaf
- *     does not.
- *   - Clicking anywhere in an inactive leaf's chrome calls
- *     usePaneStore's setActivePane with that leaf's id.
- *   - A leaf with `active: null` (zero tabs) renders without crashing.
- *   - Split nodes render a `[data-testid="pane-divider"]` between children.
- *
  * `EditorPane` is mocked to a lightweight stub — this suite exercises
- * PaneTree/LeafPane's layout/composition/click-to-activate behavior, not the
- * full editor stack (covered exhaustively by EditorPane.test.tsx).
+ * PaneTree/LeafPane layout and click-to-activate, not the editor stack
+ * (covered exhaustively by EditorPane.test.tsx).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";

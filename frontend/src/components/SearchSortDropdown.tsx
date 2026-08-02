@@ -1,18 +1,10 @@
 /**
- * SearchSortDropdown — three-option sort control for the sidebar Search
- * panel (SORT-02). Mounted beside the search input in
- * SidebarSearchPanel.tsx.
+ * Unlike NotesSortMenu's icon-only trigger, this one renders the current selection
+ * as 12px muted text — the search panel already has a text status line at this
+ * size, so an icon-only control would look orphaned.
  *
- * Unlike NotesSortMenu's icon-only trigger, this trigger renders the
- * current selection as text ("Relevance ▾" etc.) at 12px muted — the
- * search panel already has a text status line at this size, so an
- * icon-only control here would look orphaned.
- *
- * Style constants are re-declared here (not imported from TreeRowMenu.tsx)
- * to avoid a merge collision with the concurrently-running 29-05 plan,
- * which also touches menu chrome. Values are copied verbatim from
- * TreeRowMenu.tsx's menuContainerStyle/itemStyle/shortcutStyle so both
- * sort surfaces read as one consistent visual language.
+ * Style constants are copied verbatim from TreeRowMenu.tsx rather than imported
+ * (module-private there) so both sort surfaces read as one visual language.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check } from "lucide-react";

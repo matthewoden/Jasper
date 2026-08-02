@@ -1,16 +1,7 @@
 /**
- * setupApi — typed openapi-fetch wrappers for the first-run wizard endpoints:
- *   - GET  /api/v1/setup/status
- *   - POST /api/v1/setup/validate-data-dir
- *   - POST /api/v1/setup
- *
- * Reuses the shared `client` to keep the baseUrl consistent even though
- * X-Session-ID is not meaningful before setup completes.
- *
- * validateDataDir always resolves (backend returns { valid: false, ... } in the
- * body for refusal cases — the wrapper never throws on valid: false).
- * submitSetup throws on 400/500 so the wizard can surface the server message.
- * All wrappers accept an optional AbortSignal for rapid-keystroke cancellation.
+ * validateDataDir always resolves — the backend returns { valid: false, ... } in the
+ * body for refusal cases. submitSetup throws on 400/500 so the wizard can surface
+ * the server message.
  */
 import { client } from "../api/client";
 import type { components } from "../api/schema";

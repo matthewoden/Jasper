@@ -1,19 +1,14 @@
 /**
- * taskCheckboxPlugin — clickable task checkboxes that coexist with
- * livePreviewPlugin's marker hiding.
+ * Clickable task checkboxes that coexist with livePreviewPlugin's marker hiding.
  *
  * The char flip is dispatched from ViewPlugin.update as a second transaction,
- * because transactionExtender can only add effects and annotations, never
- * document changes. checkboxTransactionExtender survives as a no-op shim so
- * MarkdownEditor's extensions array need not change.
+ * because transactionExtender can only add effects and annotations, never document
+ * changes. checkboxTransactionExtender survives as a no-op shim so MarkdownEditor's
+ * extensions array need not change.
  *
- * Reveal-on-cursor: caret on the line shows raw "- [ ] " text; off the line
- * shows the widget. Mirrors wikilinkPlugin.
- *
- * The widget replaces ONLY the TaskMarker "[ ]", not the leading "- " — that
- * stays real list markup so livePreviewPlugin still renders its bullet, and the
- * trailing space stays literal so the text does not jump horizontally when the
- * line toggles back to raw.
+ * The widget replaces ONLY the TaskMarker "[ ]", not the leading "- " — that stays
+ * real list markup so livePreviewPlugin still renders its bullet, and the trailing
+ * space stays literal so the text does not jump when the line toggles back to raw.
  */
 import {
   Decoration,

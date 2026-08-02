@@ -1,19 +1,10 @@
 /**
- * useReveal — hook that opens a vault-relative path (or the vault root) in
- * the host OS file manager.
+ * Opens a vault-relative path in the host OS file manager, with a re-entrancy guard
+ * so rapid double-clicks no-op while a reveal is in flight.
  *
- * Wraps revealPath()/revealVaultRoot() with a re-entrancy guard (rapid
- * double-clicks no-op while a reveal is in flight) and platform-aware toast
- * feedback:
- *   - macOS success → "Opened in Finder"
- *   - WSL2 success  → "Opened in Explorer"
- *   - Linux 501     → unsupported message + backend's absolute path hint
- *   - Other failure → "Could not open file manager" + server message
- *
- * All reveal mount points (TreeRowMenu, Breadcrumbs, CommandMenu, About pane)
- * share this hook — one POST /reveal shape, one place that decides the toast.
+ * Every reveal mount point shares this hook — one POST /reveal shape, one place
+ * that decides the platform-appropriate toast.
  */
-
 import { useCallback, useState } from "react";
 import { useToast } from "../components/toast.utils";
 import { revealPath, revealVaultRoot as revealVaultRootApi, type RevealResult } from "./revealApi";

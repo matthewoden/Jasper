@@ -1,16 +1,6 @@
 /**
- * dropIndicatorWidget — CM6 ViewPlugin that renders a blinking caret at the
- * drop position during a file dragover, so the user can see where the markdown
- * will be inserted.
- *
- * StateField + StateEffect are exported separately and must be listed BEFORE
- * dropIndicatorPlugin in the extensions array:
- *   extensions: [ ..., dropPosField, dropIndicatorPlugin ]
- *
- * When posAtCoords returns null (pointer outside the document area), the
- * indicator hides rather than rendering at a stale position.
- *
- * This plugin is purely visual; drop insertion is handled by useAttachmentUpload.
+ * dropPosField must be listed BEFORE dropIndicatorPlugin in the extensions array.
+ * Purely visual — drop insertion is handled by useAttachmentUpload.
  */
 import {
   Decoration,

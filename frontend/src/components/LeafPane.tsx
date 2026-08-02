@@ -1,19 +1,16 @@
 /**
- * LeafPane — one leaf of the split-pane tree (WS-03): a leaf-scoped TabStrip
- * plus a keep-alive stack of EditorPane, one per open tab.
+ * One leaf of the split-pane tree: a leaf-scoped TabStrip plus a keep-alive stack
+ * of EditorPane, one per open tab.
  *
  * Inactive tabs render `hidden` rather than unmounting, so CM6 keeps
- * cursor/scroll/undo across a tab switch.
+ * cursor/scroll/undo across a tab switch. A leaf with zero tabs renders
+ * EditorPane with noteId={null} because the final pane never collapses.
  *
- * A leaf with zero tabs renders EditorPane with noteId={null} — its own
- * "no note open" placeholder — because the final pane never collapses.
+ * Inactive panes are NOT dimmed — that was tried and hurt readability.
  *
- * The pane activates on a click anywhere in its chrome or on focus entering it.
- * Inactive panes are NOT dimmed; that was tried and hurt readability.
- *
- * Also hosts this leaf's Find/Replace bar, scoped to its ACTIVE tab. CM6 search
- * state is per-view, so this needs no cross-pane coordination even with the
- * same note open twice.
+ * The Find/Replace bar is scoped to this leaf's ACTIVE tab; CM6 search state is
+ * per-view, so this needs no cross-pane coordination even with the same note
+ * open twice.
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { SearchQuery } from "@codemirror/search";

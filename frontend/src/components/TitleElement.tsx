@@ -1,18 +1,12 @@
 /**
- * TitleElement — the editable inline title (READ-01). A plain contentEditable
- * div, NOT a second CodeMirror.
+ * The editable inline title: a plain contentEditable div, NOT a second CodeMirror.
+ * It never calls the notes API — callers must route onTitleChange through
+ * MarkdownEditor's ref so the existing rename flow runs unchanged.
  *
- * It never calls the notes API and never opens a second doc-mutation channel:
- * callers must route onTitleChange through MarkdownEditor's ref so the existing
- * rename flow runs unchanged.
- *
- * Enter and ArrowDown hand off to the body, preserving column by PIXEL rather
- * than character index — the title's much larger font would otherwise land at
- * the wrong visual column.
- *
- * ArrowDown crosses only from the title's LAST visual row. The title is
- * pre-wrap, so a long title wraps, and hijacking every ArrowDown broke ordinary
- * in-title navigation.
+ * Enter and ArrowDown hand off to the body preserving column by PIXEL rather than
+ * character index; the title's larger font would otherwise land at the wrong
+ * visual column. ArrowDown crosses only from the title's LAST visual row — the
+ * title is pre-wrap, and hijacking every ArrowDown broke in-title navigation.
  */
 import { useEffect, useRef } from "react";
 

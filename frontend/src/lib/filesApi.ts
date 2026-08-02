@@ -1,17 +1,12 @@
 /**
- * filesApi — raw-fetch wrappers for OS-file operations (upload, delete, move).
- * Used by FileTree's sidebar drop target.
+ * Raw fetch + FormData rather than openapi-fetch: openapi-typescript does not
+ * generate ergonomic file-field types for multipart/form-data. Routes and response
+ * shapes remain contract-bound via OpenAPI.
  *
- * Uses raw fetch + FormData rather than openapi-fetch because openapi-typescript
- * does not generate ergonomic file-field types for multipart/form-data requests.
- * Routes and response shapes remain contract-bound via OpenAPI.
+ * Target directory goes in the `path` query param; URLSearchParams encodes "/" as
+ * "%2F" so multi-segment paths survive the round-trip. Empty string = vault root.
  *
- * Target directory is passed as the `path` query parameter. URLSearchParams
- * encodes "/" as "%2F" so multi-segment paths survive the round-trip.
- * Empty string ("") = vault root.
- *
- * Errors (400, 403, 413) surface as a generic Error with `.status` so callers
- * can decide which toast to show.
+ * Errors carry `.status` so callers can decide which toast to show.
  */
 import { generateOrLoadSessionId } from "./sessionId";
 

@@ -1,18 +1,16 @@
 /**
- * TreeRow — react-arborist row renderer, folder and note variants.
+ * The active row's accent left-border is absolutely positioned so the label does
+ * not shift.
  *
- * The active row's accent left-border is absolutely positioned so the label
- * does not shift.
- *
- * Folder rows show an inset box-shadow while willReceiveDrop is true. That is
- * the ONLY drag feedback in FileTree, which suppresses react-arborist's
- * insertion line via renderCursor={() => null}; BookmarksPanel keeps the line.
+ * The inset box-shadow on willReceiveDrop folders is the ONLY drag feedback in
+ * FileTree, which suppresses react-arborist's insertion line via
+ * renderCursor={() => null}; BookmarksPanel keeps the line.
  *
  * handleClick sets useTreeStore.selectedRow so App.tsx's document-level F2
  * listener can route a rename even while focus is in the editor.
  *
- * XSS: this file MUST NOT use React's inner-HTML escape hatch. Labels render as
- * text content, which escapes by default. A vitest case enforces it.
+ * XSS: this file MUST NOT use React's inner-HTML escape hatch. A vitest case
+ * enforces it.
  */
 import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";

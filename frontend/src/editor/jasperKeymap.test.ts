@@ -180,23 +180,6 @@ describe("JK-bold-italic — toggleBold / toggleItalic commands", () => {
 });
 
 
-/**
- * listEnterCommand tests — LE series.
- *
- * LE-1: NON-EMPTY nested task (cursor at end) → tight continuation `\n  - [ ] `, returns true
- * LE-2: EMPTY top-level task `- [ ] ` → clears marker in place, returns true (no \n\n)
- * LE-3: EMPTY top-level plain bullet `- ` → clears marker in place, returns true (no \n\n)
- * LE-4: EMPTY NESTED task `  - [ ] ` → de-indents to `- [ ] `, returns true
- * LE-5: EMPTY NESTED plain bullet `  - ` → de-indents to `- `, returns true
- * LE-6: DEEPLY NESTED task `    - [ ] ` → de-indents to `  - [ ] ` (one level only), returns true
- * LE-7: Press Enter TWICE on empty nested task → de-indents once, then clears in place
- * LE-8: NON-EMPTY nested bullet `  - some text` (cursor at end) → tight continuation `\n  - `, returns true
- * LE-11: multi-line `- [x] test\n- [ ] ` → clears second line in place, returns true (no \n\n)
- * LE-12: NON-EMPTY top-level task `- [x] test` → tight continuation `\n- [ ] ` (task reset), returns true
- * LE-13: LOOSE list, Enter on non-empty item → new item is TIGHT, no NEW `\n\n` added
- * LE-14: cursor MID-LINE on a non-empty item → returns false (falls through to CM6 split)
- * LE-15: ordered-list item `1. foo` → returns false (falls through; CM6 owns ordered lists)
- */
 describe("listEnterCommand — nested-empty-item de-indent", () => {
   // Helper: create a view with the markdown language loaded (needed for indentUnit defaults)
   function makeListView(doc: string, cursorPos: number): EditorView {

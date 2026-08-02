@@ -1,14 +1,7 @@
 /**
- * useTheme — dark-only theme hook.
- *
- * Applies data-theme="dark" unconditionally. The light branch and setTheme
- * toggle are removed; applyTheme and persistBootstrap remain exported so
- * any call sites (SettingsDialog, SetupApp) don't break until Wave 3
- * removes them.
- *
- * data-theme on <html> is the sole source of truth — CSS variables retarget
- * from it and CodeMirror's themeBridge reads the same variables, so one DOM
- * mutation restyles the entire app.
+ * data-theme on <html> is the sole source of truth — CSS variables retarget from it
+ * and CodeMirror's themeBridge reads the same variables, so one DOM mutation
+ * restyles the entire app.
  */
 import { useEffect } from "react";
 

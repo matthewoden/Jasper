@@ -1,18 +1,13 @@
 /**
- * imageAttachmentWidget — CM6 ViewPlugin that detects markdown image syntax where
- * the src starts with `attachments/` and renders an inline image BELOW the source line.
+ * Renders an inline image BELOW the source line for markdown images whose src
+ * starts with `attachments/`.
  *
- * Widget is placed at `line.to` with `side: 1`. block: true is prohibited in ViewPlugin
- * decorations (CM6 throws "Block decorations may not be specified via plugins"); CSS
- * display:block on the container achieves the visual block appearance instead.
- * The source `![alt](...)` text stays editable (additive widget, not a replace).
+ * The widget is placed at `line.to` with `side: 1`. block: true is prohibited in
+ * ViewPlugin decorations (CM6 throws "Block decorations may not be specified via
+ * plugins"); CSS display:block achieves the same appearance. Being additive rather
+ * than a replace, the source text stays editable.
  *
- * Image URL: `/api/v1/attachments/${noteId}/${encodeURIComponent(filename)}`
- *
- * The container uses `aspect-ratio: 3/2` until onload fires to prevent CM6 reflow.
- * On error, renders the filename + "(missing)".
- *
- * All colors via var(--color-*) tokens.
+ * The container holds `aspect-ratio: 3/2` until onload fires to prevent CM6 reflow.
  */
 import {
   Decoration,

@@ -1,18 +1,14 @@
 /**
- * inlineTagAutocomplete — CompletionSource for inline `#tagname` body syntax.
+ * CompletionSource for inline `#tagname` body syntax.
  *
- * Triggers on `#` in the document body (not inside code or frontmatter).
- * Source is a module-level snapshot set by MarkdownEditor via setInlineTagSnapshot.
+ * Keeps a snapshot separate from tagAutocomplete's: the two serve different
+ * contexts (frontmatter `tags: [...]` vs body `#tagname`) and intentionally avoid
+ * coupling.
  *
- * Separate snapshot from tagAutocomplete's _tagSnapshot: both sources serve
- * different contexts (frontmatter `tags: [...]` vs body `#tagname`) and
- * intentionally avoid coupling.
+ * from = match.from + 1 so acceptance replaces only the name after "#" — accepting
+ * "foo" from "#fo" must produce "#foo", not "##foo".
  *
- * from = match.from + 1 so acceptance replaces only the tagname after "#"
- * (accepting "foo" from "#fo" produces "#foo", not "##foo").
- *
- * Never returns a "Create new tag" row — tags become valid on save.
- * Returns null when no tags match or snapshot is empty.
+ * Never offers a "Create new tag" row; tags become valid on save.
  */
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";

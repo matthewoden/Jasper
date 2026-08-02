@@ -1,12 +1,4 @@
 /**
- * Tests for useTabStore — zustand tab store with deferred, vault-scoped
- * localStorage persistence (debounced 250ms).
- *
- * Covers TAB-01 (open/append/active), TAB-02 (dedup), TAB-03 (reorder),
- * TAB-12 (markDeleted immutability), TAB-10 (per-vault persistence round-trip,
- * corruption tolerance, cross-vault isolation), and pruneTabsForMissingNotes
- * (keep-deleted drop-missing).
- *
  * The persistence subscribe is deferred to initForVault(); tests that exercise
  * writes call initForVault first to activate it, then drive the 250ms debounce
  * with fake timers.

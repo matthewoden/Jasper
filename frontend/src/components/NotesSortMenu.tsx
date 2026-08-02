@@ -1,17 +1,9 @@
 /**
- * NotesSortMenu — Notes-panel sort trigger + six-option Radix DropdownMenu
- * (SORT-01). Mounted in SidebarToolbar beside New note/New folder.
+ * menuContainerStyle/itemStyle/shortcutStyle are re-declared identically from
+ * TreeRowMenu.tsx rather than imported — those constants are module-private there.
  *
- * menuContainerStyle/itemStyle/shortcutStyle below are re-declared identically
- * from TreeRowMenu.tsx (not imported — those constants are module-private
- * there) per the 29-05 plan's interfaces note: reuse the visual language
- * verbatim rather than inventing new menu CSS.
- *
- * The trigger glyph is a single constant `ArrowUpDown` regardless of the
- * selected order — an earlier order-reflecting six-glyph trigger was
- * reversed by owner feedback: a changing icon read as confusing;
- * consistency was preferred. The order itself is still chosen from the
- * dropdown below, unchanged.
+ * The trigger glyph is always `ArrowUpDown`: an earlier order-reflecting six-glyph
+ * trigger was reversed by owner feedback as confusing.
  */
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ArrowUpDown, Check } from "lucide-react";

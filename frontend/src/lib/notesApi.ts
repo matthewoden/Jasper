@@ -131,16 +131,9 @@ export async function searchTitles(
 }
 
 /**
- * createNoteFromMarkdownDrop — creates a note from a .md file dropped into the sidebar.
- *
- * Backend /files refuses .md uploads, so dropped .md files go through the
- * notes API instead. Two-step: POST /notes creates an empty file (matching
- * the existing POST /notes contract), then PUT /notes/{id} populates the body.
- *
- * Errors:
- *   - 409 from POST: case-collision or parent_path doesn't resolve to a folder.
- *   - 400 from POST: invalid title chars / traversal.
- *   - PUT failure after POST: the empty .md remains; throws.
+ * Backend /files refuses .md uploads, so a dropped .md file goes through the notes
+ * API instead: POST /notes creates it empty, then PUT /notes/{id} populates the
+ * body. If the PUT fails the empty .md remains on disk.
  *
  * @param notePath relative path including filename ("docs/foo.md" or "foo.md")
  * @param body markdown content to write to the new note

@@ -1,17 +1,8 @@
 /**
- * BookmarksPanel — onRootDrop wiring tests (quick task 260719-jv1 follow-up:
- * bookmark drag-to-root).
- *
- * TreeView's own empty-area root-drop mechanics (window-level native-drag
- * listeners, `[role="tree"]` scoping) are unit-tested in TreeView.test.tsx.
- * This file only proves BookmarksPanel wires `onRootDrop` correctly:
- * a folder-held bookmark dragged to root calls moveToFolder(id, null); a
- * bookmark already at root is skipped (no-op, no redundant API call).
- *
- * TreeView is mocked to a thin stub that captures the onRootDrop prop so
- * the callback can be invoked directly — the real drag *gesture* is
- * covered by TreeView.test.tsx + the orchestrator's real-mouse browser
- * pass, per the "verify DnD with real mouse" memory.
+ * Only proves BookmarksPanel wires `onRootDrop`; TreeView's own empty-area
+ * root-drop mechanics live in TreeView.test.tsx and the real drag gesture is
+ * covered by a real-mouse browser pass. TreeView is mocked to a stub that
+ * captures the prop so the callback can be invoked directly.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, act, waitFor } from "@testing-library/react";

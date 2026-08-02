@@ -1,13 +1,3 @@
-/**
- * externalImagePlugin.test.ts — vitest suite.
- *
- * Covers:
- *   - isExternalUrl (same-origin bypass — 5 cases)
- *   - Allow-list persistence round-trip (4 cases)
- *   - ExternalImageWidget render paths (placeholder, click, fetch success,
- *     fetch failure, destroy revoke — 6 cases)
- *   - Plugin integration: external emits widget, internal skips (3 cases)
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";

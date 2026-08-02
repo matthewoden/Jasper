@@ -1,19 +1,7 @@
 /**
- * Save state machine — pure (no React deps) so the CM6 editor can drive it
- * from a transaction filter.
- *
- * Transitions:
- *   idle      --requestSave-------> saving
- *   error     --requestSave-------> saving   (recovery path)
- *   saved     --requestSave-------> saving   (immediate Cmd+S during sticky)
- *   saving    --saveSucceeded----->  saved
- *   saving    --saveFailed-------->  error
- *   saved     --savedTimerExpired->  idle
- *   <any>     --edit--------------> <unchanged>  (debounce lives in component)
- *   <any>     --connectionLost----> paused
- *   paused    --connectionRestored-> idle
+ * Pure (no React deps) so the CM6 editor can drive it from a transaction filter.
+ * Edit debouncing lives in the component, not here.
  */
-
 export type SaveState =
   | { status: "idle" }
   | { status: "saving"; startedAt: Date }

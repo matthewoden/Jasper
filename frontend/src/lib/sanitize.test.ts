@@ -1,15 +1,5 @@
 /**
- * sanitize.test — SECURITY-02 unit coverage. Locked thread-of-trust
- * proofs: malicious HTML is stripped, benign HTML survives.
- *
- * Coverage shape:
- *   - XSS strip: 8 cases — script tags, inline event handlers,
- *     javascript: URIs, iframe, object/embed, form, data: URI smuggling,
- *     on* attributes from any tag.
- *   - Benign HTML preserved: 7 cases — common inline/block elements,
- *     img with safe src/alt, class attributes, blob: URLs, relative URLs,
- *     lists, code blocks.
- *   - Edge cases: 3 cases — empty string, plain text, mismatched tags.
+ * Locked thread-of-trust proofs: malicious HTML is stripped, benign HTML survives.
  */
 import { describe, expect, it } from "vitest";
 

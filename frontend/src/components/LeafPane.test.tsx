@@ -1,18 +1,6 @@
 /**
- * LeafPane tests:
- *   - The root renders `data-droppane={leaf.id}` so TabStrip's cross-pane
- *     `elementFromPoint` hit-testing resolves this leaf (WS-01/WS-02).
- *   - The translucent drop-region overlay renders ONLY while a drag
- *     is active AND usePaneDragStore's hover targets THIS leaf; it renders
- *     nothing for a different leaf's hover, and nothing when no drag is
- *     active at all.
- *   - Overlay geometry matches the spec per region (half-pane for split
- *     regions, full-pane inset:0 for center) and never intercepts pointer
- *     events.
- *
  * `EditorPane` is mocked to a lightweight stub, mirroring PaneTree.test.tsx —
- * this suite exercises LeafPane's own drop-target/overlay wiring, not the
- * full editor stack.
+ * this suite exercises LeafPane's drop-target/overlay wiring, not the editor stack.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";

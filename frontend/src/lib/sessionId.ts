@@ -1,18 +1,12 @@
 /**
- * Per-tab session_id (SYNC-01, SYNC-02). Generated once on first call
- * and persisted in sessionStorage (per-tab, NOT localStorage — every
- * tab is its own session per DESIGN.md §6.1).
+ * Per-tab session_id, persisted in sessionStorage — NOT localStorage, since every
+ * tab is its own session.
  *
- * SINGLE source of truth — both the openapi-fetch sessionMiddleware
- * (X-Session-ID header on every mutating HTTP request) AND
- * useSessionSync (the WS upgrade query param ?session_id=<sid>) call
- * generateOrLoadSessionId(). This guarantees the X-Session-ID header
- * value matches the WS connection's session_id exactly — without that
- * match, the server cannot origin-filter broadcasts.
+ * SINGLE source of truth for both the X-Session-ID header and the WS upgrade's
+ * ?session_id param. Without an exact match between the two, the server cannot
+ * origin-filter broadcasts.
  *
- * SECURITY: the value is opaque. It is never rendered to the
- * DOM. The server applies a 128-char length cap on the WS handshake
- * side; UUIDs are 36 chars so this is always safe.
+ * The value is opaque and never rendered to the DOM.
  */
 const STORAGE_KEY = "jasper.sessionId";
 

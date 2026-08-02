@@ -1,19 +1,11 @@
 /**
- * useTagsForNote — per-note tag list hook.
+ * Per-note tag list: frontmatter `tags:` plus inline `#tagname` body matches.
+ * The parsing mirrors backend logic in notes/service.go and must stay in step
+ * with it.
  *
- * Fetches only the tags belonging to the active note (not vault-global tags).
- * Parses tags from two sources, mirroring backend logic in notes/service.go:
- *   1. YAML frontmatter: `tags: [foo, bar]` or multi-line `tags:\n  - foo`
- *   2. Inline body tags: `#tagname` patterns (charset: [a-z0-9_-]+)
- *
- * Refetches on note:updated / note:created / links:rewritten WS events via
- * the shared resource-layer event bus (same events useBacklinks listens
- * for). Cancels in-flight requests on noteId change.
- *
- * Tag names are parsed from content — never eval'd or rendered as HTML.
- * The charset regex [a-z0-9_-]+ is intentionally restrictive for safety.
+ * The charset regex [a-z0-9_-]+ is intentionally restrictive; names are parsed
+ * from content and never eval'd or rendered as HTML.
  */
-
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getNote } from "./notesApi";
 import { subscribe } from "./resources";

@@ -1,18 +1,11 @@
 /**
- * externalImagePlugin — replaces inline external images (https://...) with a
- * click-to-load placeholder. On click, the image bytes are fetched, converted
- * to a blob URL via URL.createObjectURL, and the placeholder swaps for an
- * <img src="blob:...">. The strict CSP (img-src 'self' data: blob:) blocks
- * direct external src; the blob URL is the bridge.
+ * Replaces inline external images with a click-to-load placeholder. The strict CSP
+ * (img-src 'self' data: blob:) blocks a direct external src, so on click the bytes
+ * are fetched and swapped in as a blob URL. Each widget revokes its blob URL in
+ * destroy() to avoid leaking createObjectURL allocations.
  *
- * Allow-list: per-URL granularity (full URL string match), stored as a JSON
- * array in localStorage["jasper:img-allowlist"]. Survives page reloads; no
- * UI to remove entries in v1.
- *
- * Internal images (same-origin or relative path) bypass the gate entirely.
- *
- * Each widget tracks its blob URL and revokes it in destroy() to avoid leaking
- * URL.createObjectURL allocations.
+ * The allow-list is per-URL (full string match) in localStorage; there is no UI to
+ * remove entries in v1. Same-origin and relative images bypass the gate entirely.
  */
 import {
   Decoration,

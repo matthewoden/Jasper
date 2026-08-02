@@ -1,14 +1,3 @@
-/**
- * fileChipWidget.test.ts — vitest suite.
- *
- * Tests cover:
- *   - fileChipPlugin: detects [name](attachments/x.pdf) and emits block widget
- *   - fileChipPlugin: ignores image attachments (leading ! — those are imageAttachmentPlugin's)
- *   - fileChipPlugin: ignores external links
- *   - fileChipPlugin: ignores non-attachment local links
- *   - Widget placement: side:1 (BELOW the source line, source text stays editable)
- *   - Icon lookup: .pdf → FileText, .mp4 → FileVideo, unknown → File
- */
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";

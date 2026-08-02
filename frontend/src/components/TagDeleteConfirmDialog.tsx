@@ -1,13 +1,5 @@
 /**
- * TagDeleteConfirmDialog — Radix AlertDialog for tag deletion.
- * Shown only when N > 5 notes carry the tag; caller deletes silently for N ≤ 5.
- *
- * Copy contract (locked):
- *   Title:    Remove tag '{tagname}'?
- *   Body L1:  This will remove "{tagname}" from {N} notes. Their frontmatter will be rewritten.
- *   Body L2:  This cannot be undone.  (destructive color)
- *   Cancel:   Keep tag
- *   Confirm:  Remove tag
+ * Shown only when N > 5 notes carry the tag; the caller deletes silently for N ≤ 5.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 

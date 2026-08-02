@@ -1,18 +1,7 @@
 /**
- * Tests for the locked-signature useMigrationStatus hook.
- *
- * Validates:
- *   - mount-time fetch resolves and surfaces the response
- *   - rolled_back state surfaces failed_migration + logs_path
- *   - refresh() invalidates the shared resource and updates state on the
- *     subsequent fetch
- *   - network error: state stays "ok" (optimistic), error is non-null
- *   - StrictMode double-mount does not double-set state (cancelled flag)
- *
- * Mocks adminApi's adminStatusResource (built on the REAL createResource
- * primitive, mockFetcher standing in for the network call) so we never hit
- * the network but the resource layer's own hydrate/cache/invalidate
- * behavior is exercised for real.
+ * Mocks adminApi's adminStatusResource on the REAL createResource primitive, so the
+ * resource layer's hydrate/cache/invalidate behavior is exercised for real while
+ * the network call is not.
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

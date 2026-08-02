@@ -1,17 +1,7 @@
 /**
- * Tests for useTagBrowser hook. Validates:
- *   U1: mount triggers a listTags fetch; data populates; loading transitions true -> false
- *   U2: refresh() triggers a refetch
- *   U3: publishing a `tags:updated` event triggers a refetch
- *   U4: publishing a `tags:rewritten` event triggers a refetch
- *   U5: a fetch resolving after unmount does not throw / does not affect the
- *       frozen pre-unmount snapshot
- *   U6: errors surface via the `error` field; loading=false; data remains the previous value
- *   U7: two mounted consumers (the split-pane shape) produce exactly 1 fetcher call
- *
- * `tagsResource` is built with the REAL `createResource` (not mocked) so the
- * resource layer's coalescing/invalidation semantics are exercised for real —
- * only the network-facing `listTags` fetcher is mocked via `./tagsApi`.
+ * `tagsResource` is built with the REAL `createResource` so the resource layer's
+ * coalescing/invalidation semantics are exercised for real — only the
+ * network-facing `listTags` fetcher is mocked.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
