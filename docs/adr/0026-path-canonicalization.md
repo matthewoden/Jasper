@@ -38,7 +38,9 @@ The canonical form is correct as a **lookup key** and wrong as a **path to read 
 
 macOS masks this completely; it surfaces on WSL2. Jasper's own files are unaffected because it writes lowercase-NFC, so this bites external and sync-created files only.
 
-The rule this ADR should be read as stating: **canonicalize for the key, keep the real path for I/O.** Tracked in `.scratch/audit-findings/issues/04-durability.md`.
+The rule this ADR should be read as stating: **canonicalize for the key, keep the real path for I/O.** The code does not yet do this as of 2026-08-01.
+
+A regression test for it passes vacuously on macOS — it must run on a case-sensitive filesystem (Linux CI or the fake-WSL harness) or it will pass against the live defect.
 
 ## Related validation
 

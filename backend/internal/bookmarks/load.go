@@ -27,8 +27,8 @@ import (
 //     coerced to an empty document, which would silently wipe every
 //     bookmark and folder on the next write).
 //   - File present and valid: any bookmark whose NoteID no longer resolves
-//     in registry (or fails to parse as a UUID) is dropped (D-04
-//     auto-prune-on-read). If any row was dropped, the pruned document is
+//     in registry (or fails to parse as a UUID) is dropped
+//     (auto-prune-on-read). If any row was dropped, the pruned document is
 //     re-Saved to disk (best-effort) so the file stays clean.
 //   - registry == nil (WR-03: Server's documented graceful-degradation
 //     contract when notesSvc is nil): auto-prune is skipped entirely — a

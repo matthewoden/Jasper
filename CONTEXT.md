@@ -64,6 +64,8 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Attachment** — a non-markdown file stored at `notes/<note-dir>/attachments/`. Collisions auto-rename (`image-1.png`).
 
+**Bookmark** — a pinned reference to a note, held by UUID in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
+
 **Trash** — `.trash/` inside the vault. Deletes are soft: move to `.trash/`, restore by moving back and refreshing. Excluded from every index surface. See [ADR-0015](./docs/adr/0015-filesystem-native-soft-delete.md).
 
 ### The write path
@@ -96,7 +98,7 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Hot-swap** — switching the open vault without restarting the process. The HTTP handler is swapped to nil first, so every request during the window returns 503 and nothing can be served against a half-torn-down vault. Then the per-vault subsystems are torn down and reopened against the new vault.
 
-⚠️ **The current teardown order is a known defect** — it closes the database before stopping the MCP listener, so an in-flight MCP tool call can hit a closed DB. Don't treat the shipped order as the intended contract; see [ADR-0008](./docs/adr/0008-vault-model.md) and `.scratch/audit-findings/`.
+⚠️ **The current teardown order is a known defect** — it closes the database before stopping the MCP listener, so an in-flight MCP tool call can hit a closed DB. MCP must stop first. Don't treat the shipped order as the intended contract; see [ADR-0008](./docs/adr/0008-vault-model.md).
 
 ### Content model
 

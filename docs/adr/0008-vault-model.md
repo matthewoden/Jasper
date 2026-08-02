@@ -26,7 +26,7 @@ Adopt an Obsidian-style **vault** model. Jasper opens one vault at a time and ho
 
 **Hot-swap:** pause writes and broadcast `vault.switching` → swap the HTTP handler to nil so every in-flight request gets a 503 → tear down the per-vault subsystems → update `app.json` atomically → reopen and run pending migrations → broadcast `vault.switched`. One switch in flight at a time.
 
-> **The shipped teardown order is a known defect, not the contract.** It closes the DB pair before stopping the MCP listener, so an in-flight MCP tool call can hit a closed database. MCP must stop first. Earlier documentation blessed the current order as design; it isn't. Tracked in `.scratch/audit-findings/issues/02-lifecycle-hardening.md`.
+> **The shipped teardown order is a known defect, not the contract.** It closes the DB pair before stopping the MCP listener, so an in-flight MCP tool call can hit a closed database. MCP must stop first. Earlier documentation blessed the current order as design; it isn't, and the fix is unshipped as of 2026-08-01.
 
 **`--data-dir` and `JASPER_DATA_DIR` retire** from the user-facing surface, replaced by `--vault` (kept for CI, E2E, and power users).
 

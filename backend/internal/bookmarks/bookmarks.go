@@ -4,7 +4,7 @@
 //
 // Bookmarks are keyed by stable note UUID (not path), so a bookmark
 // survives note rename/move (BOOK-04). A bookmark whose NoteID no longer
-// resolves in the notes.Registry is dropped on load (D-04 auto-prune).
+// resolves in the notes.Registry is dropped on load (auto-prune).
 package bookmarks
 
 import "path/filepath"
