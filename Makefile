@@ -1,6 +1,6 @@
 .PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e
 
-# Phase 8 D-40: canonical port resolver. Returns server.port from
+# Canonical port resolver. Returns server.port from
 # the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
 # or 6683 if no config exists. Used by .air.toml, vite.config.ts,
 # Playwright, and perf-check.
@@ -14,7 +14,7 @@ print-port:
 perf-check:
 	@./scripts/perf-check.sh
 
-# Phase 8 Plan 08-14 / D-42: generate a deterministic 5k-note synthetic
+# Generate a deterministic 5k-note synthetic
 # vault under _perf-vault/notes/ for the cold-start gate.
 # Distribution: 80% body-only, 15% tagged, 5% wiki-link.
 # Full pipeline: `make build && make perf-vault && make perf-check`.
@@ -80,7 +80,7 @@ test-wsl-e2e:
 	  cd frontend && JASPER_WSL_E2E=1 JASPER_WSL_HOST_PORT=$${JASPER_WSL_HOST_PORT:-6684} \
 	    npx playwright test phase8-wsl-vault.spec.ts
 
-# Phase 16 Plan 16-05 / D-08 / G-09: one-command harness for the systemd
+# One-command harness for the systemd
 # install-validation suite (compose/install-validation/).
 # CROSS-compiles a linux/amd64 binary (NOT the host-native `build` target):
 # the compose suite mounts bin/ into a `platform: linux/amd64` container, so a
@@ -95,7 +95,7 @@ test-wsl-e2e:
 # harness (compose/wsl-validation/). Do NOT conflate the two suites.
 #
 # The CI job (.github/workflows/install-validation.yml) calls this target
-# directly so it cannot list divergent compose commands — zero drift (T-16-10).
+# directly so it cannot list divergent compose commands — zero drift.
 .PHONY: test-systemd-e2e
 test-systemd-e2e:
 	cd frontend && npm install && npm run build

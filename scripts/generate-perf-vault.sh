@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/generate-perf-vault.sh — Phase 8 Plan 08-14 / D-42.
+# scripts/generate-perf-vault.sh
 #
 # Deterministic synthetic vault generator for the 5-second cold-start
-# gate. Writes <COUNT> .md files under <OUT_DIR>/notes/ with the distribution
-# locked by D-42:
+# gate. Writes <COUNT> .md files under <OUT_DIR>/notes/ with this locked
+# distribution:
 #
 #   - 80% body-only (no frontmatter, no wiki-links)
 #   - 15% tagged   (frontmatter "tags: [...]" with 1–3 tags from a 50-tag pool)

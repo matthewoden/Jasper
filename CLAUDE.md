@@ -393,11 +393,11 @@ If everything else about Jasper fails, this must work: open the browser, write n
 
 ### File-Tree Synchronization (TREE-01 + hot-swap)
 
-### Full-Text Search (Phase 7 Cmd+P Palette)
+### Full-Text Search (Cmd+P Palette)
 
 ### Incremental Reindex (Startup + Manual via Admin)
 
-### Vault Hot-Swap (ADR-001, Phase 8)
+### Vault Hot-Swap (ADR-001)
 
 ## Key Abstractions
 
@@ -417,7 +417,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 - Examples: `internal/notes/ports.go` defines interface; `internal/fsstore/store.go` implements; tests use fstest.MapFS.
 - Pattern: Interface-driven; composition root injects concrete.
 - Purpose: Abstract contract for metadata queries and search; allows non-SQLite implementations (though Jasper locked to SQLite).
-- Examples: `internal/notes/ports.go` defines interface; `internal/index/indexer.go` implements; nopIndex substitutes in Phase 1 tests.
+- Examples: `internal/notes/ports.go` defines interface; `internal/index/indexer.go` implements; nopIndex substitutes in tests.
 - Pattern: Interface-driven; composition wires real or mock.
 
 ## Entry Points
@@ -440,7 +440,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 
 ## Architectural Constraints
 
-- **Threading:** JavaScript is single-threaded event loop (browser); Go uses goroutines (backend). Migration runner and indexer reconcile both run in background goroutines without blocking the HTTP listener. WS hub reads are RWMutex-guarded; broadcasts do not hold Lock (Pitfall 6).
+- **Threading:** JavaScript is single-threaded event loop (browser); Go uses goroutines (backend). Migration runner and indexer reconcile both run in background goroutines without blocking the HTTP listener. WS hub reads are RWMutex-guarded; `Broadcast` holds only RLock, never Lock, so a slow client cannot block a concurrent register/unregister.
 - **Global state:** App.Handler is swappable (AtomicValue, app_test.go line ~350) — allows lifecycle.Run to replace the router after migrations complete without dropping in-flight requests. TreeStore is Zustand (single source, Pub/Sub); SessionSync is the WS connection (singleton per tab). No shared mutable state across components except the Zustand stores.
 - **Circular imports:** None known. Internal packages respect layering: api calls service, service calls ports (fsstore/index), ports do not call up. Frontend components import lib hooks and API clients; hooks import other hooks via dependency injection.
 - **Filesystem as source of truth:** SQLite is always regenerable from notes/. Migrations employ backup-first + three explicit recovery paths (Path 1: apply, Path 2: rollback + restore, Path 3: wipe + reconcile). This contract is non-negotiable per PROJECT §Data Integrity.

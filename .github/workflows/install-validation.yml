@@ -1,7 +1,5 @@
 # .github/workflows/install-validation.yml
-# Phase 8 Plan 08-14 / INSTALL-09 / D-38 / D-48.
-# Updated: Phase 16 Plan 16-05 / D-09 (Linux runner pin, macOS exclusion doc,
-#          make target wiring for zero make/CI drift — T-16-10).
+# INSTALL-09 install-validation gate.
 #
 # CI gate that runs the install-validation docker-compose suite on every
 # push to main and every PR targeting main. Asserts:
@@ -12,17 +10,16 @@
 #      proving the README install flow works end-to-end on a fresh
 #      WSL2-like system.
 #
-# macOS EXCLUSION (D-09 / WSL-04):
+# macOS EXCLUSION (WSL-04):
 #   This job runs on ubuntu-latest only. macOS GitHub Actions runners are
 #   explicitly excluded because:
 #     (a) Docker on macOS GitHub-hosted runners requires a Docker Engine install
 #         step that is not available on the standard runner image.
 #     (b) jrei/systemd-ubuntu:noble requires Linux cgroups and systemd-as-PID-1
 #         (privileged: true); these cannot be satisfied under macOS's kernel.
-#   Reference: STATE.md Critical Pitfall "Phase 16 / WSL-04: Docker not available
-#   on GitHub Actions macOS runners". Do NOT add a macOS matrix entry here.
+#   Do NOT add a macOS matrix entry here.
 #
-# No-drift guarantee (D-08 / T-16-10):
+# No-drift guarantee:
 #   The job invokes `make test-systemd-e2e` rather than re-listing the compose
 #   commands inline. That make target calls compose/install-validation/run.sh,
 #   which is the single authoritative invocation sequence for both local and CI
@@ -70,7 +67,7 @@ jobs:
         #   docker compose up -d  →  wait systemd ready  →
         #   exec test-install.sh  →  down (trap-guarded).
         # This is the same script that local `make test-systemd-e2e` calls —
-        # no divergent inline compose commands here (zero-drift, T-16-10).
+        # no divergent inline compose commands here (zero-drift).
         run: make test-systemd-e2e
 
       - name: docker-compose down (cleanup)

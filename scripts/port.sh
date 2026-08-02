@@ -4,7 +4,7 @@
 # Read by .air.toml, vite.config.ts, Playwright config, smoke tests,
 # and Makefile `print-port` / `perf-check` targets. Single source of
 # truth so dev (air + Vite proxy) and prod (the installed binary)
-# stay in parity (Phase 8 D-40 / D-41).
+# stay in parity.
 #
 # Looks at $JASPER_CONFIG (or ~/.jasper/storage/config.json by default).
 # If present, prints `server.port` (jq if available, grep fallback).
