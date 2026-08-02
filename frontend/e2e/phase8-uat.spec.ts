@@ -4,13 +4,11 @@
  *
  * The @reveal test asserts visibility only — clicking would pop Finder/Explorer.
  *
- * KNOWN ISSUE, and a real production gap rather than a test artifact: lifecycle.Run
- * calls config.Load, which auto-writes config.json if missing, BEFORE the listener
- * accepts connections. By the time a page navigates to "/", config.json exists and
- * the firstrun middleware no-ops, so "/" never redirects to "/setup". The
- * @first-run redirect tests are test.fixme()'d pending a fix — deferring the
- * auto-write to POST /setup, gating it on a wizard-intent sentinel, or having
- * `install` not pre-create the file. The wizard SPA itself renders correctly.
+ * The two test.fixme'd @first-run cases assert a "/" -> "/setup" redirect that
+ * ADR-0008 deliberately removed: first-run now serves the vault picker at "/",
+ * and firstrun.RedirectMiddleware is no longer mounted on the live router. They
+ * are testing a retired behavior, not an open bug — see the tracker issue on
+ * retiring them.
  */
 import { test, expect } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";

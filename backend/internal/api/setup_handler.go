@@ -13,7 +13,6 @@ import (
 // GetSetupStatus reports whether the first-run wizard has completed.
 // Returns firstRun:true when <vault>/.jasper/config.json does not exist.
 // The SPA polls this on initial load to decide wizard vs. steady-state shell.
-// firstrun.RedirectMiddleware also gates non-/setup routes server-side.
 //
 //nolint:revive // generated interface method name
 func (s *Server) GetSetupStatus(
