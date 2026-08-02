@@ -370,11 +370,24 @@ func (r *realIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) 
 	return nil, nil
 }
 
+// Paths are re-resolved from the live record, because the real query joins the
+// notes table and Service.Move has already upserted the new path by the time
+// the rewrite pass runs. Returning the path captured at setBacklink time would
+// make a moved note's own referrer row point at a file that no longer exists.
 func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, title string) ([]notes.NoteSummary, error) {
-	if srcs, ok := r.backlinks[title]; ok {
-		return srcs, nil
+	srcs, ok := r.backlinks[title]
+	if !ok {
+		return []notes.NoteSummary{}, nil
 	}
-	return []notes.NoteSummary{}, nil
+	out := make([]notes.NoteSummary, 0, len(srcs))
+	for _, s := range srcs {
+		if live, found := r.byID[s.ID]; found {
+			s.Path = live.Path
+			s.Title = live.Title
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
@@ -1116,5 +1129,61 @@ func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
 	}
 	if payload["new_title"] != "beta" {
 		t.Errorf("new_title: got %v, want beta", payload["new_title"])
+	}
+}
+
+// A note that links to its own title is its own referrer, so its rename's
+// wiki-link pass rewrites it — bumping mtime AFTER Move computed the response.
+// The returned comparator must reflect the file as it actually stands, or the
+// client's next save 409s against a rename it just performed itself.
+func TestPostNoteMove_SelfLinkingNote_ReturnsPostRewriteComparator(t *testing.T) {
+	t.Parallel()
+	ts, _, root, idx, _ := setupRealFSServerWithBroadcaster(t)
+	defer ts.Close()
+
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes", `{"parent_path":"","title":"foo"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create foo: %d; body=%s", resp.StatusCode, body)
+	}
+	var created NoteSummary
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	id := uuid.UUID(created.Id)
+
+	// No H1, so ExtractTitle falls back to the filename and foo.md → bar.md
+	// counts as a title change. The body references the note's own title.
+	fooPath := filepath.Join(root, "foo.md")
+	if err := os.WriteFile(fooPath,
+		[]byte("---\ntags: []\n---\n\nsee [[foo]] for context\n"), 0o600); err != nil {
+		t.Fatalf("write foo: %v", err)
+	}
+	idx.setBacklink("foo", notes.NoteSummary{ID: id, Path: "foo.md", Title: "foo"})
+
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+id.String()+"/move",
+		`{"new_path":"bar.md"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("move: %d; body=%s", resp.StatusCode, body)
+	}
+	var moved MoveNoteResponse
+	if err := json.Unmarshal(body, &moved); err != nil {
+		t.Fatalf("unmarshal move: %v", err)
+	}
+
+	barPath := filepath.Join(root, "bar.md")
+	onDisk, err := os.ReadFile(barPath)
+	if err != nil {
+		t.Fatalf("read bar: %v", err)
+	}
+	if !strings.Contains(string(onDisk), "[[bar]]") {
+		t.Fatalf("self-link not rewritten, so this test proves nothing: %s", onDisk)
+	}
+
+	info, err := os.Stat(barPath)
+	if err != nil {
+		t.Fatalf("stat bar: %v", err)
+	}
+	if want := notes.ETag(info.ModTime()); moved.Etag != want {
+		t.Errorf("etag = %q, want %q (the file's mtime after its own rewrite)", moved.Etag, want)
 	}
 }

@@ -1038,3 +1038,65 @@ func toJSONString(v any) string {
 	}
 	return string(b)
 }
+
+// The etag read_note hands out must be the value update_note accepts as
+// if_match — the same round-trip REST guarantees, so a model that learned one
+// surface is not wrong about the other.
+func TestTool_ETagRoundTripsThroughUpdate(t *testing.T) {
+	t.Parallel()
+	f := newTestServer(t)
+	if _, err := f.ACL.Set(context.Background(), "projects", mcp.TierEditOnly, "test"); err != nil {
+		t.Fatalf("Set grant: %v", err)
+	}
+	summary, err := f.NotesSvc.Create(context.Background(), "projects", "roundtrip")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	f.NotesProv.notes = []notes.NoteSummary{{ID: summary.ID, Path: summary.Path, Title: summary.Title}}
+
+	res, err := f.callTool(t, "read_note", map[string]any{"id": summary.ID.String()})
+	if err != nil {
+		t.Fatalf("read_note: %v", err)
+	}
+	var read mcp.ReadNoteResult
+	if err := json.Unmarshal([]byte(toJSONString(res.StructuredContent)), &read); err != nil {
+		t.Fatalf("decode read_note: %v", err)
+	}
+	if read.Etag == "" {
+		t.Fatal("read_note returned no etag")
+	}
+
+	res, err = f.callTool(t, "update_note", map[string]any{
+		"path":     summary.Path,
+		"body":     "# Roundtrip\n\nedited by the model\n",
+		"if_match": read.Etag,
+	})
+	if err != nil {
+		t.Fatalf("update_note: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("read_note's etag was rejected as if_match: %v", flattenContent(res))
+	}
+
+	var updated mcp.UpdateNoteResult
+	if err := json.Unmarshal([]byte(toJSONString(res.StructuredContent)), &updated); err != nil {
+		t.Fatalf("decode update_note: %v", err)
+	}
+	if updated.Etag == "" || updated.Etag == read.Etag {
+		t.Errorf("update_note etag = %q; want a fresh token distinct from %q", updated.Etag, read.Etag)
+	}
+
+	// The token from the write is itself a valid comparator, so a model can
+	// keep editing without re-reading.
+	res, err = f.callTool(t, "update_note", map[string]any{
+		"path":     summary.Path,
+		"body":     "# Roundtrip\n\nedited again\n",
+		"if_match": updated.Etag,
+	})
+	if err != nil {
+		t.Fatalf("second update_note: %v", err)
+	}
+	if res.IsError {
+		t.Errorf("update_note's own etag was rejected on the next write: %v", flattenContent(res))
+	}
+}

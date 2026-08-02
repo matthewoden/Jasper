@@ -384,7 +384,7 @@ describe("setNotePath (live tree path overrides the load-time seed)", () => {
     c.hydrate("# Original\n\nbody", "untitled.md", FIXTURE_ETAG);
     c.setNotePath("projects/manual.md");
     postNoteMoveMock.mockResolvedValue({
-      data: { id: "note-1", path: "projects/renamed.md", title: "renamed", updated_at: "2026-01-01T00:00:00Z" },
+      data: { id: "note-1", path: "projects/renamed.md", title: "renamed", updated_at: "2026-01-01T00:00:00Z", etag: "2026-01-01T00:00:00Z" },
       error: undefined,
       response: new Response(),
     } as Awaited<ReturnType<typeof postNoteMove>>);
@@ -553,7 +553,7 @@ describe("subscribeRenamed (EditorPane refreshTree() reintroduction)", () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("# Original\n\nbody", "original.md", FIXTURE_ETAG);
     postNoteMoveMock.mockResolvedValue({
-      data: { id: "note-1", path: "new-title.md", title: "new-title", updated_at: "2026-01-01T00:00:00Z" },
+      data: { id: "note-1", path: "new-title.md", title: "new-title", updated_at: "2026-01-01T00:00:00Z", etag: "2026-01-01T00:00:00Z" },
       error: undefined,
       response: new Response(),
     } as Awaited<ReturnType<typeof postNoteMove>>);
@@ -584,7 +584,7 @@ describe("subscribeRenamed (EditorPane refreshTree() reintroduction)", () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("# Original\n\nbody", "original.md", FIXTURE_ETAG);
     postNoteMoveMock.mockResolvedValue({
-      data: { id: "note-1", path: "new-title.md", title: "new-title", updated_at: "2026-01-01T00:00:00Z" },
+      data: { id: "note-1", path: "new-title.md", title: "new-title", updated_at: "2026-01-01T00:00:00Z", etag: "2026-01-01T00:00:00Z" },
       error: undefined,
       response: new Response(),
     } as Awaited<ReturnType<typeof postNoteMove>>);
@@ -699,19 +699,75 @@ describe("If-Match threading (conflict safety)", () => {
     );
   });
 
-  it("setETag lets the Save-anyway flow hand back the token it just produced", async () => {
+  it("saveOverridingConflict writes with the banner's comparator and adopts the result", async () => {
     const c = getOrCreateController("note-1", 2000);
     c.hydrate("initial", "n1.md", "2026-03-01T09:00:00Z");
+    c.handleEditorChange("my version");
+    c.setConflict({ visible: true, currentUpdatedAt: "2026-03-01T09:00:30Z" });
+    updateNoteMock.mockResolvedValue(okUpdate("2026-03-01T09:00:45Z"));
 
-    c.setETag("2026-03-01T09:02:00Z");
-    c.handleEditorChange("edited");
-    await vi.advanceTimersByTimeAsync(2000);
+    await expect(c.saveOverridingConflict()).resolves.toEqual({
+      status: "saved",
+    });
 
+    // The banner's comparator, not the controller's — overriding exactly the
+    // version the user was shown and nothing newer.
     expect(updateNoteMock).toHaveBeenLastCalledWith(
       "note-1",
-      "edited",
-      "2026-03-01T09:02:00Z",
+      "my version",
+      "2026-03-01T09:00:30Z",
     );
+    expect(c.getConflict()).toBeNull();
+
+    // Without adopting the response token, every later autosave would 409
+    // against the write the user just authorized.
+    expect(c.getETag()).toBe("2026-03-01T09:00:45Z");
+    c.handleEditorChange("later edit");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(updateNoteMock).toHaveBeenLastCalledWith(
+      "note-1",
+      "later edit",
+      "2026-03-01T09:00:45Z",
+    );
+  });
+
+  it("saveOverridingConflict re-arms the banner when the note moved again mid-click", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", "2026-03-01T09:00:00Z");
+    c.handleEditorChange("my version");
+    c.setConflict({ visible: true, currentUpdatedAt: "2026-03-01T09:00:30Z" });
+    updateNoteMock.mockResolvedValue(staleWrite("2026-03-01T09:00:50Z"));
+
+    await expect(c.saveOverridingConflict()).resolves.toEqual({
+      status: "conflict",
+    });
+    expect(c.getConflict()).toEqual({
+      visible: true,
+      currentUpdatedAt: "2026-03-01T09:00:50Z",
+    });
+  });
+
+  it("saveOverridingConflict reports whether the recovery re-fetch refreshed the comparator", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", "2026-03-01T09:00:00Z");
+    c.handleEditorChange("my version");
+    c.setConflict({ visible: true, currentUpdatedAt: "2026-03-01T09:00:30Z" });
+    updateNoteMock.mockResolvedValue({
+      data: undefined,
+      error: { message: "disk full" },
+      response: new Response(null, { status: 500 }),
+    } as UpdateReturn);
+    getNoteFreshMock.mockResolvedValueOnce(
+      okGet("server text", "n1.md", "2026-03-01T09:01:00Z"),
+    );
+
+    await expect(c.saveOverridingConflict()).resolves.toEqual({
+      status: "failed",
+      message: "disk full",
+      comparatorRefreshed: true,
+    });
+    expect(c.getConflict()?.currentUpdatedAt).toBe("2026-03-01T09:01:00Z");
+    expect(c.getSaveState().status).toBe("error");
   });
 
   it("the reconnect flush carries a comparator, so buffered stale edits are refused", async () => {

@@ -192,18 +192,29 @@ func (s *Server) PostNoteMove(
 
 			rolledBack, _ := s.notes.LookupSummary(id)
 			rolledAt := time.Now().UTC()
+			if restored, getErr := s.notes.Get(ctx, id); getErr == nil {
+				rolledAt = restored.UpdatedAt
+			}
 			return PostNoteMove200JSONResponse{
 				Id:        openapi_types.UUID(rolledBack.ID),
 				Path:      rolledBack.Path,
 				Title:     rolledBack.Title,
 				UpdatedAt: rolledAt,
+				Etag:      notes.ETag(rolledAt),
 			}, nil
 		}
 
 		_ = touched
 	}
 
+	// Re-read AFTER the rewrite: a note that links to its own old title is its
+	// own referrer, so the pass above can have rewritten the very file just
+	// moved. summary.UpdatedAt predates that write, and handing it back would
+	// 409 the client's next save against a rename it performed itself.
 	updatedAt := summary.UpdatedAt
+	if moved, getErr := s.notes.Get(ctx, id); getErr == nil {
+		updatedAt = moved.UpdatedAt
+	}
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
@@ -212,5 +223,6 @@ func (s *Server) PostNoteMove(
 		Path:      summary.Path,
 		Title:     summary.Title,
 		UpdatedAt: updatedAt,
+		Etag:      notes.ETag(updatedAt),
 	}, nil
 }

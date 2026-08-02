@@ -18,6 +18,7 @@ export type NoteNode = components["schemas"]["NoteNode"];
 
 export type FileNode = components["schemas"]["FileNode"];
 export type NoteSummary = components["schemas"]["NoteSummary"];
+export type MoveNoteResponse = components["schemas"]["MoveNoteResponse"];
 
 export type ApiError = { code: string; message: string; status: number };
 
@@ -115,7 +116,7 @@ export async function deleteNoteById(
 export async function postNoteMove(
   id: string,
   new_path: string,
-): Promise<{ data?: NoteSummary; error?: ApiError }> {
+): Promise<{ data?: MoveNoteResponse; error?: ApiError }> {
   const { data, error, response } = await client.POST("/notes/{id}/move", {
     params: { path: { id } },
     body: { new_path },

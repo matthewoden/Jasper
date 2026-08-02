@@ -1214,6 +1214,28 @@ export interface components {
             etag: components["schemas"]["NoteETag"];
         };
         /**
+         * @description The post-move note. Shaped like a `NoteSummary` but stat-backed, so it
+         *     carries an `etag`: a rename normally leaves mtime untouched, but the
+         *     vault-wide wiki-link rewrite that follows a title change can touch the
+         *     renamed note itself when that note links to its own old title. The
+         *     client must adopt this token rather than assume its pre-move one
+         *     survived.
+         */
+        MoveNoteResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
+            path: string;
+            /** @description First-H1 title or filename without `.md`; never empty */
+            title: string;
+            /**
+             * Format: date-time
+             * @description Wall-clock UTC of the file's mtime after the move settled
+             */
+            updated_at: string;
+            etag: components["schemas"]["NoteETag"];
+        };
+        /**
          * @description Opaque version token for this note — what a client sends back as
          *     If-Match on PUT /notes/{id}.
          *
@@ -1244,6 +1266,10 @@ export interface components {
              * @description Wall-clock UTC of last filesystem mtime observed by the indexer.
              *     Index-backed and therefore truncated to whole seconds — never
              *     usable as an If-Match comparator. Use `Note.etag` for that.
+             *
+             *     This is why `NoteSummary` carries no `etag`: every endpoint
+             *     returning one reads whole seconds out of SQLite, GET
+             *     /notes/by-path included. The omission is a decision, not a gap.
              */
             updated_at: string;
         };
@@ -1263,6 +1289,7 @@ export interface components {
              * @description Wall-clock UTC time of the last successful write
              */
             updated_at: string;
+            etag: components["schemas"]["NoteETag"];
             /** @description Normalized tag names extracted from YAML frontmatter. */
             tags?: string[];
         };
@@ -2415,7 +2442,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NoteSummary"];
+                    "application/json": components["schemas"]["MoveNoteResponse"];
                 };
             };
             /** @description Invalid request (empty new_path, illegal chars, ".." escape) */

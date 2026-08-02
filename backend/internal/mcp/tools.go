@@ -43,14 +43,17 @@ type ReadNoteArgs struct {
 }
 
 // ReadNoteResult — read_note returns the full note body + metadata.
-// UpdatedAt is RFC3339Nano so the AI can echo it back as the If-Match
-// argument on a follow-up update_note.
+//
+// Etag is the value to echo back as update_note's if_match. It is named the
+// same thing here as on the REST surface deliberately: one word for one
+// concept across both write paths.
 type ReadNoteResult struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
 	Title     string `json:"title"`
 	Body      string `json:"body"`
 	UpdatedAt string `json:"updated_at"`
+	Etag      string `json:"etag"`
 }
 
 // SearchNotesArgs — search_notes takes an FTS5 query + optional limit.
@@ -94,28 +97,31 @@ type CreateNoteArgs struct {
 	Title string `json:"title,omitempty" jsonschema:"optional human-friendly H1 title; when provided the first heading is '# {title}' (filename stays slugified, derived from path)"`
 }
 
-// CreateNoteResult — id + path + updated_at of the new note.
+// CreateNoteResult — id + path + version of the new note.
 type CreateNoteResult struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
 	UpdatedAt string `json:"updated_at"`
+	Etag      string `json:"etag"`
 }
 
-// UpdateNoteArgs — update_note takes the path (or id), new body, and an
-// optional If-Match value (the prior updated_at) for stale-write detection.
+// UpdateNoteArgs — update_note takes the path (or id), new body, and the
+// etag of the version being replaced, for stale-write detection.
 type UpdateNoteArgs struct {
 	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the UUID"`
 	ID      string `json:"id,omitempty" jsonschema:"UUID of the note (fallback if path not supplied)"`
 	Body    string `json:"body" jsonschema:"new markdown body (server prepends frontmatter scaffold if missing)"`
-	IfMatch string `json:"if_match,omitempty" jsonschema:"REQUIRED: updated_at from a prior read_note call, or '*' to force last-writer-wins; omitting or passing empty is rejected"`
+	IfMatch string `json:"if_match,omitempty" jsonschema:"REQUIRED: etag from a prior read_note or update_note call, or '*' to force last-writer-wins; omitting or passing empty is rejected"`
 }
 
-// UpdateNoteResult — id + path + updated_at after the write. ForceWrite is
-// true iff the caller passed if_match="*" (last-writer-wins opt-in).
+// UpdateNoteResult — id + path + the new version after the write. Etag is
+// what a follow-up update_note must pass as if_match. ForceWrite is true iff
+// the caller passed if_match="*" (last-writer-wins opt-in).
 type UpdateNoteResult struct {
 	ID         string `json:"id"`
 	Path       string `json:"path"`
 	UpdatedAt  string `json:"updated_at"`
+	Etag       string `json:"etag"`
 	ForceWrite bool   `json:"force_write,omitempty"`
 }
 
@@ -143,10 +149,15 @@ type MoveNoteArgs struct {
 }
 
 // MoveNoteResult — id + new path + updated_at.
+// Etag is accurate only because this tool does not run the vault-wide
+// wiki-link rewrite that the REST move does. When that gap is closed, this
+// must be re-read after the rewrite — a self-linking note is its own referrer,
+// so the pass can touch the very file just moved.
 type MoveNoteResult struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
 	UpdatedAt string `json:"updated_at"`
+	Etag      string `json:"etag"`
 }
 
 // DeleteNoteArgs — delete_note takes the path of the note to remove.
@@ -220,7 +231,7 @@ func (s *Server) registerListNotes() {
 func (s *Server) registerReadNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "read_note",
-		Description: "Read a note by id (preferred) or path. Returns the markdown body plus title and updated_at (RFC3339Nano).",
+		Description: "Read a note by id (preferred) or path. Returns the markdown body, title, updated_at, and the etag to pass as if_match when updating it.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args ReadNoteArgs) (*mcpsdk.CallToolResult, ReadNoteResult, error) {
 		id, err := s.resolveNoteID(ctx, args.ID, args.Path)
 		if err != nil {
@@ -236,7 +247,8 @@ func (s *Server) registerReadNote() {
 			Path:      n.Path,
 			Title:     title,
 			Body:      n.Content,
-			UpdatedAt: n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			UpdatedAt: notes.ETag(n.UpdatedAt),
+			Etag:      notes.ETag(n.UpdatedAt),
 		}, nil
 	})
 }
@@ -325,7 +337,8 @@ func (s *Server) registerCreateNote() {
 		return nil, CreateNoteResult{
 			ID:        summary.ID.String(),
 			Path:      summary.Path,
-			UpdatedAt: summary.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			UpdatedAt: notes.ETag(summary.UpdatedAt),
+			Etag:      notes.ETag(summary.UpdatedAt),
 		}, nil
 	})
 }
@@ -397,7 +410,8 @@ func (s *Server) registerUpdateNote() {
 		return nil, UpdateNoteResult{
 			ID:         n.ID.String(),
 			Path:       n.Path,
-			UpdatedAt:  n.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			UpdatedAt:  notes.ETag(n.UpdatedAt),
+			Etag:       notes.ETag(n.UpdatedAt),
 			ForceWrite: forceWrite,
 		}, nil
 	})
@@ -427,7 +441,8 @@ func (s *Server) registerMoveNote() {
 		return nil, MoveNoteResult{
 			ID:        summary.ID.String(),
 			Path:      summary.Path,
-			UpdatedAt: summary.UpdatedAt.UTC().Format(time.RFC3339Nano),
+			UpdatedAt: notes.ETag(summary.UpdatedAt),
+			Etag:      notes.ETag(summary.UpdatedAt),
 		}, nil
 	})
 }

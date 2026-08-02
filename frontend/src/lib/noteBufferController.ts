@@ -39,6 +39,21 @@ export interface DeletedState {
 }
 
 /**
+ * What saveOverridingConflict did. State transitions are already applied; the
+ * caller only decides what to say about it.
+ *
+ * `conflict` means the note moved again between the banner appearing and the
+ * click, so the banner is re-armed with the newer comparator rather than the
+ * write being forced through. `comparatorRefreshed` reports whether the
+ * recovery re-fetch worked, which is the difference between "retry now" and
+ * "wait for the next sync".
+ */
+export type OverrideOutcome =
+  | { status: "saved" }
+  | { status: "conflict" }
+  | { status: "failed"; message: string; comparatorRefreshed: boolean };
+
+/**
  * Per-note buffer controller. One instance exists per open noteId
  * (see getOrCreateController) for the entire time that note is open in
  * ANY pane.
@@ -131,12 +146,15 @@ export interface NoteBufferController {
    */
   reportSaveFailed(error: string): void;
   /**
-   * Adopts an etag obtained outside performSave — the "Save anyway" button's
-   * direct updateNote call. Without it the controller keeps sending the
-   * comparator that button just superseded, and every subsequent autosave
-   * 409s against the write the user explicitly authorized.
+   * Commits the buffer over the version the conflict banner is reporting —
+   * the banner's "Save anyway". Uses the banner's comparator, so it overrides
+   * exactly the write the user was shown and nothing newer.
+   *
+   * Lives here rather than in the banner because this is a second writer over
+   * the same bytes, and one controller per note owning every write is the
+   * whole point of ADR-0016. The caller supplies the copy for each outcome.
    */
-  setETag(etag: string): void;
+  saveOverridingConflict(): Promise<OverrideOutcome>;
   /**
    * Drives the connectionLost/connectionRestored save-state transitions from
    * the pane's WS connectionStatus watcher. The pre-25-05 EditorPane
@@ -246,8 +264,51 @@ class NoteBufferControllerImpl implements NoteBufferController {
     return this.lastKnownETag;
   }
 
-  setETag(etag: string): void {
-    this.lastKnownETag = etag;
+  async saveOverridingConflict(): Promise<OverrideOutcome> {
+    const conflict = this.conflict;
+    if (conflict === null) return { status: "saved" };
+
+    const { data, error } = await updateNote(
+      this.noteId,
+      this.content,
+      conflict.currentUpdatedAt,
+    );
+
+    if (!error && data) {
+      this.lastKnownETag = data.etag;
+      this.h1RenameError = null;
+      this.conflict = null;
+      this.discardPendingEdit();
+      this.userHasEdited = false;
+      this.notify();
+      return { status: "saved" };
+    }
+
+    const currentUpdatedAt = staleWriteComparator(error);
+    if (currentUpdatedAt !== null) {
+      this.h1RenameError = null;
+      this.setConflict({ visible: true, currentUpdatedAt });
+      return { status: "conflict" };
+    }
+
+    const message =
+      (error as { message?: string } | undefined)?.message ?? "save failed";
+    let comparatorRefreshed = false;
+    try {
+      const fresh = await getNoteFresh(this.noteId);
+      if (fresh.data) {
+        this.setConflict({
+          visible: true,
+          currentUpdatedAt: fresh.data.etag,
+        });
+        comparatorRefreshed = true;
+      }
+    } catch {
+      // The recovery fetch failed too, so the banner keeps the comparator it
+      // already had and the caller's copy tells the user to wait for a sync.
+    }
+    this.setSaveState({ type: "saveFailed", error: message });
+    return { status: "failed", message, comparatorRefreshed };
   }
 
   hydrate(serverContent: string, path: string, etag: string): void {
@@ -467,10 +528,13 @@ class NoteBufferControllerImpl implements NoteBufferController {
                 this.setSaveState({ type: "saveFailed", error: msg });
                 return { ok: false };
               }
-              // The comparator deliberately survives the move: a rename is an
-              // os.Rename, which leaves mtime untouched, so the token this
-              // controller already holds is still the note's current version.
+              // A rename is an os.Rename and leaves mtime alone, but the
+              // wiki-link rewrite that follows a title change can touch this
+              // very note when it links to its own old title. The move
+              // response is re-read after that pass, so adopt it rather than
+              // assuming the pre-move token survived.
               if (moveResp.data) {
+                this.lastKnownETag = moveResp.data.etag;
                 this.lastNotePath = moveResp.data.path;
                 for (const fn of Array.from(this.renameListeners)) {
                   fn(moveResp.data.path);

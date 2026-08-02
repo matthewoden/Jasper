@@ -794,6 +794,7 @@ function okMove(path: string): MoveReturn {
             path,
             title: "title",
             updated_at: "2025-01-01T00:00:00Z",
+            etag: FIXTURE_ETAG,
         },
     } as MoveReturn;
 }
@@ -1052,6 +1053,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
                 path: "untitled.md", // stale — what the ref WOULD have cached
                 content: "# Original\n\nbody",
                 updated_at: "2025-01-01T00:00:00Z",
+                etag: "2025-01-01T00:00:00Z",
             },
             error: undefined,
             response: new Response(),
@@ -1312,6 +1314,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
                 path: "note-b.md",
                 content: "note B content",
                 updated_at: "2025-01-01T00:00:00Z",
+                etag: "2025-01-01T00:00:00Z",
             },
             error: undefined,
             response: new Response(),
@@ -2170,6 +2173,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
                 path: "scratchpad.md",
                 content: "fresh server content",
                 updated_at: "2026-05-09T11:00:00Z",
+                etag: "2026-05-09T11:00:00Z",
             },
             error: undefined,
             response: new Response(),

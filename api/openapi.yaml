@@ -213,7 +213,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NoteSummary"
+                $ref: "#/components/schemas/MoveNoteResponse"
         "400":
           description: Invalid request (empty new_path, illegal chars, ".." escape)
           content:
@@ -2000,6 +2000,32 @@ components:
           format: date-time
         etag:
           $ref: "#/components/schemas/NoteETag"
+    MoveNoteResponse:
+      type: object
+      required: [id, path, title, updated_at, etag]
+      description: |
+        The post-move note. Shaped like a `NoteSummary` but stat-backed, so it
+        carries an `etag`: a rename normally leaves mtime untouched, but the
+        vault-wide wiki-link rewrite that follows a title change can touch the
+        renamed note itself when that note links to its own old title. The
+        client must adopt this token rather than assume its pre-move one
+        survived.
+      properties:
+        id:
+          type: string
+          format: uuid
+        path:
+          type: string
+          description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
+        title:
+          type: string
+          description: First-H1 title or filename without `.md`; never empty
+        updated_at:
+          type: string
+          format: date-time
+          description: Wall-clock UTC of the file's mtime after the move settled
+        etag:
+          $ref: "#/components/schemas/NoteETag"
     NoteETag:
       type: string
       maxLength: 256
@@ -2036,9 +2062,13 @@ components:
             Wall-clock UTC of last filesystem mtime observed by the indexer.
             Index-backed and therefore truncated to whole seconds — never
             usable as an If-Match comparator. Use `Note.etag` for that.
+
+            This is why `NoteSummary` carries no `etag`: every endpoint
+            returning one reads whole seconds out of SQLite, GET
+            /notes/by-path included. The omission is a decision, not a gap.
     NoteDetail:
       type: object
-      required: [id, path, content, updated_at]
+      required: [id, path, content, updated_at, etag]
       description: |
         Full note detail including content, returned by get-or-create endpoints
         such as GET /daily-notes/{date}.
@@ -2056,6 +2086,8 @@ components:
           type: string
           format: date-time
           description: Wall-clock UTC time of the last successful write
+        etag:
+          $ref: "#/components/schemas/NoteETag"
         tags:
           type: array
           items:

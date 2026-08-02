@@ -33,12 +33,7 @@ import {
   computeChromeVisibility,
 } from "../lib/editorChromeResponsive";
 import { extractH1FromContent } from "../lib/h1Extract";
-import {
-  getNote,
-  getNoteFresh,
-  staleWriteComparator,
-  updateNote,
-} from "../lib/notesApi";
+import { getNote, getNoteFresh } from "../lib/notesApi";
 import { generateOrLoadSessionId } from "../lib/sessionId";
 import { initialSaveState } from "../lib/saveStateMachine";
 import {
@@ -909,52 +904,19 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
             type="button"
             onClick={() => {
               void (async () => {
-                const id = noteIdRef.current;
-                if (id === null || !controller) return;
-                const result = await updateNote(
-                  id,
-                  latestContentRef.current,
-                  conflictBanner.currentUpdatedAt,
-                );
-                if (result.error) {
-                  const currentUpdatedAt = staleWriteComparator(result.error);
-                  if (currentUpdatedAt !== null) {
-                    controller.setH1RenameError(null);
-                    controller.setConflict({ visible: true, currentUpdatedAt });
-                    return;
-                  }
-                  const msg =
-                    (result.error as { message?: string }).message ??
-                    "save failed";
-                  let recoveryHint =
-                    "Save failed — try Discard or close the banner and retry on next sync.";
-                  try {
-                    const fresh = await getNoteFresh(id);
-                    if (fresh.data) {
-                      controller.setConflict({
-                        visible: true,
-                        currentUpdatedAt: fresh.data.updated_at,
-                      });
-                      recoveryHint =
-                        "Save failed — the latest version was loaded; click Save anyway again to retry, or Discard to drop your edits.";
-                    }
-                  } catch {
-                    // Network down for the recovery fetch too — keep the
-                    // banner with its original comparator; the message
-                    // tells the user to wait for next sync.
-                  }
-                  controller.setH1RenameError(`Couldn't save: ${msg}. ${recoveryHint}`);
-                  controller.reportSaveFailed(msg);
+                if (!controller) return;
+                const outcome = await controller.saveOverridingConflict();
+                if (outcome.status === "saved") {
+                  userHasEdited.current = false;
                   return;
                 }
-                // Adopt the token this write just produced. Skipping it would
-                // leave the controller comparing against the version the user
-                // just chose to overwrite, so every later autosave would 409.
-                if (result.data) controller.setETag(result.data.etag);
-                controller.setH1RenameError(null);
-                controller.setConflict(null);
-                controller.discardPendingEdit();
-                userHasEdited.current = false;
+                if (outcome.status === "conflict") return;
+                const recoveryHint = outcome.comparatorRefreshed
+                  ? "the latest version was loaded; click Save anyway again to retry, or Discard to drop your edits."
+                  : "try Discard or close the banner and retry on next sync.";
+                controller.setH1RenameError(
+                  `Couldn't save: ${outcome.message}. Save failed — ${recoveryHint}`,
+                );
               })();
             }}
           >

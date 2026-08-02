@@ -43,6 +43,7 @@ const fakeNote = {
   path: "daily/2026-05-14.md",
   content: "---\ntags: []\n---\n\n# 2026-05-14\n\n",
   updated_at: "2026-05-14T08:00:00Z",
+etag: "2026-01-01T00:00:00Z",
 };
 
 const wrapper = ({ children }: { children: ReactNode }) =>

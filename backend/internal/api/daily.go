@@ -95,6 +95,7 @@ func dailyNoteDetail(note notes.Note) NoteDetail {
 		Path:      note.Path,
 		Content:   note.Content,
 		UpdatedAt: note.UpdatedAt,
+		Etag:      notes.ETag(note.UpdatedAt),
 		Tags:      &tagSlice,
 	}
 }
