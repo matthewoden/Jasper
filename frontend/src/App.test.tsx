@@ -244,8 +244,8 @@ import {
   handleAppCmdShiftF,
   handleAppCmdSlash,
   handleAppF2KeyDown,
-  subscribePhase7,
-  type Phase7DispatchEvent,
+  subscribeAppShortcut,
+  type AppShortcutEvent,
 } from "./lib/appShortcuts";
 
 
@@ -1309,7 +1309,7 @@ describe("handleAppCmdShiftF (opens sidebar Search panel, not palette)", () => {
     });
   });
 
-  // handleAppCmdShiftF defers its dispatchPhase7("focusSearch") call by one
+  // handleAppCmdShiftF defers its dispatchAppShortcut("focusSearch") call by one
   // animation frame (see appShortcuts.ts) so a freshly-mounted
   // SidebarSearchPanel has time to subscribe. Flush that pending frame after
   // every test so an un-awaited dispatch from one test doesn't leak into the
@@ -1357,9 +1357,9 @@ describe("handleAppCmdShiftF (opens sidebar Search panel, not palette)", () => {
     expect(useTreeStore.getState().paletteMode).toBe("notes");
   });
 
-  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the phase7 bus", async () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+  it("APP-CMDSHIFTF-OPEN-6: handleAppCmdShiftF dispatches 'focusSearch' on the app-shortcut bus", async () => {
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       const e = makeEvent("f", { meta: true, shift: true });
       handleAppCmdShiftF(e);

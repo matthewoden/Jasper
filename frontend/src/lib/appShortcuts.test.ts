@@ -20,16 +20,16 @@ import {
   handleAppSidebarToggle,
   handleAppSplitDown,
   handleAppSplitRight,
-  subscribePhase7,
-  type Phase7DispatchEvent,
+  subscribeAppShortcut,
+  type AppShortcutEvent,
 } from "./appShortcuts";
 import { useTreeStore } from "./useTreeStore";
 import { usePaneStore } from "./usePaneStore";
 
 describe("handleAppAltT (tab-new)", () => {
   it("dispatches 'newTab' and preventDefaults on plain Alt+T", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       const e = new KeyboardEvent("keydown", {
         key: "t",
@@ -49,8 +49,8 @@ describe("handleAppAltT (tab-new)", () => {
     // Option+T on macOS delivers the dead-key char "†" as the key value but
     // reports code:"KeyT". The old key.toLowerCase()==="t" guard missed this,
     // letting "†" type into CodeMirror. Matching e.code fixes it.
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       const e = new KeyboardEvent("keydown", {
         key: "†",
@@ -67,8 +67,8 @@ describe("handleAppAltT (tab-new)", () => {
   });
 
   it("does NOT dispatch on Cmd+Alt+T (leaves Tags-panel toggle untouched)", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppAltT(
         new KeyboardEvent("keydown", {
@@ -93,8 +93,8 @@ describe("handleAppAltT (tab-new)", () => {
   });
 
   it("does NOT dispatch on plain 't' with no modifiers", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppAltT(new KeyboardEvent("keydown", { key: "t", code: "KeyT" }));
       expect(received).toEqual([]);
@@ -106,8 +106,8 @@ describe("handleAppAltT (tab-new)", () => {
   it("fires regardless of tab count (bootstrap path, no zero-tab bail)", () => {
     // The handler reads no tab state — proven by dispatching with a fresh
     // subscriber and asserting it fires unconditionally on the matching combo.
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppAltT(
         new KeyboardEvent("keydown", {
@@ -132,8 +132,8 @@ describe("handleAppCmdShiftF (re-point)", () => {
   });
 
   it("opens the sidebar to the Search panel and dispatches 'focusSearch'", async () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       const e = new KeyboardEvent("keydown", {
         key: "f",
@@ -164,8 +164,8 @@ describe("handleAppCmdShiftF (re-point)", () => {
   });
 
   it("no-ops without the Shift modifier", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppCmdShiftF(
         new KeyboardEvent("keydown", { key: "f", metaKey: true }),
@@ -223,8 +223,8 @@ describe("handleAppSidebarToggle (NAV-03)", () => {
 
 describe("handleAppBookmarkToggle (BOOK-01)", () => {
   it("Cmd+Shift+B dispatches 'bookmarkCurrent' and preventDefaults/stopPropagates", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       const e = new KeyboardEvent("keydown", {
         key: "b",
@@ -243,8 +243,8 @@ describe("handleAppBookmarkToggle (BOOK-01)", () => {
   });
 
   it("Ctrl+Shift+B (non-Mac) also dispatches", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppBookmarkToggle(
         new KeyboardEvent("keydown", { key: "B", ctrlKey: true, shiftKey: true }),
@@ -256,8 +256,8 @@ describe("handleAppBookmarkToggle (BOOK-01)", () => {
   });
 
   it("no-ops without the Shift modifier", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppBookmarkToggle(
         new KeyboardEvent("keydown", { key: "b", metaKey: true }),
@@ -269,8 +269,8 @@ describe("handleAppBookmarkToggle (BOOK-01)", () => {
   });
 
   it("no-ops without Cmd/Ctrl", () => {
-    const received: Phase7DispatchEvent[] = [];
-    const unsubscribe = subscribePhase7((ev) => received.push(ev));
+    const received: AppShortcutEvent[] = [];
+    const unsubscribe = subscribeAppShortcut((ev) => received.push(ev));
     try {
       handleAppBookmarkToggle(
         new KeyboardEvent("keydown", { key: "b", shiftKey: true }),

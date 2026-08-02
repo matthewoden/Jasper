@@ -73,7 +73,7 @@ import {
   handleAppSidebarToggle,
   handleAppSplitDown,
   handleAppSplitRight,
-  subscribePhase7,
+  subscribeAppShortcut,
 } from "./lib/appShortcuts";
 import {
   siblingNamesForCreate,
@@ -347,7 +347,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   const { openToday } = useDailyNote();
   const { toggleBookmark } = useBookmarks();
   useEffect(() => {
-    return subscribePhase7((ev) => {
+    return subscribeAppShortcut((ev) => {
       if (ev === "openToday") void openToday();
       if (ev === "bookmarkCurrent") {
         const noteId = useTreeStore.getState().activeNoteId;
@@ -602,7 +602,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   );
 
   useEffect(() => {
-    return subscribePhase7((ev) => {
+    return subscribeAppShortcut((ev) => {
       if (ev === "newTab") newTabInLeaf(usePaneStore.getState().activePaneId);
     });
   }, [newTabInLeaf]);

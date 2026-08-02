@@ -27,7 +27,7 @@ import {
   HR_DOC,
   ALL_FEATURES_DOC,
   INLINE_CODE_PROD_DOC,
-} from "./__fixtures__/spike-doc";
+} from "./__fixtures__/markdownDocs";
 
 
 function makeView(doc: string, selectionPos = 0): EditorView {
@@ -223,12 +223,12 @@ describe("livePreviewPlugin / code-fence-guard", () => {
     const inlineCodeDecos = decos.filter((d) => d.class === "cm-inline-code");
     expect(inlineCodeDecos.length).toBeGreaterThan(0);
 
-    const spikeView = makeView(INLINE_CODE_DOC, 0);
-    views.push(spikeView);
-    const spikeDecos = collectDecorations(spikeView);
+    const nestedView = makeView(INLINE_CODE_DOC, 0);
+    views.push(nestedView);
+    const nestedDecos = collectDecorations(nestedView);
     const inlineCodePos = INLINE_CODE_DOC.indexOf("**not bold");
     expect(inlineCodePos).toBeGreaterThan(-1);
-    const replaceAtInlineCode = spikeDecos.filter(
+    const replaceAtInlineCode = nestedDecos.filter(
       (d) => d.isReplace && d.from <= inlineCodePos && d.to >= inlineCodePos
     );
     expect(replaceAtInlineCode.length).toBe(0);

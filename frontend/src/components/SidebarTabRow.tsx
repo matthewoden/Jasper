@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { FolderClosed, Search, Bookmark, PanelLeft } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
-import { dispatchPhase7 } from "../lib/appShortcuts";
+import { dispatchAppShortcut } from "../lib/appShortcuts";
 import { Tooltip } from "./Tooltip";
 
 type SidebarPanel = "notes" | "search" | "bookmarks";
@@ -93,7 +93,7 @@ export function SidebarTabRow(): React.JSX.Element {
     // React's commit so SidebarSearchPanel's
     // focusSearch subscriber exists (same reasoning as handleAppCmdShiftF).
     if (panel === "search") {
-      requestAnimationFrame(() => dispatchPhase7("focusSearch"));
+      requestAnimationFrame(() => dispatchAppShortcut("focusSearch"));
     }
   };
 

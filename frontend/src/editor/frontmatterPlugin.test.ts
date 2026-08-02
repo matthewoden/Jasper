@@ -15,7 +15,7 @@ import {
   FRONTMATTER_NODE_NAME,
   buildFrontmatterDecorations,
 } from "./frontmatterPlugin";
-import { FRONTMATTER_DOC, HEADING_DOC } from "./__fixtures__/spike-doc";
+import { FRONTMATTER_DOC, HEADING_DOC } from "./__fixtures__/markdownDocs";
 
 function makeView(doc: string): EditorView {
   const parent = document.createElement("div");
@@ -124,7 +124,7 @@ describe("frontmatterPlugin", () => {
 });
 
 
-describe("spike: lezer-yaml node names inside Frontmatter > tags array", () => {
+describe("lezer-yaml node names inside Frontmatter > tags array", () => {
   const views: EditorView[] = [];
 
   afterEach(() => {
@@ -168,7 +168,7 @@ title: Example
 
     if (tagValueNodes.length === 0) {
       console.error(
-        "Spike FAILED: no nodes found with text 'alpha' or 'beta-tag'.\n" +
+        "FAILED: no nodes found with text 'alpha' or 'beta-tag'.\n" +
         "All nodes inside frontmatter range:\n" +
         allNodes
           .filter((n) => n.from < 30)

@@ -4,7 +4,7 @@ import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { ToastProvider } from "./Toast";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
-import { dispatchPhase7 } from "../lib/appShortcuts";
+import { dispatchAppShortcut } from "../lib/appShortcuts";
 import * as searchApi from "./../lib/searchApi";
 import type { SearchResult } from "../lib/searchApi";
 import {
@@ -217,7 +217,7 @@ describe("SidebarSearchPanel", () => {
     expect(document.activeElement).not.toBe(input);
   });
 
-  it("dispatching the focusSearch phase7 event focuses the input and selects existing text", () => {
+  it("dispatching the focusSearch app-shortcut event focuses the input and selects existing text", () => {
     useTreeStore.setState({ searchQuery: "hello" });
     renderPanel();
     const input = screen.getByPlaceholderText(
@@ -225,7 +225,7 @@ describe("SidebarSearchPanel", () => {
     ) as HTMLInputElement;
     const selectSpy = vi.spyOn(input, "select");
     act(() => {
-      dispatchPhase7("focusSearch");
+      dispatchAppShortcut("focusSearch");
     });
     expect(document.activeElement).toBe(input);
     expect(selectSpy).toHaveBeenCalled();

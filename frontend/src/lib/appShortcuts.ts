@@ -9,24 +9,24 @@ import { usePaneStore } from "./usePaneStore";
 import { putWorkspace } from "./workspaceApi";
 
 
-export type Phase7DispatchEvent =
+export type AppShortcutEvent =
   | "openToday"
   | "newTab"
   | "focusSearch"
   | "bookmarkCurrent";
 
-const phase7Subscribers = new Set<(ev: Phase7DispatchEvent) => void>();
+const appShortcutSubscribers = new Set<(ev: AppShortcutEvent) => void>();
 
-export function dispatchPhase7(ev: Phase7DispatchEvent): void {
-  for (const fn of Array.from(phase7Subscribers)) fn(ev);
+export function dispatchAppShortcut(ev: AppShortcutEvent): void {
+  for (const fn of Array.from(appShortcutSubscribers)) fn(ev);
 }
 
-export function subscribePhase7(
-  fn: (ev: Phase7DispatchEvent) => void,
+export function subscribeAppShortcut(
+  fn: (ev: AppShortcutEvent) => void,
 ): () => void {
-  phase7Subscribers.add(fn);
+  appShortcutSubscribers.add(fn);
   return () => {
-    phase7Subscribers.delete(fn);
+    appShortcutSubscribers.delete(fn);
   };
 }
 
@@ -144,7 +144,7 @@ export function handleAppCmdShiftD(e: KeyboardEvent): void {
   if (e.key !== "d" && e.key !== "D") return;
   e.preventDefault();
   e.stopPropagation();
-  dispatchPhase7("openToday");
+  dispatchAppShortcut("openToday");
 }
 
 /**
@@ -161,7 +161,7 @@ export function handleAppAltT(e: KeyboardEvent): void {
   }
   e.preventDefault();
   e.stopPropagation();
-  dispatchPhase7("newTab");
+  dispatchAppShortcut("newTab");
 }
 
 /**
@@ -193,9 +193,9 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
   s.setNotesSidebarVisible(true);
   // See ActivityRibbon.tsx's Search button handler: when this switches from
   // Files (or opens a closed sidebar), SidebarSearchPanel mounts in this same
-  // tick and its subscribePhase7 effect only registers after React commits —
+  // tick and its subscribeAppShortcut effect only registers after React commits —
   // a synchronous dispatch here would fire before any subscriber exists.
-  requestAnimationFrame(() => dispatchPhase7("focusSearch"));
+  requestAnimationFrame(() => dispatchAppShortcut("focusSearch"));
 }
 
 /**
@@ -219,7 +219,7 @@ export function handleAppSidebarToggle(e: KeyboardEvent): void {
  * Cmd+Shift+B — bookmark/un-bookmark the active pane's active note
  * (BOOK-01). toggleBookmark lives inside the useBookmarks
  * hook (React state + a WS subscriber), unreachable from this window-level
- * handler — dispatched via the same phase7 event bus handleAppCmdShiftD
+ * handler — dispatched via the same event bus handleAppCmdShiftD
  * uses for openToday, so App.tsx's subscriber (which HAS toggleBookmark in
  * scope) performs the actual mutation.
  */
@@ -229,7 +229,7 @@ export function handleAppBookmarkToggle(e: KeyboardEvent): void {
   if (e.key !== "b" && e.key !== "B") return;
   e.preventDefault();
   e.stopPropagation();
-  dispatchPhase7("bookmarkCurrent");
+  dispatchAppShortcut("bookmarkCurrent");
 }
 
 /**

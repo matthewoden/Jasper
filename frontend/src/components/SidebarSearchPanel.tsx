@@ -16,7 +16,7 @@ import { Search } from "lucide-react";
 import { useTreeStore } from "../lib/useTreeStore";
 import { usePaneStore } from "../lib/usePaneStore";
 import { useWorkspace } from "../lib/useWorkspace";
-import { subscribePhase7 } from "../lib/appShortcuts";
+import { subscribeAppShortcut } from "../lib/appShortcuts";
 import { parseSearchQuery } from "../lib/searchQueryTokenizer";
 import { searchNotes } from "../lib/searchApi";
 import {
@@ -109,7 +109,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
 
   useEffect(
     () =>
-      subscribePhase7((ev) => {
+      subscribeAppShortcut((ev) => {
         if (ev === "focusSearch") {
           inputRef.current?.focus();
           inputRef.current?.select();
