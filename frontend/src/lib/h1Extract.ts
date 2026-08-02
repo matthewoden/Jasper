@@ -1,38 +1,23 @@
 /**
- * h1Extract — client-side mirror of backend/internal/markdown/title.go's
- * ExtractTitle scanner. Used by EditorPane to detect H1 changes during
- * autosave and by FileTree to rewrite the H1 in renamed note content.
+ * h1Extract mirrors the server's ExtractTitle scanner. The server stays
+ * authoritative for what the index stores; this exists only to detect whether
+ * the H1 changed since the last save, and to derive a filename from it.
  *
- * The server's ExtractTitle is authoritative for what the index stores.
- * This module exists only to detect whether the H1 changed since the last
- * save (to decide whether to dispatch moveNote) and to derive a filename
- * basename from the H1.
+ * Differs deliberately: returns null on no-H1 where Go falls back to the
+ * filename, and skips Go's 1 MiB scanner cap.
  *
- * Differences from the Go implementation:
- *   - Returns null on no-H1 (Go returns the filename fallback).
- *   - No 1MiB scanner buffer cap — JS string ops are O(1) on length.
- *
- * The illegal-char regex MUST agree byte-for-byte with the regex in
- * RenameInput.validateRename (which mirrors the backend's
- * notes.validateBareName). Drift between client validators is the bug
- * class this module is designed to prevent.
+ * The illegal-char regex MUST agree byte-for-byte with RenameInput's. Drift
+ * between the client validators is the bug class this module exists to prevent.
  */
 
 // eslint-disable-next-line no-control-regex -- intentionally rejects ASCII control chars in user-typed names
 const ILLEGAL_CHAR_REGEX = /[/\\:*?"<>|\x00-\x1F]/;
 
 /**
- * Returns the first H1 heading text (without the "# " prefix) from
- * markdown content, or null if no H1 is present (or only frontmatter
- * / blank lines precede the first non-blank non-heading line).
+ * First H1 text, or null. Frontmatter is skipped; an unclosed block is consumed
+ * to EOF and yields null, matching the server.
  *
- * Frontmatter (--- ... ---) at the top is skipped. An unclosed
- * frontmatter is consumed to EOF and yields null (matches the
- * server's defensive behavior).
- *
- * Heading detection: trimmed line starts with "# " (single hash +
- * space). Multiple leading hashes (## ###) are NOT H1; "#tag"
- * (no space) is NOT H1.
+ * "# " only — `## ` is not an H1 and `#tag` is not a heading.
  */
 export function extractH1FromContent(content: string): string | null {
   if (!content) return null;

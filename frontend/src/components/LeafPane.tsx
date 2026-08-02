@@ -1,39 +1,19 @@
 /**
- * LeafPane — one leaf of the recursive split-pane tree (WS-03).
+ * LeafPane — one leaf of the split-pane tree (WS-03): a leaf-scoped TabStrip
+ * plus a keep-alive stack of EditorPane, one per open tab.
  *
- * Owns a leaf-scoped `TabStrip` (row) and a keep-alive stack of `EditorPane`,
- * one per open tab — every `EditorPane` already renders its own breadcrumb /
- * inline title / body, so LeafPane's own job is composition, not
- * chrome. All tabs but the active one render `hidden` (`display:none`); CM6
- * stays mounted so cursor/scroll/undo survive a tab switch (keep-alive).
+ * Inactive tabs render `hidden` rather than unmounting, so CM6 keeps
+ * cursor/scroll/undo across a tab switch.
  *
- * A leaf with zero tabs (`leaf.active === null`, the "final pane never
- * collapses" invariant from `paneTree.ts`) renders a single `EditorPane` with
- * `noteId={null}`, which is EditorPane's own "no note open" placeholder.
+ * A leaf with zero tabs renders EditorPane with noteId={null} — its own
+ * "no note open" placeholder — because the final pane never collapses.
  *
- * A pane becomes active on a click anywhere in its chrome (tab strip,
- * breadcrumb, or body) OR on focus entering it; the active leaf
- * carries `data-active-pane`. Every pane renders at full opacity — the
- * earlier inactive-pane dim was removed for readability and is NOT
- * reintroduced. In a MULTI-pane layout (`multi`), the active pane also
- * carries a 1px inset accent outline at 35% opacity — corrected from an
- * earlier 50%-opacity trial that
- * the owner found distracting; a single-pane layout shows no cue (nothing to
- * disambiguate).
+ * The pane activates on a click anywhere in its chrome or on focus entering it.
+ * Inactive panes are NOT dimmed; that was tried and hurt readability.
  *
- * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-split
- * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
- * leaf's own tabs only — a ref pair per open tab, dropped when a tab closes.
- *
- * WS-09: also hosts this leaf's own Find/Replace bar, scoped to
- * the leaf's ACTIVE tab. Cmd+F/Cmd+Opt+F (jasperKeymap, routed via each
- * EditorPane's onOpenFind/onOpenFindReplace props) open it; it drives the
- * active tab's EditorView through handlerRefs — per-view CM6 search state
- * means this needs zero cross-pane coordination even for the same note open
- * in two panes. Find state/handlers live HERE, but the bar element itself
- * is passed as a `findBarSlot` prop into the
- * active tab's own EditorPane, which renders it below ITS breadcrumb — not
- * as a LeafPane-level sibling above the whole EditorPane stack.
+ * Also hosts this leaf's Find/Replace bar, scoped to its ACTIVE tab. CM6 search
+ * state is per-view, so this needs no cross-pane coordination even with the
+ * same note open twice.
  */
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { SearchQuery } from "@codemirror/search";
@@ -325,22 +305,11 @@ export function LeafPane({
     setMatchCount(ZERO_MATCH_COUNT);
   }, [activeHandle]);
 
-  // Bug fix (260718-n6a Task 5): root-caused via a real-CM6 integration
-  // repro — FindReplaceBar's own Escape handling lives on ITS OWN container
-  // `onKeyDown` (bubble-phase), which only fires when the keydown's target
-  // is inside the bar's own DOM subtree (the query/replace inputs). Clicking
-  // into the editor body to inspect a match — a completely natural thing to
-  // do while using Find — moves DOM focus into a DIFFERENT subtree (CM6's
-  // contentDOM, a sibling of the bar, not a descendant of it), so Escape
-  // pressed there never reached the bar's handler: the bar stayed open and
-  // its highlights stayed painted, matching the reported "only emptying the
-  // input clears them" symptom. This leaf-root capture-phase listener is a
-  // second entry point into the SAME choke point (handleCloseFindBar) —
-  // it fires for Escape anywhere in the leaf's chrome (editor body included)
-  // while the bar is open, so dismissal no longer depends on which element
-  // inside the leaf currently has focus. Harmless if the bar's own handler
-  // ALSO fires for the same keypress (focus was in the bar) — the close
-  // routine is idempotent.
+  // FindReplaceBar's own Escape handler is bubble-phase on its own container,
+  // so it never fires once the user clicks into the editor body to inspect a
+  // match — CM6's contentDOM is a sibling, not a descendant. This capture-phase
+  // listener is a second entry into the same idempotent close, so dismissal no
+  // longer depends on which element inside the leaf holds focus.
   const handleLeafKeyDownCapture = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape" && findBar.open) {

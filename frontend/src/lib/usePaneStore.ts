@@ -1,21 +1,15 @@
 /**
- * usePaneStore — zustand store owning the recursive split-pane layout tree
- * (WS-08 persistence, WS-07 active-pane tracking, WS-04 collapse/rebalance).
+ * usePaneStore — the split-pane layout tree, persisted per vault.
  *
- * Evolves useTabStore.ts's per-vault persistence discipline (debounced write,
- * activeVaultKey capture for hot-swap safety, defensive corruption-tolerant
- * parse) onto a recursive PaneNode tree instead of a flat tab list.
+ * Reuses useTabStore's persistence discipline (debounced write, vault-key
+ * capture for hot-swap safety, corruption-tolerant parse) over a recursive
+ * PaneNode tree rather than a flat list.
  *
- * Persistence key is NEW (`jasper.layout.<vault>`) — the prior flat tab-list
- * storage key is never read or migrated (pre-launch: no back-compat
- * burden).
+ * The storage key is new and the old flat-tab key is never read or migrated —
+ * pre-launch, so no back-compat burden.
  *
- * Tab id is decoupled from noteId: dedup is per-leaf, not workspace wide —
- * the same note may exist as independent tabs in different leaves.
- *
- * deletedTabIds is live-session only and is NEVER persisted, mirroring
- * useTabStore's contract: a session-deleted note's tab stays open
- * read-only until reload, but that state must not outlive one.
+ * deletedTabIds is live-session only and NEVER persisted: a session-deleted
+ * note's tab stays open read-only, but must not outlive the reload.
  */
 import { create } from "zustand";
 
@@ -255,16 +249,9 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
   },
 
   /**
-   * dropTabOnPane — orchestrates a cross-pane tab drag (WS-01/WS-02): moves
-   * (not clones) the dragged tab out of the source leaf and either
-   * appends+activates it in the target leaf (region "center", per-leaf
-   * dedup via moveTab) or splits the target leaf to host it in a new
-   * sibling (edge regions, via splitWithTab). If the source leaf empties as
-   * a result and more than one leaf remains, it is collapsed and
-   * activePaneId retargets to a survivor; the final pane never collapses
-   * (`_removeLeaf`'s own invariant). Same-pane center drops are a no-op.
-   * Bails (no `set()`) if source/target is absent, or
-   * the drop resolves to no tree change.
+   * dropTabOnPane MOVES the tab, never clones: a center drop appends into the
+   * target, an edge drop splits it. An emptied source collapses unless it is
+   * the last leaf. Same-pane center drops are a no-op.
    */
   dropTabOnPane: (sourceLeafId, tabId, targetLeafId, region) => {
     const { tree, activePaneId } = get();
@@ -330,14 +317,9 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
   },
 
   /**
-   * dropTabAtIndex — the positional counterpart to dropTabOnPane's "center"
-   * branch (Obsidian-parity foreign-strip drop, WS-01/WS-02 sibling):
-   * removes the dragged tab from the source leaf (retargeting its active tab
-   * and collapsing it if it empties and more than one leaf remains), then
-   * inserts it at `insertIndex` in the target leaf via moveTabToIndex
-   * (positional, not append-only) and activates that leaf. Always a
-   * cross-leaf move — same-leaf positional reorder is TabStrip's own
-   * in-strip drag path, not this action.
+   * dropTabAtIndex is dropTabOnPane's positional counterpart, for dropping onto
+   * a specific pill in a foreign strip. Always cross-leaf — same-leaf reorder is
+   * TabStrip's own in-strip drag path.
    */
   dropTabAtIndex: (sourceLeafId, tabId, targetLeafId, insertIndex) => {
     if (sourceLeafId === targetLeafId) return;

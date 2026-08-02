@@ -1,16 +1,7 @@
 /**
- * editorChromeResponsive — pure width-driven layout decisions for the
- * editor's top-chrome bar (breadcrumb + right-pinned favorite star / note-
- * options menu).
- *
- * Mirrors the tabOverflow.ts pattern: visibility/max-width is arithmetic over
- * measured widths, deterministically testable without ResizeObserver or
- * layout timing. EditorPane only feeds these functions a measured
- * `clientWidth`; everything else is pure.
- *
- * (#3/#6): word count moved out of this cluster entirely (now
- * lives in the bottom StatusBar, focused-note aware) — the right cluster is
- * just [favorite, ⋯], so there is no more word-count breakpoint here.
+ * editorChromeResponsive — pure width arithmetic for the editor's top chrome,
+ * so layout decisions are testable without ResizeObserver or timing. EditorPane
+ * feeds in a measured clientWidth; everything here is pure.
  */
 
 /** Below this bar width, the favorite star hides — only ⋯ remains (⋯ is never hidden). */
@@ -47,20 +38,15 @@ export interface BreadcrumbMaxWidthInput {
 }
 
 /**
- * Maximum width (px) the FULLY-CENTERED breadcrumb content may occupy
- * without colliding with the right-pinned cluster — the
- * breadcrumb centers in the bar's full width, not a fixed 760px column).
+ * Max width the centered breadcrumb may occupy without colliding with the
+ * right-pinned cluster.
  *
- * Only the right side is physically obstructed by the cluster, but capping
- * symmetrically (`barWidth - 2*(clusterWidth+gap)`) keeps the breadcrumb's
- * OWN centering intact: as long as its content fits inside this cap, its
- * center coincides with the bar's center and neither edge reaches the
- * cluster. Content wider than the cap falls back to the existing
- * per-segment ellipsis truncation (folder segments give way first, the
- * title segment truncates only as a last resort).
+ * Only the right side is obstructed, but the cap is SYMMETRIC on purpose: that
+ * is what keeps the breadcrumb's own centering intact, so its center stays the
+ * bar's center and neither edge reaches the cluster. Wider content falls back to
+ * per-segment ellipsis.
  *
- * barWidth <= 0 (jsdom / pre-layout escape hatch) returns undefined — "no
- * cap" — matching the same convention as computeChromeVisibility.
+ * barWidth <= 0 returns undefined ("no cap"), matching computeChromeVisibility.
  */
 export function computeBreadcrumbMaxWidth({
   barWidth,

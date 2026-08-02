@@ -1,39 +1,18 @@
 /**
- * TreeRow — react-arborist row renderer.
+ * TreeRow — react-arborist row renderer, folder and note variants.
  *
- * Two row variants:
- *   - Folder: ChevronRight/Down + Folder/FolderOpen icon + 14px/400 label
- *   - Note:   16px spacer (keeps labels aligned with parent folder) + label only
+ * The active row's accent left-border is absolutely positioned so the label
+ * does not shift.
  *
- * Active state (note rows only): accent-tinted background + 2px accent left-border
- * absolutely positioned so the label doesn't shift.
+ * Folder rows show an inset box-shadow while willReceiveDrop is true. That is
+ * the ONLY drag feedback in FileTree, which suppresses react-arborist's
+ * insertion line via renderCursor={() => null}; BookmarksPanel keeps the line.
  *
- * Hover: reveals the kebab (MoreHorizontal) button via group-hover.
+ * handleClick sets useTreeStore.selectedRow so App.tsx's document-level F2
+ * listener can route a rename even while focus is in the editor.
  *
- * Drop indicator: folder rows get an inset accent
- * box-shadow while `node.willReceiveDrop` is true (the drop resolves to
- * "into this folder", not a between-rows insertion) — the sole drag
- * feedback once FileTree suppresses react-arborist's default insertion-line
- * cursor via `renderCursor={() => null}` (TreeView.tsx). BookmarksPanel
- * does not pass that prop, so its rows still get the default insertion
- * line for in-folder reordering; this box-shadow is additive there too but
- * inert unless a bookmark-folder is the live drop target.
- *
- * Wiring:
- *   - Right-click → TreeRowContextMenu wrapping the row.
- *   - Kebab → TreeRowDropdownMenu (controlled open state).
- *   - Inline rename: pendingRename match → label slot renders RenameInput.
- *   - F2 / Backspace / Delete + double-click → onRequestRename / onRequestDelete.
- *   - dragHandle ref makes the row a react-dnd drag source.
- *   - handleClick sets useTreeStore.selectedRow so the document-level F2 listener
- *     in App.tsx can route rename even when DOM focus is in the editor textarea.
- *
- * XSS hardening: this file MUST NOT use the React inner-HTML escape hatch
- * (the `dangerously...` prop). Labels are rendered as React text content,
- * which escapes by default — even a malicious title with <script> renders as
- * plain text. The vitest case `TestRow_DoesNotUseDangerously...InnerHTML`
- * enforces this — the forbidden token is split in the test source so this
- * comment can mention the escape-hatch family without tripping the gate.
+ * XSS: this file MUST NOT use React's inner-HTML escape hatch. Labels render as
+ * text content, which escapes by default. A vitest case enforces it.
  */
 import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { NodeApi } from "react-arborist";
@@ -173,18 +152,10 @@ export interface TreeRowProps {
   onBulkDelete?: () => void;
 
   /**
-   * Note-row Bookmark toggle wiring (CTX-02). FileTree.tsx owns the
-   * SINGLE `useBookmarks()` hydrate/subscribe instance and threads its
-   * `isBookmarked`/`toggleBookmark` down here — TreeRow deliberately does
-   * NOT call `useBookmarks()` itself (unlike useReveal/useMcpGrants/
-   * useTreeMutations above): react-arborist renders one TreeRow per visible
-   * row, and `useBookmarks()` fires its own GET /bookmarks + WS-subscriber
-   * registration on every mount, so calling it per-row multiplied that
-   * hydrate fetch by the row count and caused a burst of near-simultaneous
-   * store writes (every row re-renders on every OTHER row's fetch
-   * resolving) — this both wasted bandwidth and produced enough render
-   * churn during virtualized mount/scroll to detach rows mid-interaction
-   * in E2E (Rule 1 fix). Only meaningful for note rows.
+   * Threaded down from FileTree, which owns the single useBookmarks instance.
+   * TreeRow must NOT call it itself: react-arborist mounts one row per visible
+   * item, so a per-row hook multiplied the hydrate fetch by the row count and
+   * produced enough render churn to detach rows mid-interaction.
    */
   isNoteBookmarked?: (noteId: string) => boolean;
   onToggleNoteBookmark?: (noteId: string) => void;

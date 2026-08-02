@@ -1,19 +1,14 @@
 /**
- * sharedDocRegistry — N-way CodeMirror shared-document sync registry (WS-10).
+ * sharedDocRegistry — N live EditorViews over one logical document (WS-10),
+ * generalizing CM6's two-view "Split View" example to a noteId-keyed registry.
  *
- * Generalizes the official CM6 "Split View" example
- * (https://codemirror.net/examples/split/) from exactly-2-views to a
- * noteId-keyed registry of N live `EditorView`s over one logical document.
- * Each view keeps its own independent selection/scroll/fold; only `changes`
- * (never `selection`) are re-dispatched to the OTHER views for the same
- * noteId, tagged with `syncAnnotation` so the receiving view's own custom
- * `dispatch` does not re-broadcast (no infinite loop).
+ * Each view keeps its own selection/scroll/fold. Only `changes` are
+ * re-dispatched to the others, tagged with syncAnnotation so the receiving
+ * view does not re-broadcast and loop forever.
  *
- * Deliberately a plain imperative module (Map + Set), NOT a Zustand store:
- * `EditorView` instances are mutable, non-serializable, and identity-
- * sensitive — putting them in reactive state would either break shallow-
- * equality re-renders or invite treating a view as immutable data it isn't
- * treating a view as immutable data it isn't.
+ * A plain Map + Set, deliberately not a Zustand store: EditorViews are mutable,
+ * non-serializable and identity-sensitive, so reactive state would either break
+ * shallow-equality re-renders or invite treating a view as immutable data.
  */
 import { redo, undo, history } from "@codemirror/commands";
 import { Annotation, Compartment, type Extension, type Transaction } from "@codemirror/state";
@@ -42,21 +37,13 @@ export function registerView(noteId: string, view: EditorView, isPrimary: boolea
 /**
  * Unregisters a view.
  *
- * SPIKE OUTCOME (Plan 01, `sharedDocRegistry.spike.test.ts`): undo history
- * does NOT survive `Compartment.reconfigure` promotion. So when the removed
- * view IS the current primary and at least one other view for the note is
- * still registered, the primary is kept alive (stays in `entry.views`, stays
- * `entry.primary`) rather than destroyed/promoted-away — the caller must NOT
- * call `view.destroy()` in that case, only detach it from the DOM. Undo/Redo
- * for the note keeps routing to this same (possibly off-DOM) view via
- * `historyExtensionFor`'s keymap, so it reflects the full pre-close history.
+ * Undo history does NOT survive Compartment.reconfigure promotion — proven by
+ * the spike. So a departing PRIMARY with survivors is kept alive and still
+ * primary; the caller must detach it from the DOM but NOT destroy it, and
+ * Undo/Redo keeps routing to that off-DOM view with its full history.
  *
- * If `unregisterView` is called a SECOND time for an already-detached
- * primary, the caller is truly releasing it for good (e.g. the note is fully
- * closed everywhere reachable from that view). If other views still remain
- * at that point, there is no history left to protect for the departing view
- * either way, so a survivor is promoted via the plain
- * `historyCompartment.reconfigure(history())` path.
+ * A SECOND unregister of an already-detached primary means a real release; by
+ * then there is no history left to protect, so a survivor is promoted normally.
  */
 export function unregisterView(noteId: string, view: EditorView): void {
   const entry = registry.get(noteId);
@@ -127,14 +114,9 @@ export function syncDispatch(noteId: string, tr: Transaction, view: EditorView):
 }
 
 /**
- * Per-view Compartment wrapping that view's `history()` extension (or `[]`
- * for secondaries), tracked so `unregisterView`'s far-edge promotion path can
- * later `.reconfigure()` a SPECIFIC survivor's own compartment. Populated
- * lazily via a `ViewPlugin` (fired with the real, constructed `EditorView`)
- * rather than a constructor-time `view` argument, since the view instance
- * does not exist yet at the point its own extensions array is built (the
- * same construction-order constraint `MarkdownEditor.tsx`'s `viewRef` works
- * around with a ref set after `new EditorView(...)` returns).
+ * Per-view history Compartment, tracked so promotion can reconfigure a SPECIFIC
+ * survivor's own. Populated lazily from a ViewPlugin because the EditorView does
+ * not exist yet when its own extensions array is built.
  */
 const historyCompartments = new WeakMap<EditorView, Compartment>();
 

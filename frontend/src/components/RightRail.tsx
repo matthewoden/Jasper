@@ -1,40 +1,13 @@
 /**
- * RightRail — tab-row + single-mounted-panel right sidebar shell
- * (TAGS-01): a 30x30 icon-tab row (RightRailTabRow) mirroring the
- * left sidebar's SidebarTabRow, with exactly ONE panel mounted below it at
- * a time — Outline, Linked mentions, or Tags — driven by the persisted
- * rightPanel field (workspace.json via useWorkspace, Plan 01).
+ * RightRail — an icon-tab row over exactly ONE mounted panel at a time
+ * (Outline, Linked mentions or Tags), driven by the persisted rightPanel field.
  *
- * Structure:
- *   <aside bg=--color-surface>            ← flush panel container
- *     <ResizeHandle left-edge />           ← left-edge width resize
- *     <header 40px>
- *       <RightRailTabRow />
- *     </header>
- *     <ActivePanel />   ← exactly one of Outline / Linked mentions / Tags
- *   </aside>
+ * All three panels are header-less; the shared in-panel sub-header is retired
+ * app-wide and no panel-level counts remain.
  *
- * The Tags tab (TAGS-02) is a single vault-wide
- * list — `RightRailTagsPanel` mounted directly, no upper active-note
- * section, no divider. All three panels (Outline, Linked mentions, Tags)
- * are header-less: the shared in-panel sub-header component is retired
- * app-wide, and no panel-level counts remain.
- *
- * This REPLACES the earlier three-section stacked/collapsible/resizable
- * layout (independent SectionHeader collapse state per section,
- * InterPanelDivider-driven height ratios) — that machinery has no analog
- * in the one-panel-at-a-time tab model and has been removed entirely,
- * along with its useTreeStore slices (see useTreeStore.ts).
- *
- * Background is --color-surface, filling the rail edge-to-edge so the tab
- * row sits flush against border-left (mock parity).
- *
- * Collapsed state (260721-cjt gap closure): `!expanded` now unmounts the
- * rail entirely (returns null) so the notes/editor area is flush with the
- * right window edge — no slim collapsed strip. The reopen control moved out
- * of the rail's own region and into the rightmost pane's tab bar (see
- * TabStrip.tsx's `tab-strip-right-cluster`, shown only when collapsed AND
- * the strip belongs to the rightmost leaf).
+ * Collapsing UNMOUNTS the rail entirely rather than leaving a slim strip, so
+ * the editor sits flush against the window edge. The reopen affordance
+ * therefore lives in the tab strip, not here.
  */
 import { useCallback, useEffect, useRef } from "react";
 import type React from "react";

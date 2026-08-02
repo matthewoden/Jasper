@@ -1,47 +1,15 @@
 /**
- * livePreviewPlugin — CM6 decoration plugin for live preview of markdown.
- * Walks the lezer-markdown syntax tree on every relevant transaction,
- * computes the cursor-line set (multi-line selection included), and
- * emits per-node decorations:
+ * livePreviewPlugin walks the lezer-markdown tree and emits decorations keyed
+ * on whether the line holds the cursor: off-cursor lines replace their markers,
+ * on-cursor lines keep them visible but muted so the text stays editable.
  *
- *   - Decoration.line for headings (cm-heading-1..6), blockquote
- *     (cm-blockquote), callouts (cm-callout cm-callout-{type}, READ-02),
- *     and code blocks (cm-codeblock).
- *   - Decoration.mark for StrongEmphasis (cm-strong), Emphasis
- *     (cm-emphasis), InlineCode (cm-inline-code), Highlight (cm-highlight,
- *     from the hand-rolled highlightExtension.ts's == delimiter).
- *   - Decoration.replace for hideable marker nodes when their line is
- *     off-cursor (HeaderMark, EmphasisMark, QuoteMark, ListMark, LinkMark,
- *     URL, HardBreak, CodeMark, HighlightMark) and for HorizontalRule
- *     (hr widget), and for a callout's title-line marker+title span
- *     (CalloutTitleWidget, READ-02).
- *   - Decoration.mark with cm-marker for the same hideable nodes when
- *     their line is on-cursor (markers visible-but-muted).
+ * Callouts are detected by regex on a Blockquote's first line, not by a lezer
+ * node — CommonMark has no callout grammar. A non-match falls through to the
+ * plain-blockquote path unchanged, so the feature is non-regressive by
+ * construction.
  *
- * Callout detection (READ-02): a Blockquote's first
- * line is checked for a `[!type]` or `[!type]-` prefix (regex, not a lezer
- * node — CommonMark has no callout grammar). A match replaces the plain
- * `.cm-blockquote` line treatment with `cm-callout cm-callout-{type}` for
- * every line in the blockquote's range; no match falls through to the
- * existing plain-blockquote path UNCHANGED (non-regression by construction).
- * The dot is pure CSS (`::before` on `.cm-callout-title-line`, always
- * visible); only the `[!type](-)?\s*title?` span hides/reveals per cursor,
- * exactly like the other hideable markers.
- *
- * Edge cases:
- *   - Multi-line selection: every line touched stays in the cursor-line
- *     set; markers remain visible there.
- *   - IME gate: u.view.composing → map existing decorations through
- *     u.changes instead of rebuilding.
- *   - Code-fence guard: any hideable node nested inside FencedCode is
- *     skipped (markers stay literal). InlineCode backticks ARE allowed to
- *     hide off-line — the styled monospace background carries the affordance.
- *
- * lezer-markdown node names used (case-sensitive):
- *   Frontmatter (lowercase m), ATXHeading1..6, SetextHeading1/2,
- *   HeaderMark, StrongEmphasis, Emphasis, EmphasisMark, FencedCode,
- *   InlineCode, Blockquote, QuoteMark, ListMark, HorizontalRule,
- *   LinkMark, URL.
+ * The callout dot is pure CSS and always visible; only the `[!type]` span
+ * hides and reveals with the cursor.
  */
 import {
   Decoration,

@@ -1,23 +1,15 @@
 /**
- * EditorPane — thin view over the per-note noteBufferController (Plan 05).
+ * EditorPane — a thin view over the per-note noteBufferController.
  *
- * Content/save-state/debounce/coalesced-flush/WS-reconciliation logic lives
- * in `noteBufferController.ts` — exactly one buffer per open note,
- * regardless of how many panes show it (WS-10). EditorPane bridges that
- * React-free controller into React via useSyncExternalStore, and keeps only
- * pane-local UI concerns: breadcrumb, inline title/H1 UI, outline
- * registration, the JSX shell, and browser-lifecycle keepalive plumbing.
+ * Content, save state, debounce, coalesced flush and WS reconciliation all live
+ * in the controller: exactly one buffer per open note however many panes show
+ * it (WS-10). This file keeps only pane-local UI.
  *
- * Reindexing/connectionStatus gating and refreshTree() (H1-rename tree
- * sync) are reintroduced HERE, at the call site, via controller.setSaveGate
- * and controller.subscribeRenamed — noteBufferController itself stays
- * React/Zustand-free (see its file header).
+ * Reindex/connection gating and refreshTree are wired HERE via setSaveGate and
+ * subscribeRenamed, so the controller itself stays React-free.
  *
- * When noteId is null, renders a locked placeholder with no API calls, no
- * controller. When noteId changes on an already-mounted instance (the
- * no-tabs fallback pane), the previous note's pending debounced edit is
- * discarded (never saved cross-note), matching the old per-pane
- * "debounce armed for the previous note must never fire" guard.
+ * When noteId changes on a mounted instance (the no-tabs fallback pane), the
+ * previous note's pending debounce is DISCARDED — never saved cross-note.
  */
 
 import {
@@ -114,14 +106,9 @@ interface EditorPaneProps {
   /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive). */
   hidden?: boolean;
   /**
-   * True when this pane's leaf is the active pane. Gates programmatic
-   * autofocus: only the ACTIVE pane's editor steals DOM focus when a note
-   * finishes loading. Without this gate, EVERY visible pane's editor focuses
-   * on mount, so on a reload with a restored two-pane layout the last note to
-   * load would win DOM focus and (via LeafPane's onFocusCapture → setActivePane)
-   * override the restored active pane — making the active-pane restore
-   * non-deterministic. Defaults true so single-pane / non-LeafPane
-   * callers keep today's autofocus behavior.
+   * Gates programmatic autofocus to the ACTIVE pane. Without it every visible
+   * pane's editor focuses on mount, so on a reload the last note to load wins
+   * DOM focus and overrides the restored active pane non-deterministically.
    */
   paneActive?: boolean;
   /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator. */
@@ -472,17 +459,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     }
   }, [controller, tree, noteId]);
 
-  // Release the controller ONLY on true unmount (tab/pane closed) — deps
-  // intentionally empty so this cleanup does NOT also fire on a mere
-  // noteId-prop switch (the no-tabs fallback pane keeps the SAME EditorPane
-  // instance alive across notes; releasing here would flush/save the
-  // abandoned note's buffer via releaseController's own flush-before-release
-  // step, contradicting the "no cross-note PUT" rule — discardPendingEdit
-  // below handles that transition instead). noteIdRef.current at cleanup
-  // time reflects whichever note this pane was LAST showing. Never fires on
-  // a mere hide (keep-alive): hidden panes stay mounted, nothing here
-  // re-runs. getPrimaryView guards against releasing a controller another
-  // view still depends on.
+  // Deps are intentionally EMPTY: release must happen on true unmount only. On
+  // a mere noteId switch, releaseController's flush-before-release would save
+  // the abandoned note's buffer — the cross-note PUT this must never do.
+  // discardPendingEdit handles that transition instead.
   useEffect(() => {
     return () => {
       const id = noteIdRef.current;
@@ -625,23 +605,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [],
   );
 
-  // Register this pane's scrollToHeading into the shared outline store, and
-  // flush its cached heading list, whenever it becomes (or is) the active
-  // tab, so OutlinePanel always drives the currently-active editor. Cleared
-  // on unmount / deactivation.
-  //
-  // The heading-list flush closes a real race (found live via phase20-uat.spec.ts,
-  // never caught by mocked component tests): MarkdownEditor's mount-time
-  // "fire once" push in handleEditorHeadingsChange runs as a CHILD effect
-  // within the SAME commit as the tab-open render, but the App-level
-  // `activeTabId -> useTreeStore.activeNoteId` mirror is a PARENT effect that
-  // commits its state update one render later. So on the very first open of a
-  // brand-new tab, the guard above sees activeNoteId as still stale (or null)
-  // and silently drops the initial heading push — Outline would then show
-  // "No headings" until the user made a live edit. Flushing latestHeadingsRef here
-  // (which the mount-time push always populates, guard notwithstanding) once
-  // this effect's own [hidden, noteId, activeNoteId] deps confirm the mirror
-  // settled closes that gap without waiting on a doc change.
+  // The heading flush closes a commit-ordering race: MarkdownEditor's mount-time
+  // push is a CHILD effect in the same commit as the tab-open render, while the
+  // activeNoteId mirror is a PARENT effect that lands one render later. On a
+  // brand-new tab the guard therefore saw a stale activeNoteId and dropped the
+  // initial push, leaving Outline on "No headings" until the first live edit.
   useEffect(() => {
     if (hidden || noteId === null || noteId !== activeNoteId) return;
     useOutlineStore.getState().setOutlineHeadings(latestHeadingsRef.current);

@@ -1,25 +1,15 @@
 /**
- * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut and the
- * Cmd+F / Cmd+Opt+F pane Find/Replace bar openers (WS-09).
- * Find/Replace is a custom per-pane React bar (FindReplaceBar.tsx) that
- * drives @codemirror/search commands directly against the pane's EditorView
- * — searchKeymap and the built-in search panel are not used. findBarKeymap
- * reclaims Cmd+F (find-only) and Cmd+Opt+F (find+replace) from the browser's
- * native find, preventDefault-ing both.
+ * jasperKeymap — Cmd+S save plus the Cmd+F / Cmd+Opt+F Find bar openers
+ * (WS-09). The built-in search panel and searchKeymap are not used; the custom
+ * FindReplaceBar drives @codemirror/search directly, so both shortcuts are
+ * reclaimed from the browser's native find with preventDefault.
  *
- * The save/find-open callbacks are captured by closure; MarkdownEditor passes
- * stable cbRef-routed callbacks so the keymap always calls the latest handler
- * without rebuilding the EditorView.
+ * Callbacks are closed over via a stable cbRef, so the keymap always reaches
+ * the latest handler without rebuilding the EditorView.
  *
- * Also exports toggleBold and toggleItalic: wrap/unwrap selection with `**`/`*`.
- *
- * Italic trade-off: naïve wrap/strip does not distinguish `*foo*` (italic)
- * from `* foo` (bullet list). User can undo with Cmd+Z.
- *
- * Also exports listEnterCommand: custom Enter handler for the nested-empty-item
- * de-indent behavior. Must be installed at Prec.high so it runs before
- * @codemirror/lang-markdown's insertNewlineContinueMarkup (also Prec.high, but
- * extension order determines priority within the same precedence).
+ * listEnterCommand must be installed at Prec.high BEFORE markdown(), which
+ * registers insertNewlineContinueMarkup at the same precedence — order breaks
+ * the tie.
  */
 import { keymap, EditorView } from "@codemirror/view";
 import type { KeyBinding } from "@codemirror/view";
@@ -33,24 +23,16 @@ import type { Extension } from "@codemirror/state";
 const LIST_ITEM_RE = /^(\s*)([-*+] )(\[[ xX]\] )?(.*)$/;
 
 /**
- * listEnterCommand — Enter handler for unordered bullet/task list items.
+ * listEnterCommand replaces insertNewlineContinueMarkup for `-`/`*`/`+` bullets
+ * and task items, which otherwise preserves "loose" list spacing and leaves a
+ * stray blank line when exiting an empty item at end-of-document.
  *
- * CodeMirror's insertNewlineContinueMarkup has two behaviors Jasper does not
- * want: it preserves "loose" list spacing (a blank line between items, then
- * re-inserts that blank before every new item), and it leaves a stray blank
- * line when exiting an empty item at end-of-document. This command takes over
- * Enter for `-`/`*`/`+` bullets and task items to keep things tight:
+ *   - non-empty item, cursor at end → newline, same indent, same marker
+ *     (task markers reset to `[ ]`)
+ *   - empty item, top level         → clear the marker in place
+ *   - empty item, nested            → de-indent one level
  *
- *   - non-empty item, cursor at end of line → continue tightly: newline + same
- *     indent + same marker (task markers reset `[x]`→`[ ]`)
- *   - empty item, top level                 → clear the marker in place (exit)
- *   - empty item, nested                     → de-indent one level (keep marker,
- *     cursor stays at end of line)
- *
- * Everything else — cursor mid-line, ordered lists (`1.`), non-list lines —
- * returns false and falls through. Must be installed at Prec.high BEFORE the
- * markdown() extension so it wins on a precedence tie. De-indent strips one
- * indentUnit (2 spaces by default), matching Shift-Tab.
+ * Anything else returns false and falls through.
  */
 export function listEnterCommand(view: EditorView): boolean {
   const { state } = view;
@@ -200,14 +182,8 @@ export function toggleBold(view: EditorView): boolean {
 }
 
 /**
- * toggleItalic — wraps the selection with `*` (italic markdown).
- * If already wrapped, strips the `*` markers (toggle off).
- * With no selection, inserts `*|*` (cursor between).
- *
- * v1 trade-off: naïve strip does not distinguish `*foo*` (italic) from
- * `* foo` (bullet list start). User can undo with Cmd+Z if needed.
- *
- * Bound to Mod-i (Cmd+I on macOS, Ctrl+I elsewhere) via jasperKeymap.
+ * toggleItalic wraps or strips `*`. Known trade-off: the naive strip cannot
+ * tell `*foo*` (italic) from `* foo` (a bullet). Cmd+Z undoes it.
  */
 export function toggleItalic(view: EditorView): boolean {
   return wrapWith(view, "*");

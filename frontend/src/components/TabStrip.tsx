@@ -1,26 +1,16 @@
 /**
- * TabStrip — a leaf-scoped editor tab row (WS-03: one strip per pane, not a
- * workspace singleton).
+ * TabStrip — a leaf-scoped editor tab row (WS-03), one strip per pane.
  *
- * Composes the presentational pieces: each ordered tab renders a
- * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` always
- * pinned at the right edge listing EVERY open tab, not
- * just the ones the strip's own overflow hid. Reorder uses pointer-event drag
- * (pointerdown on the wrapper → pointermove/pointerup on the strip) because
- * native HTML5 DnD does not deliver drop events reliably in this context.
- * The strip div handles move/up so that setPointerCapture is unnecessary —
- * avoiding Chromium's click-target redirection that captures would cause.
+ * Reorder uses pointer events, not HTML5 DnD, which does not deliver drop
+ * events reliably here. The strip handles move/up so setPointerCapture is
+ * unnecessary — capture would trigger Chromium's click-target redirection.
  *
- * Capture-phase keyboard shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close)
- * are registered here, gated on `usePaneStore.getState().activePaneId ===
- * leafId`: with N leaves mounted, N TabStrips each
- * register a window listener, so every leaf's handler must no-op unless its
- * OWN leaf is the active pane — otherwise one Alt+W keypress would close a
- * tab in every pane simultaneously.
+ * The keyboard shortcuts gate on activePaneId === leafId because every mounted
+ * leaf registers its own window listener; without the gate one Alt+W closes a
+ * tab in every pane at once.
  *
- * Closing ALWAYS routes through `onRequestClose` (flush-aware; App.tsx/Plan 05
- * owns the flush+confirm orchestration) — never `closeTab` directly, so a close
- * can never drop unsaved edits.
+ * Closing ALWAYS routes through onRequestClose, never closeTab — that is what
+ * makes a close flush-aware and unable to drop unsaved edits.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
@@ -50,36 +40,18 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return a.size === b.size && [...a].every((id) => b.has(id));
 }
 
-// Reserved strip chrome that is never available to tabs:
-//   strip horizontal padding (8) + pinned new-tab button (32) + the tab-bar
-//   left cluster (37).
-//   Left cluster: 28 (left toggle) + 8 (paddingRight) + 1 (borderRight) = 37.
-//   New-tab button footprint grew 26→32 in (item 6):
-//   newTabButtonStyle's margin went from "0 0 4px 2px" (2px total) to
-//   "0 4px" (8px total, L/R padding) when it was re-centered vertically
-//   instead of bottom-pinned — 24 (width) + 8 (margin) = 32.
-//   RESERVED itself stays a static constant — it does NOT include the
-//   right-cluster rail-reopen toggle (260721-cjt), because that toggle is
-//   CONDITIONAL (collapsed rail AND rightmost leaf only). Its width
-//   (RIGHT_CLUSTER, below) is subtracted dynamically inside the overflow
-//   measurement effect only when the toggle actually renders. The overflow
-//   dropdown trigger's width (OVERFLOW_BTN, below) is reserved separately —
-//   passed straight through to computeHiddenTabIds, which (as of,
-//   item 7) now subtracts it UNCONDITIONALLY, since the dropdown trigger
-//   itself is always rendered rather than only appearing on overflow.
+// Strip chrome never available to tabs: padding (8) + new-tab button (32) +
+// left cluster (37 = 28 toggle + 8 padding + 1 border).
+//
+// RESERVED is static and deliberately EXCLUDES the rail-reopen toggle, which is
+// conditional (collapsed rail, rightmost leaf) and subtracted dynamically in the
+// measurement effect. The overflow trigger is subtracted unconditionally, since
+// it always renders.
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 32 + LEFT_CLUSTER;
-// The overflow-dropdown trigger is a square 24x24 hit area
-// (TabOverflowDropdown.tsx's triggerButtonStyle) — it was 28x24. Keeping this
-// at 28 over-reserved 4px the trigger no longer occupies.
-// A "0 4px" L/R margin was later added to the trigger for vertical-centering
-// + padding (see TabOverflowDropdown.tsx's triggerButtonStyle comment),
-// growing its true horizontal footprint back to 32 (24 + 8 margin) — bumped
-// here too so this stays accurate (the same drift this constant exists to
-// prevent).
-// The trigger this reserves for is ALWAYS
-// rendered (not just on overflow) — computeHiddenTabIds subtracts this
-// unconditionally as a permanent reservation, not a conditional one.
+// 24x24 trigger + "0 4px" margin = 32. Must track
+// TabOverflowDropdown.triggerButtonStyle — drift here is exactly what this
+// constant exists to prevent.
 export const OVERFLOW_BTN = 32;
 // Right-cluster rail-reopen toggle width: 1 (borderLeft) + 8 (paddingLeft) +
 // 4 (flex gap) + 28 (button) — adapted from the pre-30-13 RightClusterToggle
@@ -123,26 +95,13 @@ export interface TabStripProps {
   style?: CSSProperties;
 }
 
-/** + button styled like SidebarToolbar's icon buttons; pinned at the strip's
- *  right edge (flexShrink:0) so it survives tab overflow. Square 24×24
- *  hit area + rounded hover background (NotesSortMenu.triggerButtonStyle
- *  treatment) — closes the owner's "no hover state" complaint.
+/** + button, pinned right (flexShrink:0) so it survives tab overflow.
  *
- *  The owner also wants L/R breathing room plus
- *  vertical centering in the tab-strip row, aligned on roughly the same axis
- *  as the left-rail/right-rail icon rows (ActivityRibbon / RightRailTabRow —
- *  both center a 16px glyph in a ~30x32px button). `alignSelf:"center"`
- *  overrides the strip's own `alignItems:"flex-end"` (tabStripStyle) so this
- *  button centers in the full 40px row instead of bottom-pinning against the
- *  40px-tall TabPills — this REVERSES the prior bottom-pin contract that
- *  co-centered this button with TabPill's close-× (see
- *  TabPill.tsx's closeButtonStyle comment; that × is now itself centered on
- *  the label instead). `marginLeft`/`marginRight` give the L/R padding the
- *  owner asked for. NOTE: exact cross-region pixel alignment with the rail
- *  icon axis is NOT guaranteed — the tab strip and the rails are different
- *  DOM regions with independent top offsets (same deferral ActivityRibbon's
- *  own comment documents); only the vertical-centering + padding
- *  ask is guaranteed here. */
+ *  `alignSelf:"center"` deliberately overrides the strip's own
+ *  `alignItems:"flex-end"`, centering in the full 40px row.
+ *
+ *  Pixel alignment with the rail icon axis is NOT guaranteed — the strip and
+ *  the rails are separate DOM regions with independent top offsets. */
 const newTabButtonStyle: CSSProperties = {
   width: 24,
   height: 24,
@@ -376,19 +335,10 @@ export function TabStrip({
   const foreignStripHover = usePaneDragStore((s) => s.stripHover);
   const foreignInsert = foreignStripHover?.leafId === leafId ? foreignStripHover : null;
 
-  // The left sidebar is collapsed from its own header (SidebarTabRow) and
-  // reopened via PaneCornerReopenButton — the tab strip no longer carries a
-  // redundant left-sidebar toggle (NAV-03; the mock shows a tab-bar left
-  // toggle only when the sidebar is closed, never when it's open).
-  //
-  // The right rail is DIFFERENT: while expanded, its own
-  // header owns the sole collapse control — the tab
-  // strip carries no toggle. But collapsing the rail now unmounts it
-  // entirely (0 width, flush editor) instead of leaving a collapsed strip,
-  // so the reopen affordance moves into the tab bar's right cluster —
-  // rendered ONLY when the rail is collapsed AND this strip belongs to the
-  // rightmost leaf (pre-order-last, mirrors isTopLeftLeaf's approximation
-  // for split layouts). Exactly one rail toggle is visible at any time.
+  // Collapsing the right rail unmounts it entirely, so the reopen affordance
+  // has to live here — rendered ONLY when the rail is collapsed AND this strip
+  // is the rightmost leaf. That conjunction is what keeps exactly one rail
+  // toggle visible at any time.
   const backlinksRailExpanded = useTreeStore((s) => s.backlinksRailExpanded);
   const setBacklinksRailExpanded = useTreeStore((s) => s.setBacklinksRailExpanded);
   const showRailToggle = !backlinksRailExpanded && isRightmostLeaf;
@@ -513,20 +463,14 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, [leafId]);
 
-  // Cross-pane drag tracking (WS-01/WS-02): once a drag is
-  // active, the strip's own onPointerMove/onPointerUp only fire while the
-  // cursor is physically over THIS strip's DOM subtree — as soon as it
-  // leaves (over another pane's body, another leaf's strip, or this leaf's
-  // own body outside the strip), no more React synthetic events reach us.
-  // These WINDOW-level listeners pick up the slack: pointermove keeps the
-  // reused ghost pill tracking the cursor and hit-tests
-  // `elementFromPoint` against `[data-droppane]` (LeafPane root) to publish
-  // the hovered region to usePaneDragStore; pointerup
-  // routes the drop. Native window listeners bubble AFTER React's delegated
-  // handlers reach the root container, so when a release lands back inside
-  // THIS strip, handleStripPointerUp already clears dragRef.current before
-  // this window handler runs — naturally preserving the in-strip reorder
-  // path (computeDropTarget) without any leaf-id bookkeeping here.
+  // Window-level listeners, because the strip's own React handlers stop firing
+  // the moment the cursor leaves its DOM subtree — which is every cross-pane
+  // drag.
+  //
+  // Native window listeners bubble AFTER React's delegated handlers, so a
+  // release back inside THIS strip has already cleared dragRef.current by the
+  // time this runs. That ordering is what preserves the in-strip reorder path
+  // with no leaf-id bookkeeping here.
   useEffect(() => {
     function handleWindowPointerMove(e: globalThis.PointerEvent) {
       const drag = dragRef.current;

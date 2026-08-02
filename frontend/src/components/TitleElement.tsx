@@ -1,32 +1,18 @@
 /**
- * TitleElement — Obsidian-style editable inline title (READ-01).
+ * TitleElement — the editable inline title (READ-01). A plain contentEditable
+ * div, NOT a second CodeMirror.
  *
- * A plain contentEditable <div> (NOT a second CodeMirror instance) that
- * reads/writes the note's H1 through the EXISTING rename binding. This
- * component never calls fetch/the notes API directly and never opens a
- * second doc-mutation channel — callers must route `onTitleChange` through
- * MarkdownEditor's ref (rewriteH1 -> setContent), which fires the existing
- * onH1Change + rename flow unchanged.
+ * It never calls the notes API and never opens a second doc-mutation channel:
+ * callers must route onTitleChange through MarkdownEditor's ref so the existing
+ * rename flow runs unchanged.
  *
- * Placeholder: when `title` is null/empty, the literal text "Untitled" is
- * rendered (muted color) so the empty state is visible without a note
- * before the user has typed anything. Clicking/focusing clears it; blurring
- * on an empty div restores it.
+ * Enter and ArrowDown hand off to the body, preserving column by PIXEL rather
+ * than character index — the title's much larger font would otherwise land at
+ * the wrong visual column.
  *
- * Focus: caret-only — no focus ring, no hover affordance. The title
- * reads as an ordinary line of the note, not a form field.
- *
- * Enter/ArrowDown: both hand off focus to the body, column-
- * preserving. Column preservation is pixel-based, not character-index — the
- * title's much larger font would otherwise land at the wrong visual column
- * Tab is unchanged (out of scope).
- *
- * ArrowDown crosses to the body ONLY when the caret is on the title's LAST
- * visual row — the title is `white-space: pre-wrap` and any long
- * enough note title wraps across multiple visual rows; hijacking every
- * ArrowDown regardless of row broke ordinary in-title downward navigation.
- * See caretOnLastVisualRow() below (delegates to isLastVisualRow from
- * titleBodyTraversal).
+ * ArrowDown crosses only from the title's LAST visual row. The title is
+ * pre-wrap, so a long title wraps, and hijacking every ArrowDown broke ordinary
+ * in-title navigation.
  */
 import { useEffect, useRef } from "react";
 
@@ -43,14 +29,9 @@ function measureCaretX(): number {
 }
 
 /**
- * Whether the collapsed caret sits on the title's LAST visual row. Falls
- * back to `true` (always treat as last row → cross, matching the prior
- * always-cross behavior) whenever real caret/line-box geometry isn't
- * available — no selection yet, jsdom's Range/getClientRects not
- * implementing real layout (zero-height rects), or any thrown error from
- * those DOM calls. This keeps unit tests without real text layout exercising
- * the handoff path; the real per-row gating is proven by the E2E suite
- * (phase31-title-traversal.spec.ts) against actual browser layout.
+ * Falls back to `true` (always cross) whenever real caret geometry is
+ * unavailable — no selection, or jsdom's zero-height rects. That keeps unit
+ * tests exercising the handoff; real per-row gating is proven in E2E.
  */
 function caretOnLastVisualRow(el: HTMLElement): boolean {
   const sel = window.getSelection();

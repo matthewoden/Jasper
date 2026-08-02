@@ -1,54 +1,19 @@
 /**
- * taskCheckboxPlugin — clickable, position-stable, accessible task checkboxes
- * that coexist with livePreviewPlugin's marker hiding.
+ * taskCheckboxPlugin — clickable task checkboxes that coexist with
+ * livePreviewPlugin's marker hiding.
  *
- * Architecture:
- *   - CheckboxToggleAnnotation  — marks toggle transactions for updateListener
- *   - ToggleCheckboxEffect      — carries absolute TaskMarker.from position
- *   - checkboxTransactionExtender — exported no-op shim (see note below)
- *   - CheckboxWidget (WidgetType) — renders lucide-style SVG checkbox (no native <input>)
- *   - taskCheckboxPlugin (ViewPlugin) — builds decorations + handles mousedown/keydown
- *     + dispatches the char-flip on ToggleCheckboxEffect
+ * The char flip is dispatched from ViewPlugin.update as a second transaction,
+ * because transactionExtender can only add effects and annotations, never
+ * document changes. checkboxTransactionExtender survives as a no-op shim so
+ * MarkdownEditor's extensions array need not change.
  *
- * Note on transactionExtender:
- *   `@codemirror/state`'s transactionExtender API (`Pick<TransactionSpec,
- *   "effects" | "annotations">`) cannot produce document changes — only
- *   effects and annotations. The actual char flip is therefore dispatched
- *   from ViewPlugin.update (two transactions: effect tx → char-flip tx).
- *   CheckboxToggleAnnotation is on the char-flip tx so the updateListener
- *   detects it correctly. `checkboxTransactionExtender` is exported as a
- *   no-op shim so MarkdownEditor.tsx doesn't need to change its extensions array.
+ * Reveal-on-cursor: caret on the line shows raw "- [ ] " text; off the line
+ * shows the widget. Mirrors wikilinkPlugin.
  *
- * Key decisions:
- *   - Reveal-on-cursor model: caret ON the task line → no widget emitted,
- *     raw "- [ ] " text is visible and editable. caret OFF the line → checkbox
- *     widget + bullet are rendered. Mirrors wikilinkPlugin.
- *   - Widget replace range covers ONLY the
- *     TaskMarker "[ ]" — [TaskMarker.from .. TaskMarker.to]. The leading "- " is
- *     left as normal list markup so livePreviewPlugin renders it as a bullet (•),
- *     and the TaskMarker's trailing space is left as a literal character so the
- *     gap before the text is preserved and the rendered width stays close to the
- *     raw "[ ] " (no horizontal jump when the line toggles to raw). The widget
- *     span is `3ch` wide — exactly the raw "[ ]" it replaces — with the icon
- *     centered inside. This gives the "• ☐ text" Obsidian-style layout.
- *     Corollary: Backspace atomicity only covers the small [ ] range, not the full
- *     "- [ ] " prefix — fixing the Backspace-deletes-whole-prefix bug.
- *   - Lucide-style SVG icons (user design decision): unchecked = Square (rounded rect),
- *     checked = SquareCheck (rounded rect + check path). Built via createElementNS,
- *     NOT via lucide-react imports (CM6 WidgetType produces plain DOM, not React).
- *     SVG path data extracted from lucide-react v0.460.0 source.
- *   - Uses Task/TaskMarker lezer nodes (GFM)
- *   - Strikethrough on text only; checkbox glyph stays visible
- *   - StateEffect dispatch — position resolved at transaction time
- *   - ignoreEvent() returns false so clicks reach eventHandlers
- *   - data-pos on the widget is always TaskMarker.from (the '[' position)
- *     so the char-flip dispatch targets the correct bracket regardless of range.
- *
- * Security: SVG built via createElementNS only (no innerHTML); data-pos
- * parsed with parseInt + isNaN guard; '[' bracket verified before char-flip.
- *
- * Extension array order: checkboxTransactionExtender → taskCheckboxPlugin
- *   → livePreviewPlugin
+ * The widget replaces ONLY the TaskMarker "[ ]", not the leading "- " — that
+ * stays real list markup so livePreviewPlugin still renders its bullet, and the
+ * trailing space stays literal so the text does not jump horizontally when the
+ * line toggles back to raw.
  */
 import {
   Decoration,

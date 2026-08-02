@@ -1,19 +1,14 @@
 /**
- * Shared app-wide tooltip system.
+ * Shared tooltip: one styled wrapper plus a single app-root TooltipProvider.
+ * The delay/skip-delay pair gives Obsidian's "short delay first, instant
+ * re-show while scanning" behavior through Radix's own semantics, with no
+ * custom timers.
  *
- * One shared token-styled Tooltip wrapper + a single app-root
- * TooltipProvider. delayDuration/skipDelayDuration give the Obsidian-style
- * "short delay first, instant re-show while scanning adjacent controls"
- * behavior via Radix's own built-in semantics — no custom timer logic.
+ * Default side is bottom; ActivityRibbon is the sole exception (right), since
+ * below would collide with the next ribbon icon.
  *
- * Default placement is `side="bottom"` everywhere (owner UAT: "tooltips
- * below the icon"); the far-left ActivityRibbon is the sole exception
- * (`side="right"`, since below would collide with the next ribbon icon).
- * `disableHoverableContent` + `pointerEvents: "none"` keep the tooltip a
- * pure hint — it dismisses the moment the pointer leaves the trigger and
- * never intercepts a click meant for the control underneath it. The
- * optional `content` prop is a rich-content escape hatch for callers that
- * need more than a label + shortcut (e.g. note-row date tooltips).
+ * disableHoverableContent + pointerEvents:none keep it a pure hint that never
+ * intercepts a click meant for the control underneath.
  */
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import type { CSSProperties, ReactNode } from "react";
@@ -55,26 +50,15 @@ const contentStyle: CSSProperties = {
   pointerEvents: "none",
 };
 
-// (bordered-caret fix): Radix's Arrow renders a single SVG
-// <polygon> (viewBox "0 0 30 10", non-uniform x/y scale via
-// preserveAspectRatio="none") flush against the Content edge it's anchored
-// to — the polygon's flat edge touches/overlaps the Content border exactly,
-// and its two slanted edges + apex are the visible "caret" poking out past
-// it. `fill`/`stroke`/`strokeWidth` are inheritable SVG presentation
-// properties, so setting them on the outer <svg> (this style prop) cascades
-// onto Radix's default polygon without needing a custom `asChild` shape.
-// `vectorEffect: "non-scaling-stroke"` is the key trick: it makes
-// strokeWidth resolve in real screen pixels rather than the 30x10 viewBox's
-// local units (which would otherwise render a near-invisible sliver once
-// scaled down to the 10x5 rendered box) — so this reliably draws a true 1px
-// line, matching the Content border's own 1px weight exactly. The polygon's
-// flat (hidden/overlapped) edge gets stroked too, but since it sits flush
-// against the Content border at the same color/width, it simply merges into
-// the seam rather than doubling it. `overflow: visible` on the <svg> stops
-// the UA default (`overflow: hidden` on root <svg>) from clipping the
-// outward half of the centered stroke. Same rule works unmodified for both
-// side="bottom" (most controls) and side="right" (ribbon) since it's driven
-// by Radix's own per-side Arrow rotation, not any bespoke per-side math.
+// fill/stroke/strokeWidth are inheritable SVG presentation properties, so
+// setting them here cascades onto Radix's default Arrow polygon without needing
+// a custom asChild shape.
+//
+// vectorEffect:"non-scaling-stroke" is the load-bearing bit — it resolves
+// strokeWidth in screen pixels rather than the 30x10 viewBox's units, which
+// would render a near-invisible sliver once scaled to the 10x5 box.
+//
+// overflow:visible stops the UA default clipping the outward half of the stroke.
 const arrowStyle: CSSProperties = {
   fill: "var(--color-surface)",
   stroke: "var(--color-border)",

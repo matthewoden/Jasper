@@ -1,78 +1,29 @@
 /**
- * firstH1HidePlugin — CM6 extension that visually hides the document's
- * FIRST ATX H1 line (the doc's title, now rendered above the editor by
- * TitleElement — READ-01).
+ * firstH1HidePlugin — visually hides the document's FIRST ATX H1, which
+ * TitleElement renders above the editor instead (READ-01).
  *
- * Scoped to `ATXHeading1` only — underline-style ("Setext") H1 nodes are
- * deliberately NOT matched: TitleElement, onH1Change, and h1Extract.ts all
- * detect ATX-only H1s (`/^# (.+)$/m`, `trimmed.startsWith("# ")`); hiding
- * an underline-style H1 the title element can't read/write would strand
- * the user with an invisible, uneditable heading.
+ * ATX only. Setext ("underline") H1s are deliberately not matched: TitleElement,
+ * onH1Change and h1Extract all detect ATX only, so hiding one they cannot
+ * read or write would strand the user with an invisible, uneditable heading.
  *
- * Block decorations must come from a StateField, not a ViewPlugin (CM6
- * constraint: "Block decorations may not be specified via plugins").
+ * Block decorations must come from a StateField, not a ViewPlugin — a CM6
+ * constraint.
  *
- * The replace range spans THROUGH the line's own trailing newline (ending
- * at the START of the next line, not at the H1 node's own `.to`). Three
- * approaches were tried, in order, each discovered via a real UAT bug:
+ * Two things here are load-bearing and look removable:
  *
- * 1. A bare `Decoration.replace({block: true})` over just the H1 NODE's own
- *    range (node.from..node.to, EXCLUDING its trailing newline) hides the
- *    TEXT but the line's own `.cm-line` row still renders at normal
- *    line-height in a real browser — CM6 only collapses a replaced range to
- *    zero height when it spans a COMPLETE line including its own newline
- *    (as frontmatterHidePlugin's block already does, spanning multiple full
- *    lines); a partial-line replace leaves an empty-but-normal-height row
- *    behind. That phantom row appears whenever the H1 is followed by a
- *    blank line — which is BOTH the default new-note scaffold
- *    (NewNoteContent) and the ordinary title-blank-line-body convention —
- *    and is indistinguishable from real blank body space while remaining
- *    fully mouse/caret-accessible, breaking the ArrowUp title-crossing
- *    keymap's `curLine.number !== target.number` guard (titleBodyTraversal.ts).
- * 2. A `Decoration.line({class: ...})` styled `display: none` DOES collapse
- *    height correctly in isolation, but silently fails to apply AT ALL
- *    (confirmed via jsdom + real-browser repro) whenever the decorated
- *    line's `.from` position is EXACTLY where frontmatterHidePlugin's own
- *    block-replace decoration ends (i.e. the H1 immediately follows the
- *    frontmatter with no blank line between them — also a common shape).
- *    CM6 does not combine a zero-length line decoration positioned exactly
- *    at another source's block-replace boundary reliably.
- * 3. A `Decoration.replace({widget, block: true})` — mirroring
- *    frontmatterHidePlugin's own FrontmatterEmptyWidget pattern exactly —
- *    DOES collapse height correctly AND combines fine with frontmatter's own
- *    decorations, BUT it corrupts live typing: while the user is actively
- *    typing INTO the still-being-recognized H1 line (e.g. immediately after
- *    a select-all+retype), the widget-based replace decoration + this same
- *    range marked atomic (firstH1AtomicRanges) causes CM6's DOM/state
- *    reconciliation for the in-progress edit to desync from its own model —
- *    the rendered DOM shows the freshly typed heading as a normal (unhidden)
- *    line while `view.state.doc` silently keeps the note's ORIGINAL
- *    pre-edit content. onH1Change / the tree's live label then never fires
- *    for the real edit (phase3-uat.spec.ts Scenario G, phase5_5-uat.spec.ts
- *    the H1-rename case). Confirmed via isolated
- *    real-browser repro: removing ONLY the widget — keeping the
- *    newline-extended range AND firstH1AtomicRanges exactly as coded for the
- *    ArrowUp fix below — resolves the corruption; the widget itself, not the
- *    range extension or the atomic marking, was the culprit (a second
- *    WidgetType-based block-replace instance alongside frontmatter's own,
- *    both recomputed on every keystroke, is what CM6's view/state
- *    reconciliation cannot handle reliably here).
+ * - The replace range extends THROUGH the trailing newline. CM6 only collapses
+ *   a replaced range to zero height when it spans a complete line; stopping at
+ *   the node's own `.to` leaves an empty-but-normal-height phantom row.
+ * - It is a WIDGET-LESS block replace. Adding a widget (mirroring
+ *   frontmatterHidePlugin's) collapses height correctly but corrupts live
+ *   typing: a second WidgetType block-replace recomputed every keystroke
+ *   desyncs CM6's DOM from `view.state.doc`, so the rendered heading updates
+ *   while the document silently keeps its pre-edit content and onH1Change
+ *   never fires.
  *
- * The fix used here is #1's bare `Decoration.replace({block: true})` (no
- * widget — CM6 supplies its own zero-height placeholder DOM node for a
- * widget-less block replace) extended through the trailing newline like
- * frontmatter's own multi-line collapse (avoiding failure mode 1), plus
- * firstH1AtomicRanges (below) for the ArrowUp fix — without introducing a
- * second WidgetType instance alongside frontmatter's own (avoiding failure
- * mode 3). A widget-less block replace renders NO `.cm-line` for the hidden
- * range at all (it is fully consumed by the replace) — so there is no DOM
- * node left to attach a CSS class to; `findFirstH1HideRange` below exposes
- * the exact [from, to) range the state-level decoration covers so
- * test/introspection code can assert against the model directly instead.
- *
- * Adding this does NOT affect outlineExtract.ts: the syntax tree is
- * derived from the document's TEXT, never from rendered decorations, so
- * the heading node stays fully visible to tree-walking code either way.
+ * A widget-less replace renders no `.cm-line` at all, so there is no DOM node
+ * to hang a class on — findFirstH1HideRange exposes the range for tests to
+ * assert against the model instead.
  */
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { EditorState, StateField, RangeSetBuilder } from "@codemirror/state";
@@ -135,60 +86,28 @@ const firstH1DecoField = StateField.define<{ decos: DecorationSet }>({
 });
 
 /**
- * firstH1AtomicRanges — the hidden H1's replaced range (including its
- * trailing newline) is atomic so mouse clicks (posAtCoords) and keyboard
- * vertical/horizontal motion can never park the caret strictly inside it —
- * mirrors frontmatterHidePlugin's frontmatterAtomicRanges. Without this, a
- * click landing where the hidden H1 line used to be could still resolve to
- * a position inside it, one document line away from
- * firstVisibleBodyLine()'s target — the actual root cause of the
- * ArrowUp-doesn't-reach-title bug.
+ * firstH1AtomicRanges keeps the caret from parking inside the hidden range.
+ * Without it a click where the H1 used to be resolves one document line away
+ * from firstVisibleBodyLine()'s target, and ArrowUp never reaches the title.
  */
 const firstH1AtomicRanges = EditorView.atomicRanges.of(
   (view) => view.state.field(firstH1DecoField).decos,
 );
 
 /**
- * firstH1SelectionClamp — mirrors frontmatterHidePlugin.ts's own
- * frontmatterSelectionClamp, but keyed off firstVisibleBodyLine()
- * (titleBodyTraversal.ts) rather than this H1's own boundary alone: that
- * helper already computes the boundary past BOTH hidden regions (frontmatter
- * + this hidden H1) plus the CM6 "merge line" rendering artifact documented
- * at the top of this file (an immediately-following blank line gets folded
- * into the H1's own hidden block and never renders its own `.cm-line`).
- * firstH1AtomicRanges only guards INCREMENTAL cursor motion (arrow keys,
- * word-jumps) — an absolute selection set directly (a mouse click via
- * posAtCoords, or a programmatic jump) can still resolve inside the
- * collapsed preamble. Clicking in the visual gap between the title and body
- * is exactly this case: the click Y-coordinate falls above the first
- * rendered line, and CM6 resolves it to a position in the collapsed region
- * rather than onto the first VISIBLE line — this is the root cause of the
- * "Delete/Backspace does nothing after clicking the gap" bug.
- * Clamp any selection that falls ENTIRELY before the boundary out
- * to the boundary itself; selections that extend past it (select-all) pass
- * through untouched, matching frontmatterSelectionClamp's contract exactly.
+ * firstH1SelectionClamp catches what firstH1AtomicRanges cannot: atomic ranges
+ * only guard INCREMENTAL motion, so an absolute selection — a click via
+ * posAtCoords, a programmatic jump — still resolves inside the collapsed
+ * preamble. Clicking the visual gap above the first rendered line is exactly
+ * that, and is why Delete/Backspace appeared to do nothing there.
  *
- * GATE: mirrors
- * frontmatterSelectionClamp's own `if (!hidden) return tr` fast-gate — a doc
- * with NO first H1 at all must leave this filter completely inert.
- * firstVisibleBodyLine() falls back to `frontmatterBoundary(state) ?? 0`
- * when there is no H1, which is a perfectly valid boundary for OTHER
- * purposes (titleBodyTraversal.ts's ArrowUp handoff) but is the WRONG
- * boundary for this clamp specifically: for a note with frontmatter-only (or
- * no hidden regions at all) followed by a real blank line, that blank line
- * can land EXACTLY on firstVisibleBodyLine()'s "resolved line is exhausted,
- * skip to the next one" merge-line adjustment (intended ONLY for the
- * emergent CM6 rendering merge between a hide decoration and an immediately
- * following zero-length line) even though nothing is actually hidden there —
- * silently eating a real, user-authored blank line and shifting every
- * subsequent selection one line forward. Confirmed via a real Playwright
- * regression: a note with NO H1 (`"- [ ] Task to indent\n"`, backend-injected
- * frontmatter only) had Control+Home clamped past its own real blank line
- * onto the task line, and Tab/Shift-Tab then indented/de-indented the WRONG
- * position, corrupting the saved content. Without a first H1 present,
- * frontmatterSelectionClamp (frontmatterHidePlugin.ts) already owns the
- * frontmatter-only boundary correctly (via frontmatterBoundary() alone, with
- * no merge-line skip) — this filter has nothing left to guard.
+ * Selections extending PAST the boundary (select-all) pass through untouched.
+ *
+ * The no-H1 fast-gate is required, not defensive. firstVisibleBodyLine() falls
+ * back to the frontmatter boundary, whose merge-line skip then eats a real
+ * user-authored blank line and shifts every later selection forward — observed
+ * corrupting saved content via Control+Home on a note with no H1. With no H1,
+ * frontmatterSelectionClamp already owns that boundary correctly.
  */
 const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
   if (!tr.selection) return tr;
@@ -201,40 +120,16 @@ const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
 });
 
 /**
- * guardHiddenFirstH1Delete — Backspace/Delete guard mirroring
- * frontmatterHidePlugin.ts's guardHiddenFrontmatterDelete, but keyed off the
- * SAME combined firstVisibleBodyLine() boundary firstH1SelectionClamp uses
- * above (frontmatter + hidden H1 + merge lines) rather than this H1's own
- * range alone. With firstH1SelectionClamp in place the caret always lands
- * EXACTLY at that boundary after a gap-click, never strictly inside the
- * hidden H1 — but CM6's delete commands still consume an atomic range WHOLE
- * when a Backspace/Delete's naive motion would land inside one: a Backspace
- * at the boundary would otherwise delete the entire hidden H1 (erasing the
- * title); a Delete or selection reaching back into the collapsed preamble
- * would do the same. Backspace at body-start is a GUARDED NO-OP, not a
- * cross-to-title (ArrowUp, titleBodyTraversal.ts, already owns that
- * gesture) — so this guard only ever blocks, never redirects.
+ * guardHiddenFirstH1Delete blocks a Backspace/Delete that would consume the
+ * hidden H1 whole — CM6's delete commands swallow an atomic range entirely when
+ * naive motion would land inside one, which would erase the title. It only ever
+ * blocks; ArrowUp (titleBodyTraversal.ts) owns crossing to the title.
  *
- * EXTENDS-PAST CARVE-OUT: a
- * non-empty selection whose far edge (`.to`) reaches AT OR PAST the
- * boundary is a legitimate broader edit — e.g. Cmd/Ctrl-A "select all" on a
- * note whose first REAL DOM-selectable position (native browser selection
- * can't land inside a hidden, zero-DOM block-replace decoration) is the
- * combined boundary's own near edge — and must be allowed through even
- * though `.from` is technically "before" the boundary, mirroring
- * firstH1SelectionClamp's own existing "extends past it (select-all) pass
- * through untouched" contract. Without this carve-out, a real-browser
- * select-all + Delete on any note whose first H1 is followed by more
- * heading-shaped body content (confirmed via the default scratchpad note:
- * frontmatter + blank + H1 + blank + a body line starting with `# `) had
- * its Delete SILENTLY SWALLOWED entirely (guard saw `main.from < boundary`
- * and blocked, since the combined boundary skips past the merge-adjacent
- * blank line to the NEXT real content line) — leaving the full original
- * document selected, so the next typed character replaced the ENTIRE
- * selection (title included) instead of only the intended body text,
- * silently eating the first character of the retype in the process. Only a
- * `!main.empty` selection can trigger this — a collapsed caret always has
- * `main.to === main.from` and is unaffected.
+ * The extends-past carve-out is not optional: a non-empty selection reaching at
+ * or past the boundary is a legitimate broader edit. Without it, select-all +
+ * Delete was silently swallowed on any note whose H1 is followed by more
+ * heading-shaped content, leaving everything selected so the next keystroke
+ * replaced the whole document, title included.
  */
 function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
   if (!findFirstH1Range(view.state)) return false;

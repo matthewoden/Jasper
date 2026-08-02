@@ -38,17 +38,11 @@ export interface OverflowInput {
 }
 
 /**
- * Decide which tabIds must collapse into the overflow dropdown.
+ * Which tabIds collapse into the overflow dropdown. Deterministic, no layout.
  *
- * Deterministic, no layout:
- *   1. availableWidth <= 0 → empty Set (jsdom / pre-layout escape hatch).
- *   2. Subtract the ALWAYS-reserved dropdown-trigger width (item 7) up front;
- *      if usableWidth <= 0 → empty Set.
- *   3. If every tab fits at minTabWidth within usableWidth → empty Set.
- *   4. Overflow: keep the first `visibleCount` tabs. If the active tab falls
- *      outside that window, evict the last kept tab to keep the active one
- *      visible (active is never hidden).
- *   5. Everything not kept is hidden.
+ * The dropdown trigger's width is reserved unconditionally — it always renders.
+ * The active tab is never hidden: if it falls outside the visible window, the
+ * last kept tab is evicted instead.
  */
 export function computeHiddenTabIds(input: OverflowInput): Set<string> {
   const { tabIds, activeTabId, availableWidth, minTabWidth, overflowButtonWidth } =
@@ -89,14 +83,11 @@ export interface DropIndexInput {
 }
 
 /**
- * Map a drop onto the VISIBLE tab strip to a full-array insert index.
+ * Maps a drop on the VISIBLE strip to a full-array insert index.
  *
- * Hidden (overflowed) tabs can be interleaved between visible ones, so the
- * naive `tabIds.findIndex(t => t.id === targetId)` spans those hidden tabs
- * and diverges from where the drop indicator promised the tab would land.
- * Instead, anchor on the VISIBLE tab immediately before the target: the
- * insert index is that tab's full-array position + 1 (or 0 if the target is
- * the first visible tab / there is no previous visible tab).
+ * A naive findIndex spans the interleaved hidden tabs and lands somewhere other
+ * than where the drop indicator promised. Anchor on the previous VISIBLE tab's
+ * full-array position instead.
  */
 export function computeDropIndex(input: DropIndexInput): number {
   const { tabIds, visibleTabIds, targetId } = input;
@@ -117,17 +108,14 @@ export function computeDropIndex(input: DropIndexInput): number {
 }
 
 /**
- * clampIndexToPinnedBoundary — enforces the pinned/unpinned region boundary
- * on any computed insertion index (drag drop-index, foreign-strip
- * insert, or "New note to the right"). `pinnedCount` is the number of OTHER
- * pinned tabs already in the TARGET leaf — i.e. NOT counting the tab being
- * moved, whether or not it is currently a member of that leaf. Under that
- * convention the boundary is symmetric: a pinned mover must land at or before
- * the boundary (`<= pinnedCount`, becoming the newest last-pinned tab), and
- * an unpinned mover must land at or after it (`>= pinnedCount`) — an unpinned
- * tab can never land inside the pinned region, and a pinned tab can never
- * land outside it. A sentinel `-1` (no valid drop target) passes through
- * unchanged — clamping only applies to a real index.
+ * Enforces the pinned/unpinned boundary on any computed insertion index.
+ *
+ * `pinnedCount` counts OTHER pinned tabs in the target — not the mover, whether
+ * or not it already lives there. That convention makes the clamp symmetric: a
+ * pinned mover lands at or before the boundary, an unpinned one at or after, so
+ * neither can cross into the other's region.
+ *
+ * A `-1` sentinel (no drop target) passes through unchanged.
  */
 export function clampIndexToPinnedBoundary(
   index: number,

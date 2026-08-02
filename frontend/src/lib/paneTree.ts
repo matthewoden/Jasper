@@ -1,20 +1,13 @@
 /**
- * paneTree — pure, React/Zustand-free operations on the recursive split-pane
- * layout tree (WS-04).
+ * paneTree — pure operations on the split-pane layout tree (WS-04). Every op
+ * returns a NEW tree; nothing mutates in place.
  *
- * Naming mirrors the design source for continuity between design and
- * implementation: `splitPane` / `_updLeaf` / `_removeLeaf` / `_findLeaf` /
- * `_leaves`.
+ * Tab id is deliberately decoupled from noteId — use newTabId(), never
+ * `id = noteId`, so the same note can be open as independent tabs in different
+ * leaves without colliding.
  *
- * Every op returns a NEW tree (immutable-in, immutable-out) — no in-place
- * mutation, matching how `useTabStore.ts`'s array ops already build new arrays.
- *
- * Tab id is intentionally decoupled from noteId: use `newTabId()`, never
- * `id = noteId`. This lets the same note appear as independent tabs across
- * different leaves without an id collision.
- *
- * `_removeLeaf` on the last remaining leaf returns a single empty default leaf,
- * never null — the final-pane-never-collapses invariant.
+ * `_removeLeaf` on the last leaf returns an empty default leaf, never null:
+ * the final pane never collapses.
  */
 import type { Tab } from "./useTabStore";
 
@@ -59,19 +52,12 @@ export function newLeaf(id: string, tabs: Tab[] = [], active: string | null = nu
 }
 
 /**
- * Splits the leaf identified by `leafId` into a split node with two leaves:
- * the original leaf (unchanged, becomes `a`) and a fresh sibling leaf (`b`).
- * When `cloneActiveTab` is true and the target leaf has an active tab, the
- * sibling starts with a clone of that tab under a NEW tab id (same noteId,
- * distinct tab id) so it is independently closable. When the target leaf has
- * no active tab (the empty-pane state), cloning is a no-op — the sibling
- * starts empty, with no phantom tab.
+ * Splits `leafId` in two: the original becomes `a`, a fresh sibling `b`.
  *
- * Honors the EXPLICIT `dir` argument unconditionally, regardless of any
- * ancestor split's direction —
- * nesting falls out of `_findLeaf` + replacement with no special-casing.
+ * A cloned tab gets a NEW tab id so it stays independently closable. An
+ * empty target clones nothing rather than producing a phantom tab.
  *
- * Returns the tree unchanged if `leafId` is not found.
+ * `dir` is honored unconditionally, regardless of any ancestor's direction.
  */
 export function splitPane(
   tree: PaneNode,
@@ -154,14 +140,10 @@ export function _removeLeaf(tree: PaneNode, leafId: string): PaneNode {
 }
 
 /**
- * Splits the leaf identified by `targetLeafId` into a split node, with the
- * dragged `tab` (MOVED, not cloned — caller removes it from the source leaf)
- * landing in a fresh sibling leaf. `placement` controls which side the new
- * sibling occupies: "first" -> `a`, "second" -> `b` (drop-zone geometry:
- * left/top -> first, right/bottom -> second).
+ * Splits `targetLeafId`, landing the dragged tab in the new sibling. The tab is
+ * MOVED, not cloned — the caller removes it from the source leaf.
  *
- * Honors the explicit `dir` argument unconditionally, same as `splitPane`.
- * Returns the tree unchanged if `targetLeafId` is not found.
+ * `placement` maps drop-zone geometry: left/top -> `a`, right/bottom -> `b`.
  */
 export function splitWithTab(
   tree: PaneNode,
@@ -186,14 +168,11 @@ export function splitWithTab(
 }
 
 /**
- * Appends `tab` to the target leaf's tabs and activates it. Per-leaf dedup
- * if the target leaf already holds a tab with the same `noteId`,
- * activates that existing tab instead of adding a duplicate. A PINNED `tab`
- * does not append past the leaf's unpinned tabs — it lands at the end
- * of the target leaf's own pinned group instead, so a cross-pane center-drop
- * of a pinned tab never breaks the left-grouped invariant.
+ * Appends `tab` and activates it, or activates an existing same-noteId tab
+ * rather than duplicating it.
  *
- * Returns the tree unchanged if `targetLeafId` is not found.
+ * A pinned tab lands at the end of the target's pinned group, not past the
+ * unpinned ones — otherwise a cross-pane drop breaks the left-grouped invariant.
  */
 export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNode {
   const leaf = _findLeaf(tree, targetLeafId);
@@ -211,14 +190,8 @@ export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNod
 }
 
 /**
- * Inserts `tab` at `insertIndex` (clamped to [0, tabs.length]) in the target
- * leaf's tabs and activates it — the positional counterpart to `moveTab`'s
- * append-only insert, used by TabStrip's foreign-strip drop (Obsidian
- * parity: dropping onto a specific pill position lands there, not at the
- * end). Per-leaf dedup still applies: an existing same-noteId tab is
- * activated in place rather than duplicated.
- *
- * Returns the tree unchanged if `targetLeafId` is not found.
+ * Positional counterpart to moveTab's append: dropping onto a specific pill
+ * position lands there, matching Obsidian. Same-noteId dedup still applies.
  */
 export function moveTabToIndex(
   tree: PaneNode,
@@ -279,14 +252,14 @@ export function depthAtLeaf(tree: PaneNode, leafId: string): number {
 }
 
 /**
- * Flips a tab's `pinned` flag and repositions it to the pinned/unpinned
- * boundary so pinned tabs stay auto-grouped at the left of the strip
- * regardless of where the toggle was invoked from. Both directions land at
- * the SAME index — the count of the tab's new sibling group (other pinned
- * tabs when pinning, i.e. the tab becomes the last pinned tab; other pinned
- * tabs when unpinning too, since that index is exactly where the unpinned
- * group begins). Returns `tabs` unchanged (same reference) if `tabId` is not
- * found, so callers can cheaply detect a no-op.
+ * Flips `pinned` and repositions to the pinned/unpinned boundary, keeping
+ * pinned tabs grouped left.
+ *
+ * Both directions land at the SAME index — the count of other pinned tabs is
+ * where the pinned group ends and the unpinned group begins.
+ *
+ * Returns the same reference when `tabId` is absent, so callers can detect a
+ * no-op cheaply.
  */
 export function togglePinInTabs(tabs: Tab[], tabId: string): Tab[] {
   const idx = tabs.findIndex((t) => t.id === tabId);

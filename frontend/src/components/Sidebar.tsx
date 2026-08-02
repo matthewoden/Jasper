@@ -1,36 +1,15 @@
 /**
- * Sidebar — layout shell: floating card with a 40px header hosting the
- * SidebarTabRow (Notes/Search/Bookmarks icon tabs + collapse control), below
- * which one of FileTree / SidebarSearchPanel / BookmarksPanel renders
- * (NAV-01/NAV-03).
+ * Sidebar — a 40px header hosting SidebarTabRow, over one of FileTree /
+ * SidebarSearchPanel / BookmarksPanel (NAV-01/NAV-03).
  *
- * Structure:
- *   <nav width=sidebarWidth>
- *     <card>
- *       <header><SidebarTabRow /></header>   (40px, shared chrome — same header for every panel)
- *       {sidebarPanel === "notes" ? <SidebarToolbar/> + <FileTree/> : sidebarPanel === "search" ? <SidebarSearchPanel/> : <BookmarksPanel/>}   (flex: 1; scrolls)
- *     </card>
- *     <SidebarResizeHandle />  (outside card — overlays the column boundary)
- *   </nav>
+ * The header is shared chrome and does NOT swap when the panel switches; only
+ * the area below it does.
  *
- * The 40px header is shared chrome — it does NOT swap when the panel
- * switches; only the area below it does. `sidebarPanel` is driven by
- * SidebarTabRow's tab clicks and Cmd+Shift+F. This panel complements — never
- * replaces — the existing Cmd+P/Cmd+Shift+F CommandMenu palette, which still
- * exists as a second, faster entry point into search.
+ * SidebarToolbar sits inside the Notes panel rather than the shared header —
+ * it is note-scoped chrome, and the header has no room once the tab row and
+ * collapse control occupy it.
  *
- * SidebarToolbar (New note / New folder) moved from the shared header down
- * to the Notes panel's own top edge — it is note-scoped chrome, not global,
- * and the shared header no longer has room for it once the tab row + collapse
- * control occupy it.
- *
- * Toolbar wiring:
- *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
- *     where parent comes from useTreeStore.selectedRow via parentPathForCreate().
- *     Folder ⇒ create inside; note ⇒ create in its parent folder; none ⇒ root ("").
- *     The new node immediately enters inline-rename mode.
- *   - isCreating (from useTreeCreateActions) threads through to SidebarToolbar
- *     to visibly disable the buttons while a create is in flight.
+ * This panel complements, never replaces, the Cmd+P palette.
  */
 import { useCallback } from "react";
 import type React from "react";

@@ -1,28 +1,14 @@
 /**
- * TreeRowMenu — two trigger variants sharing the same content body:
- *   - TreeRowContextMenu: Radix ContextMenu (right-click)
- *   - TreeRowDropdownMenu: Radix DropdownMenu (kebab click)
+ * TreeRowMenu — one content body behind two Radix triggers: ContextMenu
+ * (right-click) and DropdownMenu (kebab). The primitives differ, so Item and
+ * Separator arrive as props.
  *
- * MenuItems branches on rowKind; Item / Separator differ per primitive so they
- * are passed as ItemComp / SepComp props.
+ * Item sets are LOCKED per rowKind. Bookmark rows never offer rename, MCP-grant,
+ * reveal or delete-note.
  *
- * Item set (locked):
- *   note       → Open · Open in split · sep · New note · sep · Bookmark
- *                (Remove bookmark) · sep · Rename(F2) · Delete(⌫)
- *   folder     → New note · New folder · sep · Rename(F2) · Delete(⌫)
- *   empty-area → New note · New folder
- *   file       → Rename(F2) · Delete(⌫)  (files can't host children; click opens preview)
- *   bookmark   → Remove (destructive) · Move to folder (submenu: (No folder) ·
- *                existing folders · sep · New folder…) — NEVER rename, MCP-grant,
- *                reveal, or delete-note (quick task 260719-jv1, item 5).
- *
- * Bulk variant (CTX-02): when `selectionCount` (a prop independent of
- * rowKind) is > 1, MenuItems renders a COMPLETELY different body — Open
- * ({N} tabs) · Open in split · sep · Bookmark {N} notes · sep · Delete
- * {N} notes — and every single-target item above is hidden entirely (not
- * disabled). Callers read the live selection at menu-open time (not
- * row-render time — see TreeRow.tsx's onOpenChange wiring) so a stale
- * selectionCount never leaks into an already-open menu.
+ * With selectionCount > 1 the body is replaced wholesale by the bulk item set —
+ * single-target items are hidden, not disabled. Callers read the live selection
+ * at menu-OPEN time so a stale count cannot leak into an open menu.
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -283,26 +269,11 @@ function MenuItems({
     ) : null;
 
   if (selectionCount !== undefined && selectionCount > 1) {
-    // Bulk-selection variant — completely replaces the rowKind-
-    // specific body; single-target items (Rename, Show in file manager)
-    // are hidden entirely, not disabled.
-    //
-    // event.stopPropagation() is required on BOTH onClick and onSelect here
-    // (bulkItemHandlers below) — this is stronger than the pre-existing
-    // "New note"/"New folder" defense (onSelect only),
-    // because that defense turned out to be insufficient in a real browser
-    // for THIS interaction: Radix's onSelect fires from an internal
-    // custom-event dispatch, not the originating click, so calling
-    // stopPropagation() only there does not stop the real click's SEPARATE
-    // React-synthetic bubble path. Radix composes any consumer-supplied
-    // onClick with its own internal click handling (consumer's onClick
-    // runs first), so stopping propagation THERE reliably prevents the
-    // click from reaching react-arborist's DefaultRow wrapper one level up
-    // (`onClick={node.handleClick}` → `node.select()`), which would
-    // otherwise collapse the live multi-selection down to just the row the
-    // context menu was opened on — silently truncating every bulk action
-    // to N=1 between menu-open and the actual mutation. Verified against
-    // the real-browser regression this fixes, not just JSDOM.
+    // stopPropagation is needed on BOTH onClick and onSelect. onSelect alone is
+    // not enough: Radix fires it from an internal custom-event dispatch, so the
+    // real click still bubbles separately to react-arborist's DefaultRow, whose
+    // node.select() collapses the multi-selection to the clicked row — silently
+    // truncating every bulk action to N=1. JSDOM does not reproduce it.
     const bulkItemHandlers = (
       onSelectHandler?: () => void,
     ): { onClick: (e: MouseEvent) => void; onSelect: (e: Event) => void } => ({

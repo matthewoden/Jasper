@@ -1,20 +1,13 @@
 /**
- * noteBufferController — per-note module singleton owning content, save
- * state, debounce, coalesced flush, and WebSocket reconciliation.
+ * noteBufferController — one per note, owning content, save state, debounce,
+ * coalesced flush and WS reconciliation.
  *
- * Lifted out of EditorPane: before this module existed, every
- * mounted pane showing the same note owned its OWN copy of this state, so
- * two panes on one note could each run their own debounce/save cycle and
- * each reconcile the same note:updated event independently — a structural
- * divergence risk (WS-10). getOrCreateController(noteId) now guarantees
- * exactly one debounce timer, one save-state machine, and one WS
- * reconciliation path per open note, no matter how many panes show it.
+ * Before this existed each pane held its own copy, so two panes on one note ran
+ * competing debounce/save cycles and reconciled the same note:updated event
+ * independently (WS-10). getOrCreateController guarantees one of each per note.
  *
- * This module is intentionally React-free (no hooks, no component state) so
- * it can be driven from anywhere — a pane's effect, a WS dispatch loop, or a
- * unit test — without a React tree mounted. Consumers (EditorPane, Plan 05)
- * are expected to bridge this via subscribe()/getSaveState() through
- * something like useSyncExternalStore.
+ * Deliberately React-free so it can be driven from an effect, a WS dispatch
+ * loop, or a bare unit test. Bridge it with useSyncExternalStore.
  */
 
 import { extractH1FromContent, sanitizeH1ForFilename } from "./h1Extract";
@@ -78,14 +71,12 @@ export interface NoteBufferController {
    */
   subscribeRenamed(fn: (newPath: string) => void): () => void;
   /**
-   * Fired when onNoteUpdated silently adopts fresh server content (no local
-   * edits pending). MarkdownEditor is uncontrolled — the CM6 view only ever
-   * shows a NEW document via the editorRef.applyServerUpdate imperative
-   * call, never by reacting to a content prop change — so Plan 05's
-   * EditorPane call-site uses this to push the silently-adopted content into
-   * its own CM6 ref. NOT fired for hydrate()/edits: those call sites already
-   * control the applyServerUpdate call directly, in the same synchronous
-   * block as the state change.
+   * Fires when onNoteUpdated silently adopts server content. MarkdownEditor is
+   * uncontrolled — CM6 only shows a new document via applyServerUpdate, never
+   * by reacting to a prop — so the call site must push it in.
+   *
+   * NOT fired for hydrate or edits: those already call applyServerUpdate in the
+   * same synchronous block.
    */
   subscribeContentReplaced(fn: (content: string) => void): () => void;
   handleEditorChange(next: string): void;
@@ -95,23 +86,13 @@ export interface NoteBufferController {
   onNoteUpdated(p: WSNoteUpdatedPayload): void;
   onNoteDeleted(p: WSNoteDeletedPayload): void;
   /**
-   * Registers a predicate checked at the START of every save attempt —
-   * debounced, flush()-triggered, or reconnect-triggered alike — one choke
-   * point rather than duplicated per call site. Returning false makes the
-   * attempt a silent, state-unchanged no-op (matching the pre-Plan-04
-   * EditorPane.performSave's reindexing/connectionStatus early-returns).
-   * This module stays React-free (see file header); Plan 05's EditorPane
-   * call-site supplies the actual reindexing/connectionStatus check here,
-   * reading its own refs so the predicate always sees CURRENT values.
+   * One choke point for every save attempt — debounced, flushed or
+   * reconnect-triggered. Returning false is a silent, state-unchanged no-op.
    *
-   * Multi-owner: every EditorPane showing this
-   * note registers its OWN gate here (tracked in a Set); a save proceeds
-   * only when ALL registered gates pass. Returns an unregister function
-   * that removes ONLY this caller's gate — call it from the registering
-   * pane's effect cleanup. A single-slot `setSaveGate(null)`-style clear
-   * would let one of several panes on the same note null out the shared
-   * gate on its own unmount, silently bypassing the reindexing/disconnected
-   * guard for the surviving pane(s).
+   * Multi-owner by design: each pane registers its OWN gate and a save needs
+   * ALL of them. The returned unregister removes only that caller's. A
+   * single-slot setter would let one pane's unmount null out the shared gate
+   * and silently bypass the guard for the survivors.
    */
   setSaveGate(gate: () => boolean): () => void;
   /**
@@ -159,15 +140,10 @@ export interface NoteBufferController {
   setDeleted(d: DeletedState | null): void;
   setH1RenameError(msg: string | null): void;
   /**
-   * Updates the path used as the H1-rename comparator's "current" side,
-   * WITHOUT touching content/saveState/conflict. EditorPane's own live-tree
-   * sync effect (Plan 05, mirroring the pre-Plan-04 lastNotePath-from-tree
-   * effect) calls this whenever the tree reports a fresher path for this
-   * note than hydrate()'s load-time seed — e.g. the note was renamed
-   * server-side (another session, or a WS folder/note move) between this
-   * pane's initial GET and the next H1 edit, so the rename comparator must
-   * compose against the note's ACTUAL current parent directory, not a stale
-   * load-time snapshot.
+   * Re-seeds the H1-rename comparator's path without touching content or save
+   * state. Needed when the note moved server-side between this pane's initial
+   * GET and the next H1 edit — the comparator must compose against the note's
+   * real current parent, not a stale load-time snapshot.
    */
   setNotePath(path: string): void;
 }

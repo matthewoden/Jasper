@@ -1,31 +1,13 @@
 /**
- * useBookmarks — reads the shared `bookmarksResource` cache and composes it
- * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
- * the resource layer: subscribing (mounting) never issues a
- * network request by itself; only the resource's own 0->1 subscriber
- * transition and `bookmark:changed` WS invalidation do.
+ * useBookmarks composes the shared bookmarksResource cache with POST/DELETE
+ * calls. Mounting issues no request by itself — only the resource's 0->1
+ * subscriber transition and `bookmark:changed` do.
  *
- * Public surface:
- *   - bookmarks / bookmarkFolders: current cache snapshot
- *   - loading / error:              true only across the INITIAL hydrate
- *                                    window (27-UI-REVIEW #1). Once bookmarks
- *                                    have loaded successfully once, a later
- *                                    transient refresh failure (WS event,
- *                                    background hiccup) is swallowed by the
- *                                    resource layer's preserve-last-good-value
- *                                    policy — see the `error`/`loading`
- *                                    derivation below.
- *   - refresh():                    invalidate the shared cache entry
- *   - toggleBookmark(noteId):       the entry-point-agnostic seam — adds a
- *                                   bookmark if absent, removes it if present
- *                                   (breadcrumb star, palette command, future
- *                                   context menu all hang off this one call)
- *   - moveToFolder(id, folderId):   POST /bookmarks/{id}/folder, then invalidate
- *   - createFolder(name):           POST /bookmark-folders, then invalidate
- *   - reorder(folderId, orderedIds): POST /bookmarks/reorder — optimistic
- *                                    in-scope reorder with revert-on-failure
- *                                    (mirrors toggleBookmark's optimistic shape)
- *   - isBookmarked(noteId):         convenience lookup for UI state
+ * `loading`/`error` are true only during the INITIAL hydrate. Once bookmarks
+ * have loaded once, a later transient refresh failure is swallowed by the
+ * resource layer's preserve-last-good-value policy.
+ *
+ * toggleBookmark is the entry-point-agnostic seam every caller hangs off.
  */
 
 import { useCallback, useMemo, useRef } from "react";
@@ -93,17 +75,13 @@ export function useBookmarks(): UseBookmarksResult {
     [bookmarks],
   );
 
-  // Tracks noteIds with an in-flight add/remove mutation. Guards
-  // toggleBookmark against a rapid double-click racing itself — without
-  // it, a second toggle before the first's network call resolves treats
-  // the still-`pending-${noteId}` placeholder as `existing` and issues a
-  // DELETE for an id the backend never created; that DELETE fails, state
-  // reverts, and then the FIRST call's postBookmark resolves and
-  // unconditionally re-adds the bookmark — silently overriding the
-  // user's second click. Kept as a useRef (per-hook-instance) rather than
-  // promoted to module scope — promoting it would make the guard stricter
-  // than today (locking out every mounted consumer, not just this one),
-  // which is a behavior change outside this refactor's scope.
+  // Guards toggleBookmark against racing itself on a double-click: the second
+  // toggle would treat the still-pending placeholder as existing and DELETE an
+  // id the backend never created, then the first call's POST would re-add it —
+  // silently overriding the user's second click.
+  //
+  // Per-hook useRef, not module scope: promoting it would lock out every mounted
+  // consumer rather than just this one.
   const inFlightNoteIds = useRef<Set<string>>(new Set());
 
   /**

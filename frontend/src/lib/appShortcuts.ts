@@ -31,15 +31,9 @@ export function subscribePhase7(
 }
 
 /**
- * Document-level F2 routing. Routes F2 through the document rather than
- * relying on the focused element, so rename works regardless of which element
- * holds focus when F2 is pressed.
- *
- * Guard order (intentional):
- *   1. e.key !== "F2"          → fast bail-out
- *   2. target is form-control  → don't hijack typing in inputs / textareas / contenteditable
- *   3. pendingRename != null   → defer to RenameInput's own handlers
- *   4. selectedRow == null     → nothing to rename; no-op
+ * F2 routes through the document, not the focused element, so rename works
+ * wherever focus happens to be. Guard order matters: bail on the key, then
+ * form controls, then an in-progress rename, then no selection.
  */
 export function handleAppF2KeyDown(e: KeyboardEvent): void {
   if (e.key !== "F2") return;
@@ -75,20 +69,11 @@ function selectRightPanel(panel: RightPanelTab): void {
 }
 
 /**
- * Global panel-select shortcuts.
- * Cmd+Alt+T — select the right-rail Tags tab; Cmd+Alt+B — select the
- * right-rail Linked-mentions tab. Cmd+Alt prefix avoids collisions with
- * the heavily-used Cmd-only namespace. Repointed (TAGS-01) from
- * the retired per-section collapse booleans onto the tab-row's persisted
- * rightPanel field: pressing the shortcut for the ALREADY-active tab while
- * the rail is visible collapses the rail (closest available analog to the
- * old "toggle" behavior in a one-panel-at-a-time model); otherwise it
- * switches to that tab and reveals the rail if collapsed.
+ * Cmd+Alt+T / Cmd+Alt+B select the right-rail Tags / Linked-mentions tabs.
+ * Pressing the already-active tab's shortcut collapses the rail.
  *
- * Matches the PHYSICAL KeyT/KeyB codes, not the produced key value: on macOS
- * Option+T emits key:"†" and Option+B emits key:"∫" (holding Cmd does not
- * suppress the transformation), while code stays "KeyT"/"KeyB" — the same
- * hazard handleAppAltT guards against below.
+ * Matches the PHYSICAL KeyT/KeyB codes: on macOS Option+T emits "†" and
+ * Option+B emits "∫" even with Cmd held, while `code` stays stable.
  */
 export function handleAppPanelShortcuts(e: KeyboardEvent): void {
   if (!e.altKey || !(e.metaKey || e.ctrlKey)) return;
@@ -163,15 +148,12 @@ export function handleAppCmdShiftD(e: KeyboardEvent): void {
 }
 
 /**
- * Alt+T — open a new untitled note as a tab (bootstrap path; tab-new).
+ * Alt+T opens a new untitled note. Matches the physical KeyT code so the macOS
+ * "†" dead-key char never types into CodeMirror, and excludes Cmd/Ctrl to stay
+ * disjoint from Cmd+Alt+T.
  *
- * Matches the PHYSICAL KeyT code, not the produced key value: on macOS Option+T
- * emits key:"†" (a dead-key char) while still reporting code:"KeyT". Guarding on
- * e.code lets Option+T fire newTab AND preventDefault, so the "†" never types
- * into CodeMirror. The !metaKey && !ctrlKey guard keeps plain Alt+T disjoint from
- * the Cmd+Alt+T Tags-panel toggle in handleAppPanelShortcuts. No tab-count check:
- * Alt+T must work from a zero-tab state, since it is the only keyboard way to
- * create the first tab.
+ * Deliberately no tab-count check: this is the only keyboard route to the FIRST
+ * tab, so it must work from a zero-tab state.
  */
 export function handleAppAltT(e: KeyboardEvent): void {
   if (!(e.altKey && !e.metaKey && !e.ctrlKey && e.code === "KeyT")) {
@@ -251,17 +233,11 @@ export function handleAppBookmarkToggle(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+B — bold (CM6 owns this via jasperKeymap.ts toggleBold).
+ * Cmd+B exists only because Brave/Chromium extensions intercept it before CM6.
+ * preventDefault ONLY outside the editor — doing it unconditionally sets
+ * defaultPrevented, and CM6's eventBelongsToEditor then skips toggleBold.
  *
- * Brave/Chromium extensions intercept Cmd+B before CM6 at the window level.
- * Only preventDefault when the event does NOT originate inside the CM6 editor —
- * unconditional preventDefault sets event.defaultPrevented and CM6's
- * eventBelongsToEditor returns false, causing toggleBold to be skipped.
- *
- * e.shiftKey is explicitly excluded so this handler never matches
- * Cmd+Shift+B, which handleAppBookmarkToggle owns independently on the same
- * window listener list; without the guard both handlers would run on the
- * same keystroke.
+ * shiftKey is excluded so this never double-fires with Cmd+Shift+B.
  */
 export function handleAppCmdB(e: KeyboardEvent): void {
   if (!(e.metaKey || e.ctrlKey)) return;

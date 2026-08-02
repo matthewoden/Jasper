@@ -1,39 +1,15 @@
 /**
- * tableWidgetPlugin — CM6 extension rendering GFM tables as real `<table>`
- * DOM widgets in the live preview (READ-04).
+ * tableWidgetPlugin renders GFM tables as real <table> widgets (READ-04).
  *
- * Block decorations must come from a StateField, not a ViewPlugin (CM6
- * constraint: "Block decorations may not be specified via plugins" —
- * verified error string, `frontmatterHidePlugin.ts` is the canonical local
- * precedent for this shape).
+ * Block decorations must come from a StateField, not a ViewPlugin — a CM6
+ * constraint.
  *
- * Cursor model (opposite of callouts): a `Table` node whose line range
- * contains NO cursor line renders as a widget (`Decoration.replace({ block:
- * true, widget })`). The moment the cursor enters ANY line inside the
- * table's range, the ENTIRE block drops to raw markdown (no widget at all)
- * — this is a whole-block flip, not callouts' per-line reveal. The
- * StateField therefore rebuilds on BOTH `docChanged` and any selection
- * change (cursor movement alone must flip widget<->raw), wider than
- * frontmatterHidePlugin's doc-only trigger.
+ * Cursor model is the OPPOSITE of callouts: the cursor entering any line of the
+ * table drops the WHOLE block to raw markdown, not just that line. So the field
+ * must rebuild on selection changes too, not only docChanged.
  *
- * `computeCursorLines` is imported directly from `./livePreviewPlugin`
- * (already reused the same way by `taskCheckboxPlugin.ts`) rather than
- * reimplemented. It only reads `view.state`, so a minimal `{ state }` shim
- * stands in for the EditorView argument inside the StateField (which has no
- * EditorView available).
- *
- * Cell inline content (scope decision, resolves RESEARCH Assumption A3 /
- * Open Question 4): GFM `TableCell` content is already parsed as nested
- * inline lezer nodes (StrongEmphasis, Emphasis, InlineCode, Highlight,
- * Link). Each recognized node is walked and rebuilt via
- * `document.createElement`/`textContent` only — no raw-HTML-string
- * assignment of any kind (ASVS V5). Anything not in that set renders as a
- * plain text run.
- *
- * Fail-soft: `TableWidget.toDOM()` is
- * wrapped in try/catch. Any exception during DOM construction returns a
- * fallback element rendering the raw markdown text instead of throwing a
- * user-facing error.
+ * Cell content is rebuilt with createElement/textContent only — never a
+ * raw-HTML string.
  */
 import {
   Decoration,

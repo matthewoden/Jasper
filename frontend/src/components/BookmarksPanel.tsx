@@ -1,22 +1,12 @@
 /**
- * BookmarksPanel — lists bookmarked notes (live-titled) and virtual bookmark
- * folders through the SAME shared tree engine Notes uses (quick task
- * 260719-jv1, item 5: TreeView + TreeRow, not a bespoke FolderRow/
- * BookmarkRow list). Mounted by Sidebar.tsx when sidebarPanel ===
- * "bookmarks".
+ * BookmarksPanel lists bookmarked notes and virtual folders through the SAME
+ * tree engine Notes uses — TreeView + TreeRow, not a bespoke row list.
  *
- * Composes useBookmarks() (hydrate + WS-refresh hook, split loading/error
- * across the initial-hydrate window) with adaptBookmarks() (bookmarkTree.
- * utils.ts) to build the same ArboristNode shape FileTree feeds into
- * TreeView. Row activation goes through usePaneStore.openInActivePane(noteId)
- * (BOOK-02), wired as TreeRow's injected onActivate — never
+ * Row activation goes through usePaneStore.openInActivePane (BOOK-02), never
  * useTreeStore's setActiveNoteId.
  *
- * Bookmark-folder collapse/expand flows through react-arborist's own open
- * state (TreeView's initialOpenState + openByDefault=true, TreeRow's
- * node.toggle() on click) — no local collapsedFolders Set.
- *
- * Branch order: error (27-UI-REVIEW #1) → empty (BOOK-05) → populated tree.
+ * Folder collapse rides react-arborist's own open state; there is deliberately
+ * no local collapsedFolders Set.
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { NodeApi, TreeApi } from "react-arborist";
@@ -178,16 +168,9 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   }, []);
 
   /**
-   * onMove — react-arborist reports { dragNodes, parentNode, index }.
-   * Destination folder scope: parentNode kind "bookmark-folder" -> its
-   * folderId; anything else (null / top-level container) -> top-level
-   * (null). The actual cross-folder-vs-reorder decision + new-order
-   * computation lives in the pure, directly-unit-tested
-   * computeBookmarkMoveDispatch (bookmarkTree.utils.ts) — this handler
-   * just resolves react-arborist's node args into plain ids and dispatches
-   * the resulting action. Real drag-gesture correctness is proven with a
-   * real mouse in Task 7 (browser), per the "verify DnD with real mouse"
-   * memory.
+   * Resolves react-arborist's node args into plain ids and dispatches. The
+   * cross-folder-vs-reorder decision lives in the pure, unit-tested
+   * computeBookmarkMoveDispatch, so this stays a thin adapter.
    */
   const handleMove = useCallback(
     (args: {

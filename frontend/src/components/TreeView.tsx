@@ -1,21 +1,10 @@
 /**
- * TreeView — generic react-arborist <Tree> host shared by FileTree (notes)
- * and BookmarksPanel (bookmarks). Owns exactly the parts of the tree
- * surface that are data-source-agnostic:
- *   - the <Tree> element itself (idAccessor/childrenAccessor/rowHeight/
- *     width/openByDefault wiring, all locked identical across both panels)
- *   - the `.data.data`-unwrapping Proxy that lets row renderers branch on
- *     TreeRowData without re-parsing react-arborist's node shape
- *   - ResizeObserver-driven height measurement (a fixed `height` prop is
- *     required by react-window; this fills the parent's available space)
- *   - initialOpenState / onToggle plumbing
+ * TreeView — the data-source-agnostic react-arborist host shared by FileTree
+ * and BookmarksPanel: the <Tree> wiring, the `.data.data`-unwrapping Proxy, and
+ * ResizeObserver height measurement (react-window needs a fixed height).
  *
- * This file has NO knowledge of notes or bookmarks specifically — no
- * useFileTree, useTreeMutations, useBookmarks, or notes/bookmarks API
- * imports. Callers supply data + handlers + a renderRow render-prop
- * configured with their own TreeRow wiring (note handlers vs bookmark
- * handlers). FileTree.tsx and BookmarksPanel.tsx are both thin wrappers
- * around this component (quick task 260719-jv1, item 5).
+ * This file must stay ignorant of notes and bookmarks specifically. Callers
+ * supply data, handlers and a renderRow prop with their own TreeRow wiring.
  */
 import {
   useCallback,
@@ -87,17 +76,12 @@ export interface TreeViewProps<T extends TreeViewNode> {
   }) => boolean;
   disableDrag?: (node: T) => boolean;
   /**
-   * OPT-IN empty-area root drop (drag-to-root, quick task 260719-jv1
-   * follow-up). react-arborist's onMove never fires for a drop in the
-   * tree's empty area below the last row (Bug A — same root cause
-   * FileTree's own window-level native-drag listeners work around). When
-   * provided, TreeView installs an analogous window-level listener set
-   * SCOPED to this tree instance's own `[role="tree"]` element, and calls
-   * onRootDrop with the dragged nodes when the drop lands inside this
-   * tree but not on any row. Omit this prop to leave the listener
-   * dormant — FileTree does not pass it (it owns its own root-drop path
-   * with note/folder cycle-guard logic) so Notes' drag-drop is
-   * unaffected.
+   * OPT-IN empty-area root drop. react-arborist's onMove never fires for a drop
+   * below the last row, so this installs window-level listeners scoped to this
+   * tree's own [role="tree"].
+   *
+   * Omit it to leave them dormant — FileTree does, owning its own root-drop
+   * path with cycle-guard logic.
    */
   onRootDrop?: (dragNodes: NodeApi<T>[]) => void;
   /**

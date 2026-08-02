@@ -1,25 +1,12 @@
 /**
- * useMcpGrants — reads the shared `mcpGrantsResource` cache and composes it
- * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
- * the resource layer: subscribing (mounting) never issues a
- * network request by itself; only the resource's own 0->1 subscriber
- * transition and `mcp:grant_changed` WS invalidation do.
+ * useMcpGrants composes the shared mcpGrantsResource cache with POST/DELETE.
+ * Mounting issues no request by itself.
  *
- * Public surface:
- *   - grants:            current cache snapshot (McpGrant[])
- *   - refresh():         invalidate the shared cache entry
- *   - grant(path, lv):   POST /mcp/grants — emits LOCKED toast
- *   - revoke(path):      DELETE /mcp/grants?path=... — emits LOCKED toast
- *   - levelFor(path):    recursive ancestor walk (backend resolves writes the same way)
- *   - directLevelFor(path): grant on THIS folder only — drives the Sparkles
- *                        indicator on the leaf where the grant was attached,
- *                        not on every descendant (Confused Deputy mitigation).
+ * levelFor walks ancestors, matching how the backend resolves writes.
+ * directLevelFor deliberately does not: the Sparkles indicator must show on the
+ * folder the grant was attached to, not on every descendant.
  *
- * Toast copy (LOCKED — Playwright spec asserts against these strings):
- *   grant added:    "AI access granted"   / "Edit only in {path}" or "Full in {path}"
- *   grant upgraded: "AI access upgraded"  / "Now full in {path}"
- *   grant changed:  "AI access changed"   / "Now edit only in {path}"
- *   grant revoked:  "AI access revoked"   / "{path}"
+ * Toast copy is LOCKED — a Playwright spec asserts the exact strings.
  */
 
 import { useCallback, useMemo } from "react";
@@ -141,16 +128,11 @@ export function useMcpGrants(): UseMcpGrantsResult {
   );
 
   /**
-   * grant — POST /mcp/grants. Idempotent on the backend. Toast variant
-   * is computed from the BEFORE state of the direct grant:
-   *   - before === null              → "AI access granted"
-   *   - before === 1 && level === 2  → "AI access upgraded"
-   *   - before === 2 && level === 1  → "AI access changed"
-   *   - same level                   → no toast (no-op confirm)
+   * grant — idempotent on the backend. The toast variant is computed from the
+   * BEFORE state, so a same-level re-grant stays silent.
    *
-   * Matches today's exact sequencing: the grant list change is applied
-   * AFTER the POST resolves (via mutate's commit), not optimistically —
-   * the WS broadcast converges every other tab to the same state.
+   * Applied AFTER the POST resolves, not optimistically: the WS broadcast is
+   * what converges the other tabs.
    */
   const grant = useCallback(
     async (folderPath: string, level: 1 | 2) => {
