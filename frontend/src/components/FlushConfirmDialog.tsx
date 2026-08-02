@@ -1,8 +1,8 @@
 /**
  * FlushConfirmDialog — Radix AlertDialog shown only when an on-close flush save
- * fails (TAB-13 / D-04). Two choices: "Keep editing" (cancel, also the Escape
+ * fails (TAB-13). Two choices: "Keep editing" (cancel, also the Escape
  * resolution) or "Close without saving" (destructive). Body shows only the
- * filename — never the note content or raw server error (T-15-09).
+ * filename — never the note content or raw server error.
  */
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import type React from "react";

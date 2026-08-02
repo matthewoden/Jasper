@@ -1,13 +1,13 @@
 /**
  * tableWidgetPlugin — CM6 extension rendering GFM tables as real `<table>`
- * DOM widgets in the live preview (READ-04, D-11).
+ * DOM widgets in the live preview (READ-04).
  *
  * Block decorations must come from a StateField, not a ViewPlugin (CM6
  * constraint: "Block decorations may not be specified via plugins" —
  * verified error string, `frontmatterHidePlugin.ts` is the canonical local
  * precedent for this shape).
  *
- * Cursor model (opposite of callouts, D-11): a `Table` node whose line range
+ * Cursor model (opposite of callouts): a `Table` node whose line range
  * contains NO cursor line renders as a widget (`Decoration.replace({ block:
  * true, widget })`). The moment the cursor enters ANY line inside the
  * table's range, the ENTIRE block drops to raw markdown (no widget at all)
@@ -30,7 +30,7 @@
  * assignment of any kind (ASVS V5). Anything not in that set renders as a
  * plain text run.
  *
- * Fail-soft (UI-SPEC Copywriting Contract): `TableWidget.toDOM()` is
+ * Fail-soft: `TableWidget.toDOM()` is
  * wrapped in try/catch. Any exception during DOM construction returns a
  * fallback element rendering the raw markdown text instead of throwing a
  * user-facing error.
@@ -167,7 +167,7 @@ function renderCellContent(cellNode: SyntaxNode, doc: Text, container: HTMLEleme
 
 /**
  * TableWidget — replaces an entire GFM `Table` node's range with a real
- * `<table>` element wrapped in a horizontally-scrollable container (D-15:
+ * `<table>` element wrapped in a horizontally-scrollable container —
  * the 760px column never widens, the table scrolls inside it instead).
  */
 export class TableWidget extends WidgetType {
@@ -238,7 +238,7 @@ export class TableWidget extends WidgetType {
   ignoreEvent(): boolean {
     // false = let CM6's default click handling run (maps the click to a
     // document position at the widget's boundary), which is what drops the
-    // block to raw markdown on cursor entry (D-11). Unlike the small
+    // block to raw markdown on cursor entry. Unlike the small
     // decorative widgets (HRWidget/BulletWidget), this widget has no
     // adjacent real DOM within its bounds for a native browser caret to
     // land on, so CM's own position mapping must run.
@@ -256,7 +256,7 @@ function cursorLinesForState(state: EditorState): Set<number> {
  * buildTableDecorations — exported for testing. Walks every `Table` node;
  * emits a block-replace widget decoration UNLESS the cursor occupies any of
  * the table's lines, in which case nothing is emitted (raw markdown stays
- * visible, D-11).
+ * visible).
  */
 export function buildTableDecorations(
   state: EditorState,

@@ -1,10 +1,10 @@
 /**
- * Bookmarks empty state — Phase 27 BOOK-05.
+ * Bookmarks empty state (BOOK-05).
  *
  * Rendered by BookmarksPanel ONLY when the bookmarks slice is empty.
  * Near-verbatim structural copy of TreeEmptyState.tsx (left-aligned, 24px/16px
  * padding, same two-line Body/Label typography), swapping the copy + glyph
- * per the UI-SPEC Copywriting Contract: the inline "Press [+]" icon becomes
+ * and glyph: the inline "Press [+]" icon becomes
  * an inline lucide Star standing in for the ★ glyph.
  *
  * Locked copy (verbatim):

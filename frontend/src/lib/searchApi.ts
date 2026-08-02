@@ -29,10 +29,10 @@ async function fetchSearch(
   return data?.results ?? [];
 }
 
-// D-05: /search keeps its own 200ms debounce in useSearch.ts — the layer
+// /search keeps its own 200ms debounce in useSearch.ts — the layer
 // does not absorb it. Pass-through here means coalesced but never cached,
 // so two identical concurrent queries still collapse to one request. The
-// dedupe key encodes every param (D-05a) — q/tags/limit/sort each vary the
+// dedupe key encodes every param — q/tags/limit/sort each vary the
 // result set, so the key must too.
 const searchResource = createKeyedResource(
   "search",
@@ -51,7 +51,7 @@ const searchResource = createKeyedResource(
 /**
  * searchNotes — GET /api/v1/search.
  * Returns up to `limit` results sorted by bm25 + recency (default), or by
- * modified/created timestamp DESC when `sort` is set (D-14 true server
+ * modified/created timestamp DESC when `sort` is set (true server
  * ordering, not a client reshuffle).
  * Tag filters AND-combine with the query (repeat the tag param).
  */

@@ -1,6 +1,6 @@
 /**
  * SidebarToolbar — note-navigation controls: New note, New folder, Sort
- * (SORT-01). Today and Search moved to the activity ribbon (Phase 18);
+ * (SORT-01). Today and Search moved to the activity ribbon;
  * global controls (connection dot, refresh, settings) live in StatusBar.
  *
  * `creating` prop disables New note + New folder while a create is in flight

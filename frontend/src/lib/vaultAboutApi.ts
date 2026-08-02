@@ -1,10 +1,10 @@
 /**
- * vaultAboutApi — typed wrapper around GET /vault/about (Phase 32 / SET3-04).
+ * vaultAboutApi — typed wrapper around GET /vault/about (SET3-04).
  * Mirrors getConfig's shape in useConfig.ts: never throws, returns
  * `{ data?, error? }` so the About pane renders an error row instead of
  * an unhandled rejection.
  *
- * The raw fetcher is module-private (D-17) — `vaultAboutResource` is the
+ * The raw fetcher is module-private — `vaultAboutResource` is the
  * only public read surface, shared across both mount sites (the nav
  * footer's SettingsDialogShell and the About pane itself), so opening
  * Settings and then About issues one request, not two.
@@ -46,8 +46,8 @@ async function getVaultAbout(): Promise<{ data?: VaultAbout; error?: ApiError }>
 
 // The list is broad — every note/folder/grant mutation plus a reindex —
 // because the payload's noteCount/folderCount/grantCount change on each of
-// those, and boot-scoping would serve stale counts on reopen (D-15 as
-// amended 2026-07-31). This costs nothing while Settings is closed: an
+// those, and boot-scoping would serve stale counts on reopen.
+// This costs nothing while Settings is closed: an
 // invalidation with zero subscribers marks the entry stale instead of
 // fetching (createResource.ts).
 export const vaultAboutResource = createResource("vaultAbout", getVaultAbout, {

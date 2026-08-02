@@ -7,7 +7,7 @@
  * and the next Today click must create a fresh one — the tree must update).
  * The refresh call sits outside the open-failure boundary and is best-effort
  * (non-fatal): once the note has opened, a refresh rejection never
- * retroactively reports the open itself as failed (WR-04).
+ * retroactively reports the open itself as failed.
  *
  * Folder expansion (pp9) happens AFTER broadcastRefresh() settles, not
  * before: a successful tree fetch prunes any expanded path absent from that
@@ -45,8 +45,7 @@ export function useDailyNote() {
     try {
       const note = await openTodayDailyNote(today);
       setActiveNote(note.id);
-      // Phase 25: opens as a tab in the active pane (WS-08's openInActivePane
-      // primitive) — replaces the retired flat useTabStore.openTab.
+      // Opens as a tab in the active pane via the openInActivePane primitive.
       usePaneStore.getState().openInActivePane(note.id);
       openedPath = note.path;
     } catch {
@@ -60,7 +59,7 @@ export function useDailyNote() {
       setDailyNoteLoading(false);
     }
     // Tree refresh is now non-fatal AND non-blocking for the open path — a
-    // failure here must never retroactively toast "couldn't open" (WR-04).
+    // failure here must never retroactively toast "couldn't open".
     await broadcastRefresh().catch(() => {
       // best-effort; sidebar tree will reconcile on next successful refresh
     });

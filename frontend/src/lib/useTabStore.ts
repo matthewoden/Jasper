@@ -14,7 +14,7 @@
  * inside initForVault(), called from AppInner once the vault is resolved. There is
  * NO module-level init block here on purpose.
  *
- * deletedTabIds is live-session only and is NEVER persisted (D-11): a note marked
+ * deletedTabIds is live-session only and is NEVER persisted: a note marked
  * deleted keeps its tab open read-only for the session, but that state must not
  * outlive a reload.
  */
@@ -25,7 +25,7 @@ export interface Tab {
   // would mean decoupling id from noteId and re-resolving content per tab.
   id: string;
   noteId: string;
-  // Pinned tabs (D-14/D-15/D-16, Phase 30): auto-group at the strip's left
+  // Pinned tabs: auto-group at the strip's left
   // edge, skip every bulk-close path, and refuse a direct close (pin glyph
   // replaces the close-×). Optional/undefined means "not pinned" — the vast
   // majority of tabs never set this field.
@@ -35,7 +35,7 @@ export interface Tab {
 export interface TabStore {
   tabs: Tab[];
   activeTabId: string | null;
-  deletedTabIds: Set<string>; // live-session only; NEVER persisted (D-11)
+  deletedTabIds: Set<string>; // live-session only; NEVER persisted
 
   openTab: (noteId: string) => void;
   closeTab: (tabId: string) => void;
@@ -136,7 +136,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
         set({ tabs: [], activeTabId: null });
       }
     } catch {
-      // Corrupted storage — fall through to empty; do NOT throw (T-15-01).
+      // Corrupted storage — fall through to empty; do NOT throw.
       set({ tabs: [], activeTabId: null });
     }
 
@@ -148,7 +148,7 @@ export const useTabStore = create<TabStore>((set, get) => ({
 /**
  * pruneTabsForMissingNotes — drop tab UUIDs absent from the freshly-fetched tree,
  * mirroring pruneStaleTreeState. KEEP tabs whose noteId is in deletedTabIds even
- * when absent from the tree (D-10: a deleted note's tab stays open read-only for
+ * when absent from the tree (a deleted note's tab stays open read-only for
  * the session). Re-targets activeTabId when it was dropped. Gated on change so a
  * no-op pass preserves reference identity.
  */

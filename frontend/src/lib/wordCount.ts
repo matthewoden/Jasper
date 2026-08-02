@@ -11,7 +11,7 @@ const WORD_REGEX = /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu;
 
 /**
  * Counts words in markdown content, excluding YAML frontmatter and
- * including code-block content (D-08). Words are runs of letters/numbers
+ * including code-block content. Words are runs of letters/numbers
  * with optional internal apostrophe/hyphen; standalone markdown punctuation
  * (`#`, `-`, ` ``` `, `---`) contributes 0.
  */
@@ -48,7 +48,7 @@ export function countWords(markdown: string): number {
 
 /**
  * Formats a word count as "N words" (or "1 word" for the singular case),
- * with a thousands separator (D-09).
+ * with a thousands separator.
  */
 export function formatWordCount(n: number): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? "word" : "words"}`;

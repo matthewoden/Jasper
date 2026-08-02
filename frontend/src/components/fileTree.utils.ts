@@ -352,7 +352,7 @@ export function ancestorFolderPaths(notePath: string): string[] {
  * Expand every ancestor folder of `notePath` — both the live tree (if
  * mounted) and the persisted store. Deliberately quieter than
  * expandAndScrollToFolder/revealInNavigation: no sidebar-visibility force,
- * no panel switch, no scroll, no pulse (D-3, pp9).
+ * no panel switch, no scroll, no pulse.
  */
 export function expandNoteAncestorFolders(notePath: string): void {
   const state = useTreeStore.getState();
@@ -371,7 +371,7 @@ export function expandNoteAncestorFolders(notePath: string): void {
 }
 
 /**
- * Scroll the file tree to a note's row (D-25, note-options "Reveal in
+ * Scroll the file tree to a note's row (note-options "Reveal in
  * navigation"). Unlike expandAndScrollToFolder, ancestor expansion is not
  * done manually here — react-arborist's own scrollTo() already calls
  * openParents() internally (tree-api.ts), which dispatches onToggle for
@@ -416,7 +416,7 @@ function timestampOf(
 }
 
 /**
- * comparatorFor — the non-folder (notes + files) half of sortTree's D-02
+ * comparatorFor — the non-folder (notes + files) half of sortTree's
  * six-order contract. Every branch tie-breaks on name A→Z for stable,
  * deterministic ordering when timestamps are equal or absent.
  */
@@ -450,7 +450,7 @@ export function comparatorFor(
 }
 
 /**
- * sortTree — folder-grouping comparator (D-01/D-02). Folders ALWAYS sort
+ * sortTree — folder-grouping comparator. Folders ALWAYS sort
  * A→Z and ALWAYS precede notes/files at every level; only the non-folder
  * group reorders per `order`. Recurses into every folder's children so
  * nested levels apply the same order. Returns new arrays/objects rather

@@ -1,5 +1,5 @@
 /**
- * MoveToFolderModal — fuzzy folder picker (D-23), fully replacing the
+ * MoveToFolderModal — fuzzy folder picker, fully replacing the
  * mockup's `window.prompt` implementation.
  *
  * Reuses CommandMenu.tsx's Dialog shell SHAPE (overlay, centered card, 44px
@@ -7,8 +7,7 @@
  * is a smaller, self-contained component: narrower card (480px vs.
  * 600-620px), single-line folder-path rows instead of two-line note
  * previews, and a plain (non-virtualized) list, since a vault's folder
- * count is small relative to its note count (UI-SPEC §6 explicitly
- * allows a plain list here).
+ * count is small relative to its note count.
  *
  * Fuzzy matching mirrors useQuickSwitcher.ts's fuzzysort.go options
  * (key/limit/threshold) for matching-feel consistency across the app.

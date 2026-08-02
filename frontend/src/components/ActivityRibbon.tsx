@@ -3,13 +3,13 @@
  * Vault.dc.html mock): vault badge, quick-switcher, daily-note, command
  * palette. Bottom (flex-pushed): a Settings gear that opens SettingsDialog.
  *
- * Phase 27 NAV-02 (D-09/D-10): the Files/Search toggles are gone — panel
+ * NAV-02: the Files/Search toggles are gone — panel
  * selection now lives entirely in the sidebar's SidebarTabRow. The single
  * quick-switcher button here opens today's existing unmodified Cmd+O
- * switcher (mode="notes"); its restyle + create/split modifiers are
- * Phase 28 (QUICK-*), out of scope here.
+ * switcher (mode="notes"); its restyle + create/split modifiers (QUICK-*)
+ * are out of scope here.
  *
- * D-13 (Phase 31): the vault badge + its margin already consume more
+ * The vault badge + its margin already consume more
  * vertical space than SidebarTabRow's 40px header, so the first RibbonButton
  * (Quick switcher) can't land pixel-perfect on that row's icon center without
  * relocating the badge (out of scope). Tightened top padding + badge margin
@@ -55,7 +55,7 @@ interface RibbonButtonProps {
   ariaLabel: string;
   /** Tooltip label; defaults to ariaLabel when the two diverge in wording. */
   tooltipLabel?: string;
-  /** Tooltip shortcut suffix, e.g. "⌘O" (D-08). Omit for no shortcut. */
+  /** Tooltip shortcut suffix, e.g. "⌘O". Omit for no shortcut. */
   tooltipShortcut?: string;
   onClick: () => void;
   icon: React.ReactNode;
@@ -63,8 +63,8 @@ interface RibbonButtonProps {
   disabled?: boolean;
   style?: CSSProperties;
   /**
-   * Optional E2E-stable selector. Used on the Settings button (Phase 31 UAT
-   * #3) so the widely-referenced `settings-menu-trigger` testid keeps
+   * Optional E2E-stable selector. Used on the Settings button so the
+   * widely-referenced `settings-menu-trigger` testid keeps
    * resolving after StatusBar's duplicate gear (SettingsMenu) was removed —
    * this ribbon button is now the sole Settings entry point.
    */
@@ -203,7 +203,7 @@ export function ActivityRibbon({
       />
       {/* Mount only when open so we don't fetch config before the user
           actually opens Settings — this is now the SOLE Settings entry
-          point (Phase 31 UAT #3 removed StatusBar's duplicate gear). */}
+          point — StatusBar's duplicate gear was removed. */}
       {settingsOpen && (
         <SettingsDialog open onOpenChange={setSettingsOpen} />
       )}

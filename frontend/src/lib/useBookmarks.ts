@@ -1,7 +1,7 @@
 /**
  * useBookmarks — reads the shared `bookmarksResource` cache and composes it
  * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
- * the resource layer (D-08/D-11/D-14): subscribing (mounting) never issues a
+ * the resource layer: subscribing (mounting) never issues a
  * network request by itself; only the resource's own 0->1 subscriber
  * transition and `bookmark:changed` WS invalidation do.
  *
@@ -93,7 +93,7 @@ export function useBookmarks(): UseBookmarksResult {
     [bookmarks],
   );
 
-  // WR-07: tracks noteIds with an in-flight add/remove mutation. Guards
+  // Tracks noteIds with an in-flight add/remove mutation. Guards
   // toggleBookmark against a rapid double-click racing itself — without
   // it, a second toggle before the first's network call resolves treats
   // the still-`pending-${noteId}` placeholder as `existing` and issues a
@@ -113,7 +113,7 @@ export function useBookmarks(): UseBookmarksResult {
    * reconciles against the LIVE cache at success time (not the closed-over
    * snapshot) — this is why a bulk "Bookmark N notes" loop accumulates
    * instead of clobbering. Ignores re-entrant calls for the same noteId
-   * while a mutation is already in flight (WR-07) rather than racing it.
+   * while a mutation is already in flight rather than racing it.
    */
   const toggleBookmark = useCallback(
     async (noteId: string) => {
@@ -226,7 +226,7 @@ export function useBookmarks(): UseBookmarksResult {
    * reorder — optimistically reassigns Order = index (within orderedIds)
    * for exactly the bookmarks named in orderedIds, leaving every bookmark
    * OUTSIDE that scope untouched (mirrors the backend's per-folder Order
-   * semantics, WR-02). Reverts to the pre-mutation snapshot and toasts on
+   * semantics). Reverts to the pre-mutation snapshot and toasts on
    * failure — same shape as toggleBookmark's optimistic-mutate-then-revert.
    */
   const reorder = useCallback(

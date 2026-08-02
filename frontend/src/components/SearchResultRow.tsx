@@ -4,7 +4,7 @@
  *
  * Excerpt is rendered via sanitizeHtml with <mark> allowed through — marks
  * carry the same accent-tint fill (28% color-mix) as the editor's
- * ==highlight== (READ-04/D-12), plus fg+600 text weight for legibility.
+ * ==highlight== (READ-04), plus fg+600 text weight for legibility.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";

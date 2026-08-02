@@ -106,7 +106,7 @@ async function fetchRecentVaults(): Promise<GetVaultRecentResponse> {
 
 // pass-through, not cached: both change on vault open/create/remove with no
 // WS event to invalidate on, and useVaultPicker.refresh() already re-reads
-// them imperatively after every such mutation (D-15 as amended). Still
+// them imperatively after every such mutation. Still
 // coalesced — concurrent callers for the same endpoint collapse into one
 // client.GET.
 const vaultCurrentResource = createResource("vaultCurrent", fetchCurrentVault, {

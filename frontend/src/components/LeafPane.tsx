@@ -1,38 +1,37 @@
 /**
- * LeafPane — one leaf of the recursive split-pane tree (Phase 25 / WS-03).
+ * LeafPane — one leaf of the recursive split-pane tree (WS-03).
  *
  * Owns a leaf-scoped `TabStrip` (row) and a keep-alive stack of `EditorPane`,
  * one per open tab — every `EditorPane` already renders its own breadcrumb /
- * inline title / body (Plan 05), so LeafPane's own job is composition, not
+ * inline title / body, so LeafPane's own job is composition, not
  * chrome. All tabs but the active one render `hidden` (`display:none`); CM6
- * stays mounted so cursor/scroll/undo survive a tab switch (D-01 keep-alive,
- * mirrors `App.tsx`'s pre-Phase-25 stacked-EditorPane pattern).
+ * stays mounted so cursor/scroll/undo survive a tab switch (keep-alive).
  *
- * A leaf with zero tabs (`leaf.active === null`, D-10's "final pane never
+ * A leaf with zero tabs (`leaf.active === null`, the "final pane never
  * collapses" invariant from `paneTree.ts`) renders a single `EditorPane` with
  * `noteId={null}`, which is EditorPane's own "no note open" placeholder.
  *
  * A pane becomes active on a click anywhere in its chrome (tab strip,
- * breadcrumb, or body) OR on focus entering it (D-04); the active leaf
+ * breadcrumb, or body) OR on focus entering it; the active leaf
  * carries `data-active-pane`. Every pane renders at full opacity — the
  * earlier inactive-pane dim was removed for readability and is NOT
  * reintroduced. In a MULTI-pane layout (`multi`), the active pane also
- * carries a 1px inset accent outline at 35% opacity (folded todo D-27/D-28,
- * Phase 30) — corrected from an earlier 50%-opacity trial (260718-n6a) that
+ * carries a 1px inset accent outline at 35% opacity — corrected from an
+ * earlier 50%-opacity trial that
  * the owner found distracting; a single-pane layout shows no cue (nothing to
  * disambiguate).
  *
- * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-Phase-25
+ * Per-tab `flushRef`/`editorHandlersRef` bookkeeping mirrors the pre-split
  * `App.tsx:239-266` pattern (TAB-13 close-flush contract), scoped to this
  * leaf's own tabs only — a ref pair per open tab, dropped when a tab closes.
  *
- * P26 (WS-09/D-01): also hosts this leaf's own Find/Replace bar, scoped to
+ * WS-09: also hosts this leaf's own Find/Replace bar, scoped to
  * the leaf's ACTIVE tab. Cmd+F/Cmd+Opt+F (jasperKeymap, routed via each
  * EditorPane's onOpenFind/onOpenFindReplace props) open it; it drives the
  * active tab's EditorView through handlerRefs — per-view CM6 search state
  * means this needs zero cross-pane coordination even for the same note open
- * in two panes. Find state/handlers live HERE, but (P26 polish, UI-SPEC line
- * 151) the bar element itself is passed as a `findBarSlot` prop into the
+ * in two panes. Find state/handlers live HERE, but the bar element itself
+ * is passed as a `findBarSlot` prop into the
  * active tab's own EditorPane, which renders it below ITS breadcrumb — not
  * as a LeafPane-level sibling above the whole EditorPane stack.
  */
@@ -68,7 +67,7 @@ const DEFAULT_FIND_BAR_STATE: FindBarState = {
 const ZERO_MATCH_COUNT: MatchCount = { current: 0, total: 0 };
 
 /**
- * Drop-region overlay geometry (UI-SPEC §"Drop-zone overlay", D-10): split
+ * Drop-region overlay geometry: split
  * regions cover the HALF of the pane that will become the new split; center
  * covers the full pane. Shared base style below carries the accent
  * fill/border/radius/transition, all pointer-events:none so the overlay
@@ -91,9 +90,9 @@ function overlayRectStyle(region: "left" | "right" | "top" | "bottom" | "center"
 
 export interface LeafPaneProps {
   leaf: LeafNode;
-  /** Whether THIS leaf is usePaneStore's activePaneId (D-04 click-to-focus target). */
+  /** Whether THIS leaf is usePaneStore's activePaneId (click-to-focus target). */
   isActive: boolean;
-  /** Whether the layout currently has more than one leaf (D-27/D-28, Phase 30) — gates the active-pane inset accent outline off single-pane layouts. Defaults false. */
+  /** Whether the layout currently has more than one leaf — gates the active-pane inset accent outline off single-pane layouts. Defaults false. */
   multi?: boolean;
   reindexing: boolean;
   deletedTabIds: Set<string>;
@@ -105,7 +104,7 @@ export interface LeafPaneProps {
   onCloseToRight: (leafId: string, tabId: string) => void;
   onCloseAll: (leafId: string) => void;
   onOpenRight: (leafId: string, tabId: string) => void;
-  /** Pin/unpin a tab (D-14). Threaded to the tab-menu invocation site; ignored until Plan 07 renders the menu item. */
+  /** Pin/unpin a tab. Threaded to the tab-menu invocation site. */
   onTogglePin: (leafId: string, tabId: string) => void;
   /** Create a new untitled note and open it in THIS leaf (TAB-14, + button / ⌥T). */
   onNewTab: (leafId: string) => void;
@@ -162,7 +161,7 @@ export function LeafPane({
 
   const leafId = leaf.id;
 
-  // Cross-pane drag drop target (P26 / WS-01/WS-02, D-10): subscribe to the
+  // Cross-pane drag drop target (WS-01/WS-02): subscribe to the
   // transient drag store so this leaf renders its translucent region overlay
   // only while a drag is active AND the pointer is hovering THIS leaf's
   // data-droppane rect (TabStrip's window pointermove hit-tests against it).
@@ -217,14 +216,14 @@ export function LeafPane({
   );
   const handleNewTab = useCallback(() => onNewTab(leafId), [leafId, onNewTab]);
 
-  // D-04: a click anywhere in this leaf's chrome (strip, breadcrumb, body) or
+  // A click anywhere in this leaf's chrome (strip, breadcrumb, body) or
   // focus entering it makes this the active pane. Capture-phase so it fires
   // ahead of any inner onClick (e.g. EditorPane's click-to-focus-end handler).
   const activate = useCallback(() => {
     usePaneStore.getState().setActivePane(leafId);
   }, [leafId]);
 
-  // Find/Replace bar (P26, WS-09/D-01) — leaf-local, scoped to this leaf's
+  // Find/Replace bar (WS-09) — leaf-local, scoped to this leaf's
   // active tab. handlerRefs (above) already resolves to the active tab's
   // EditorPaneHandlers, so the bar drives THAT tab's own EditorView.
   const [findBar, setFindBar] = useState<FindBarState>(DEFAULT_FIND_BAR_STATE);
@@ -285,7 +284,7 @@ export function LeafPane({
     [findBar, syncQuery],
   );
 
-  // Item 6 bug fix (Phase 27 follow-up fix round): @codemirror/search's
+  // @codemirror/search's
   // findNext/findPrevious open CM6's own built-in search panel when the
   // query is invalid/empty — Jasper deliberately replaces that panel with
   // this custom FindReplaceBar, so it must never appear. No-op on a blank
@@ -366,7 +365,7 @@ export function LeafPane({
   }, [leaf.active]);
 
   // Built once per render, passed as a slot into the ACTIVE tab's EditorPane
-  // (P26 polish, UI-SPEC line 151): the bar now renders below that pane's own
+  // the bar renders below that pane's own
   // breadcrumb instead of as a LeafPane-level sibling above it. State/handlers
   // stay right here in LeafPane — this is pure slot injection, not a hoist.
   const findBarEl =
@@ -407,9 +406,9 @@ export function LeafPane({
         width: "100%",
         overflow: "hidden",
         position: "relative",
-        // D-27/D-28 (Phase 30): the active pane in a split shows a 1px inset
-        // accent outline at 35% opacity — corrected from the rejected 50%
-        // trial (260718-n6a). Single-pane layouts (multi=false) show none;
+        // The active pane in a split shows a 1px inset accent outline at 35%
+        // opacity — corrected from a rejected 50% trial.
+        // Single-pane layouts (multi=false) show none;
         // inactive panes in a split show no dimming (readability, unchanged).
         ...(isActive && multi
           ? {
@@ -456,11 +455,11 @@ export function LeafPane({
         ) : (
           leaf.tabs.map((tab) => (
             // Keyed by leaf+tab (not just tab.id): a future drag-tab-to-move
-            // (Phase 26) can relocate a tab to a different leaf while
+            // can relocate a tab to a different leaf while
             // preserving its id — prefixing the key with leafId forces a
             // remount (and a fresh shared-doc-registry registration) instead
             // of silently reusing a stale EditorPane instance across panes
-            // (see 25-05-SUMMARY.md's "captured once at mount" gap).
+            // (the refs are captured once at mount).
             <EditorPane
               key={`${leafId}:${tab.id}`}
               noteId={tab.noteId}

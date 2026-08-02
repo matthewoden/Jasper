@@ -10,7 +10,7 @@
  *
  * Hover: reveals the kebab (MoreHorizontal) button via group-hover.
  *
- * Drop indicator (D-07, Phase 29): folder rows get an inset accent
+ * Drop indicator: folder rows get an inset accent
  * box-shadow while `node.willReceiveDrop` is true (the drop resolves to
  * "into this folder", not a between-rows insertion) — the sole drag
  * feedback once FileTree suppresses react-arborist's default insertion-line
@@ -82,7 +82,7 @@ export type NoteNodeData = {
   updated_at?: string;
   /**
    * True filesystem birthtime when available, else undefined (wire
-   * TreeNode.created — SORT-01/D-04). Read by sortTree's "created" order.
+   * TreeNode.created — SORT-01). Read by sortTree's "created" order.
    */
   created?: string;
 };
@@ -151,7 +151,7 @@ export interface TreeRowProps {
    */
   dragHandle?: (el: HTMLDivElement | null) => void;
   /**
-   * Bookmark-row activation seam (BOOK-02/D-16) — routes to
+   * Bookmark-row activation seam (BOOK-02) — routes to
    * usePaneStore.openInActivePane instead of onSelectNote/setActiveNote.
    * Only consulted for `kind: "bookmark"` rows.
    */
@@ -160,11 +160,11 @@ export interface TreeRowProps {
   bookmarkMenu?: BookmarkMenuDescriptor;
 
   /**
-   * Bulk-selection wiring (D-19, CTX-02). FileTree.tsx computes these
+   * Bulk-selection wiring (CTX-02). FileTree.tsx computes these
    * against its own treeRef (react-arborist's live selection) and threads
    * them down here; only wired into the right-click ContextMenu variant —
-   * the kebab DropdownMenu is always single-row-scoped, per UI-SPEC's
-   * "right-click with a multi-selection" framing.
+   * the kebab DropdownMenu is always single-row-scoped — it acts on the
+   * clicked row, not the selection.
    */
   getSelectionCount?: () => number;
   onBulkOpenTabs?: () => void;
@@ -173,7 +173,7 @@ export interface TreeRowProps {
   onBulkDelete?: () => void;
 
   /**
-   * Note-row Bookmark toggle wiring (CTX-02, D-17). FileTree.tsx owns the
+   * Note-row Bookmark toggle wiring (CTX-02). FileTree.tsx owns the
    * SINGLE `useBookmarks()` hydrate/subscribe instance and threads its
    * `isBookmarked`/`toggleBookmark` down here — TreeRow deliberately does
    * NOT call `useBookmarks()` itself (unlike useReveal/useMcpGrants/
@@ -261,8 +261,8 @@ export function TreeRow({
   const isSelected = node.isSelected === true;
   const isDailyFolder = isFolder && (data as FolderNodeData).path === "daily";
   const isAttachmentsFolder = isFolder && (data as FolderNodeData).name === "attachments";
-  // Base offset computed from SidebarTabRow's actual icon column (Phase 27
-  // follow-up fix round, item 3): the tab icon's left edge sits at the
+  // Base offset computed from SidebarTabRow's actual icon column:
+  // the tab icon's left edge sits at the
   // header's 16px paddingLeft + half the 30x30 tab button's own
   // (30-16)/2=7px icon-centering inset = 23px. This row's own
   // chevron/spacer (16px) + the 4px chevron-to-icon gap (below) always
@@ -307,7 +307,7 @@ export function TreeRow({
             .openNoteInNewSplit((data as NoteNodeData).id, "row")
       : undefined;
 
-  // D-19/Pitfall 5: read the live selection at menu-OPEN time (not
+  // Read the live selection at menu-OPEN time (not
   // row-render time) so a stale count never leaks into an already-open
   // menu. Only the right-click ContextMenu variant is bulk-aware.
   const handleContextMenuOpenChange = useCallback(
@@ -389,7 +389,7 @@ export function TreeRow({
     }
 
     // Bookmark rows activate via the injected onActivate seam (BOOK-02/
-    // D-16 — usePaneStore.openInActivePane), never onSelectNote/
+    // usePaneStore.openInActivePane), never onSelectNote/
     // setActiveNote. Bookmark-folder rows just toggle open/closed, same
     // gesture as a real folder but without touching useTreeStore's
     // selectedRow (that store is note-tree-specific).
@@ -447,7 +447,7 @@ export function TreeRow({
       : undefined;
   const rowBackground = activeBackground ?? selectedBackground;
 
-  // D-07 (Phase 29): react-arborist's willReceiveDrop getter is only ever
+  // react-arborist's willReceiveDrop getter is only ever
   // true for the folder currently acting as the drop's destination parent
   // AND when the drop resolves to "into the folder" rather than a
   // between-rows insertion index (see tree-api.js willReceiveDrop) — so
@@ -502,18 +502,18 @@ export function TreeRow({
           ? data.title
           : data.name; // bookmark-folder
 
-  // Note-row hover tooltip (UAT gap-closure group B, item 8): created/modified
+  // Note-row hover tooltip: created/modified
   // in the user's LOCAL timezone via toLocaleString(). Missing `created`
-  // (older notes / filesystems without reliable birthtime, D-04) shows
+  // (older notes / filesystems without reliable birthtime) shows
   // Modified only; missing both renders no tooltip at all. Built here (not
   // inline in the JSX below) so we can decide whether to drop the native
   // `title=` ellipsis attribute — showing both a native title AND this rich
   // Radix tooltip on hover would double up, so the native title only survives
-  // on non-note rows / dateless notes (D-07's own ellipsis carve-out).
+  // on non-note rows / dateless notes.
   const noteDateTooltipContent =
     data.kind === "note" && (data.created != null || data.updated_at != null) ? (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {/* UAT round 2: the date VALUES were unreadably dim at
+        {/* The date VALUES were unreadably dim at
             --color-muted. Labels stay muted for hierarchy; the actual
             date/time strings render at --color-fg (normal weight, 12px) so
             they're clearly legible. */}
@@ -645,7 +645,7 @@ export function TreeRow({
       tabIndex={0}
       title={isDailyFolder ? "Daily notes" : undefined}
     >
-      {/* D-15: flat per-level indent guides for nested rows — mock draws an
+      {/* Flat per-level indent guides for nested rows — the mock draws an
           unconditional full-height vertical line at every ancestor level (no
           VSCode-style last-child termination). Anchored to the same
           `indent = 3 + 16*level` geometry as the row's own paddingLeft; +7
@@ -663,7 +663,7 @@ export function TreeRow({
               top: 0,
               bottom: 0,
               width: 1,
-              // UAT round 3 (D-15 brighten): owner feedback — the guide lines
+              // Owner feedback — the guide lines
               // following open folders read too faint. Swapped from
               // --color-border (#2a2a2e, the structural-divider token) to
               // --color-border-input (#34343a, the already-established

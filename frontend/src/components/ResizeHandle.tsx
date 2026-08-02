@@ -1,7 +1,7 @@
 /**
  * Generic resize handle — cursor-only affordance (no visible band) used by
- * SidebarResizeHandle (the former InterPanelDivider consumer was removed in
- * Phase 30 Plan 05's tab-row rework — the right rail no longer has
+ * SidebarResizeHandle (the former InterPanelDivider consumer was removed
+ * in the tab-row rework — the right rail no longer has
  * independently resizable sections).
  *
  * Drag lifecycle:

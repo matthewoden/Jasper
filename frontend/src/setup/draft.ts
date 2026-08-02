@@ -19,7 +19,7 @@ export const SETUP_DRAFT_KEY = "jasper.setup.draft";
 
 export interface SetupDraft {
   dataDir: string;
-  // theme dropped — dark-only (D-01); submit hardcodes "dark"
+  // theme dropped — dark-only; submit hardcodes "dark"
   accent: string;
   readingFont: "sans" | "serif";
   dailyTemplate: string;

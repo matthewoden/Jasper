@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Phase 17 — self-hosted font faces (D-09, UI-SPEC §Font Delivery).
+/* Self-hosted font faces.
    font-display: swap for progressive rendering; src is same-origin static
    asset embedded in the Go binary via //go:embed all:dist. */
 @font-face {
@@ -27,78 +27,77 @@
   src: url('/fonts/SourceSerif4-SemiBold.woff2') format('woff2');
 }
 
-/* Phase 17 dark-only theme (D-01: light theme removed).
+/* Dark-only theme (the light theme was removed).
    Semantic CSS variables in :root, mapped through Tailwind v4 @theme
    so utilities like bg-bg / text-fg / text-accent work. */
 :root {
-  /* Concrete hex values — Phase 17 dark Vault palette (UI-SPEC §Token Remap Table) */
+  /* Concrete hex values — dark Vault palette */
   --color-bg:          #1e1e21; /* editor background — dominant 60% */
   --color-surface:     #1a1a1c; /* chrome/sidebar — secondary 30% */
-  --color-surface-subtle: #1a1a1c; /* frontmatter-only (D-18, D-41) */
+  --color-surface-subtle: #1a1a1c; /* frontmatter-only */
   --color-fg:          #d4d4d8; /* foreground primary */
   --color-muted:       #6a6a72; /* foreground muted/secondary */
   --color-border:      #2a2a2e; /* structural dividers */
   --color-accent:      #a78bfa; /* purple default — accent 10%; user overrides via setProperty */
-  --color-success:     #4ade80; /* green-400 — save-indicator saved + tip callout (Phase 21 READ-02) */
-  --color-destructive: #f87171; /* red-400 — save-indicator error + danger callout (Phase 21 READ-02) */
+  --color-success:     #4ade80; /* green-400 — save-indicator saved + tip callout (READ-02) */
+  --color-destructive: #f87171; /* red-400 — save-indicator error + danger callout (READ-02) */
 
-  /* Phase 2 NEW (UI-SPEC §Color delta) — RESERVED for the migration banner
-     per UI-SPEC §"Warning color reserved for", extended to the warning
-     callout (Phase 21 READ-02). Future phases must declare their own
-     tokens with a different name if they need amber/warning shades. */
+  /* RESERVED for the migration banner, extended to the warning callout
+     (READ-02). Anything else needing an amber/warning shade must declare
+     its own token under a different name. */
   --color-warning:         #fbbf24; /* amber-400 — banner + warning callout */
   --color-warning-surface: #27201b; /* warm-tinted zinc-800 — banner only */
 
-  /* Phase 21 NEW (READ-02) — note/info callout color. Fixed hex,
+  /* READ-02 — note/info callout color. Fixed hex,
      intentionally NOT tied to the user's accent choice (unlike
      --color-accent) so a callout's semantic color stays stable regardless
      of accent selection, matching tip/warning/danger. */
   --color-callout-info: #7dd3fc; /* sky-300 — note + info callouts only */
 
-  /* Phase 2 NEW (UI-SPEC §Spacing delta) — RESERVED for migration banner
+  /* RESERVED for migration banner
      vertical padding (Surface 1) and toast vertical padding (Surface 5).
      No other use site. */
   --spacing-md-tight: 12px;
 
-  /* Font stacks from UI-SPEC Design System table (Phase 17 updated) */
+  /* Font stacks */
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Helvetica Neue", Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* Reading font: default = sans (system stack); toggled to serif stack at runtime via setProperty */
   --font-reading: var(--font-sans);
 
-  /* Phase 6.6 — TopBar drop shadow (D-31, UX-CHROME-01) */
+  /* TopBar drop shadow */
   --shadow-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-  /* Phase 31 D-17: matches Vault.dc.html's single-pane crumbCol/colStyle
-     horizontal gutter (56px), so the note breadcrumb's left edge lines up
-     with the title and .cm-content column below it (previously 36px, a
-     leftover from the retired TopBar.tsx alignment scheme — Plan 07-38). */
+  /* Matches Vault.dc.html's single-pane crumbCol/colStyle horizontal
+     gutter (56px), so the note breadcrumb's left edge lines up with the
+     title and .cm-content column below it (previously 36px, a leftover
+     from the retired TopBar.tsx alignment scheme). */
   --editor-content-x: 56px;
 
-  /* Phase 8 (Plan 08-04 / D-19) — AI grant tier tokens. Reserved for AI-access UI only;
-     do not reuse for other accent shades. Fixed values per D-08. */
+  /* AI grant tier tokens. Reserved for AI-access UI only; do not reuse
+     for other accent shades. Values are fixed, not accent-derived. */
   --color-ai-grant:        #a78bfa; /* violet-400 — Tier 1 (Edit only) */
   --color-ai-grant-strong: #7c3aed; /* violet-600 — Tier 2 (Full) */
 
-  /* Phase 17 new color tokens (UI-SPEC §New tokens to add) */
+  /* Additional color tokens */
   --color-fg-title:         #e8e8ec; /* title/heading text — brighter than body fg */
   --color-border-inner:     #232327; /* inner/secondary borders (tab right border, sidebar dividers) */
   --color-border-input:     #34343a; /* input/form borders + scrollbar thumb */
-  --color-surface-ribbon:   #161618; /* ribbon surface — pre-defined for Phase 18 */
+  --color-surface-ribbon:   #161618; /* activity-ribbon surface */
   --color-code-inline-bg:   #2a2a30; /* inline code background */
   --color-code-inline-text: #d8b9ff; /* inline code text (lavender) */
 
-  /* Phase 11 (D-08 / SC2): editor font/line-height CSS-var bridge.
+  /* Editor font/line-height CSS-var bridge.
      Default values match config defaults (fontSize=15, lineHeight=1.45).
      App.tsx seeds these from config.editor on boot so persisted user
      settings apply on reload even if Settings is never opened (SET-04). */
   --editor-font-size:   15px;
   --editor-line-height: 1.45;
 
-  /* Phase 26 (WS-09 / D-01) — per-pane Find/Replace bar tokens.
-     Exact UI-SPEC §Color values; the find/replace <input> border reuses the
-     EXISTING --color-border-input (#34343a) rather than a new token. */
+  /* Per-pane Find/Replace bar tokens. The find/replace <input> border
+     reuses the EXISTING --color-border-input (#34343a) rather than
+     introducing a new token. */
   --color-surface-raised: #202024; /* find bar container background */
   --color-btn-secondary-bg: #2c2c32; /* "Replace" button background */
   --color-btn-secondary-border: #3a3a42; /* "Replace" button border */
@@ -121,7 +120,7 @@
   --spacing-md-tight:       var(--spacing-md-tight);
   --font-sans:              var(--font-sans);
   --font-mono:              var(--font-mono);
-  /* Phase 17 new tokens — Tailwind utility bridge */
+  /* Tailwind utility bridge */
   --color-fg-title:         var(--color-fg-title);
   --color-border-inner:     var(--color-border-inner);
   --color-border-input:     var(--color-border-input);
@@ -129,14 +128,14 @@
   --color-code-inline-bg:   var(--color-code-inline-bg);
   --color-code-inline-text: var(--color-code-inline-text);
   --font-reading:           var(--font-reading);
-  /* Phase 26 new tokens — Tailwind utility bridge */
+  /* Find/Replace tokens — Tailwind utility bridge */
   --color-surface-raised:       var(--color-surface-raised);
   --color-btn-secondary-bg:     var(--color-btn-secondary-bg);
   --color-btn-secondary-border: var(--color-btn-secondary-border);
   --color-btn-secondary-fg:     var(--color-btn-secondary-fg);
 }
 
-/* Phase 2 — indeterminate progress stripe for ReindexProgress (Surface 3).
+/* Indeterminate progress stripe for ReindexProgress.
    Defined here (not inline) so the keyframes are available across the
    component tree and can be inspected by a single source. */
 @keyframes jasper-progress-stripe {
@@ -164,7 +163,7 @@ body {
   background-color: var(--color-bg);
   color:            var(--color-fg);
   font-family:      var(--font-sans);
-  font-size:        14px;   /* UI-SPEC Typography: Body 14px / 1.5 */
+  font-size:        14px;   /* body type: 14px / 1.5 */
   line-height:      1.5;
 }
 
@@ -213,26 +212,25 @@ body {
   background: transparent;
 }
 
-/* ── Plan 06-11: Backlinks Rail ──────────────────────────────────────────── */
+/* ── Backlinks Rail ─────────────────────────────────────────────────────── */
 
-/* Hover background for each backlinks row (D-28 UI-SPEC Surface 2). */
+/* Hover background for each backlinks row. */
 .backlinks-row:hover {
   background: color-mix(in srgb, var(--color-muted) 8%, transparent);
 }
 
 /* Highlight for [[...]] backlink references in server-built excerpts.
    The server wraps the reference in <mark class="backlink-ref">.
-   T-06-11-01: content must be sanitized via sanitize.ts before render.
-   READ-04/D-12: restyled to the same 28% accent-tint used by .cm-highlight
-   (Plan 02) and the search-result <mark> — snippet surfaces share one tint. */
+   Content MUST be sanitized via sanitize.ts before render.
+   Uses the same 28% accent-tint as .cm-highlight and the search-result
+   <mark> — snippet surfaces share one tint. */
 .backlinks-excerpt .backlink-ref {
   background: color-mix(in srgb, var(--color-accent) 28%, transparent);
   border-radius: 2px;
   padding: 0 2px;
 }
 
-/* ─── Phase 6.5 — autocomplete + inline-tag polish ──────────────────
-   UI-SPEC §Surface 4-NEW + §Surface 6-NEW.
+/* ─── Autocomplete + inline-tag polish ─────────────────────────────
    - Autocomplete popup: rounded, surface bg, FG (not muted) text,
      accent-12% selected/hover row.
    - Inline #tag decoration emitted by inlineTagPlugin: accent text,
@@ -240,7 +238,7 @@ body {
    Both blocks rely on existing --color-* tokens; no new tokens.
 ─────────────────────────────────────────────────────────────────── */
 
-/* RSIDE-01 Outline click-to-scroll (D-13/Pitfall 5): CM6 has no native
+/* RSIDE-01 Outline click-to-scroll: CM6 has no native
    scrollIntoView `behavior: "smooth"` option — this CSS rule on the actual
    scroller element IS the entire smooth-scroll mechanism (programmatic
    scrollTop/scrollLeft assignment respects scroll-behavior). */
@@ -259,12 +257,12 @@ body {
   overflow: hidden; /* clip rows to rounded corners */
 }
 
-/* Row layout — UI-SPEC D-17: 4px outer / 8px inner padding,
+/* Row layout — 4px outer / 8px inner padding,
    --color-fg for primary label (NOT muted — fixes the WCAG complaint). */
 .cm-tooltip.cm-tooltip-autocomplete > ul {
   padding: 4px 0 !important;
 }
-/* Phase 6.6 D-27: drop from 14px to 12px (label-size in 4-size budget). */
+/* Drop from 14px to 12px (label size in the 4-size budget). */
 .cm-tooltip.cm-tooltip-autocomplete > ul > li {
   font-size: 12px !important;
   color: var(--color-fg) !important;
@@ -272,7 +270,7 @@ body {
   line-height: 1.4;
 }
 
-/* Selected and hover rows — accent-12% tint per D-17. */
+/* Selected and hover rows — accent-12% tint. */
 .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected="true"],
 .cm-tooltip.cm-tooltip-autocomplete > ul > li:hover {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent) !important;
@@ -344,7 +342,7 @@ body {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
-/* Phase 7 Plan 10 — attachment drop zone (UI-SPEC §Surface 7) */
+/* Attachment drop zone */
 .cm-drop-target-active {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 50%, transparent);
   border-radius: 4px;
@@ -367,13 +365,13 @@ body {
 }
 
 /* ────────────────────────────────────────────────────────────────────
-   Plan 08-17c — VaultPicker modal styles.
+   VaultPicker modal styles.
 
    The picker is a Radix Dialog rendered in a portal. Without these rules
    the overlay/content divs have no positioning or backdrop and the
    modal collapses into the document flow invisibly. Style tokens align
    with the rest of the design system (zinc surface palette + 8px radius
-   per UI-SPEC §Spacing). UAT-2 #1c gap-closure.
+   to match the rest of the design system).
    ──────────────────────────────────────────────────────────────────── */
 .vault-picker-overlay {
   position: fixed;
@@ -424,8 +422,8 @@ body {
 }
 
 /* Full-width text inputs / textareas used inside the picker so paths
-   and templates are actually legible. UAT-2 #1d feedback: the default
-   browser inputs had no border/background and were invisible against
+   and templates are actually legible: the default browser inputs had no
+   border/background and were invisible against
    the modal surface. */
 .vault-picker-input,
 .vault-picker-textarea {
@@ -620,8 +618,8 @@ body {
   gap: 6px;
 }
 
-/* ── UAT-2 round 3 M3 — Radix dropdown/context menu hover indicator ────
-   Match the side-panel accent-12% hover tint (D-17 — same as autocomplete
+/* ── Radix dropdown/context menu hover indicator ──────────────────────
+   Match the side-panel accent-12% hover tint (same as autocomplete
    rows and the backlinks list). Radix sets data-highlighted="" on the
    currently hovered OR keyboard-focused item; covers DropdownMenu.Item,
    ContextMenu.Item, *.RadioItem, *.CheckboxItem, and *.SubTrigger across
@@ -632,8 +630,8 @@ body {
    same Portal/Content pipeline; the SubTrigger row also gets the tint
    while the flyout is open via [data-state="open"].
 
-   UAT-2 R4-7 (2026-06-02): rule is now a PURE color shift — no
-   padding/margin/transform/border-radius deltas. Previously R4-5 added
+   2026-06-02: rule is a PURE color shift — no
+   padding/margin/transform/border-radius deltas. An earlier version added
    `border-radius: 4px` + `margin: 0 4px` for a "chip" feel, but that
    produced a visible horizontal shift on hover (user observation: items
    moved over). The chip style is removed; hover/keyboard-focus changes
@@ -649,15 +647,15 @@ body {
   outline: none;
 }
 
-/* UAT-2 R4-5 / R4-8: items with an explicit active/selected state get a
+/* Items with an explicit active/selected state get a
    stronger tint + accent-color left stripe + bold weight so they remain
    visually distinguished from hover, which sits at the accent-12%
    background. The stripe + weight remain visible under hover. The marker
    `data-active` is opt-in — set it on items that carry their own
    "selected" semantic (e.g. AI grant tier rows).
 
-   UAT-2 R4-8 (2026-06-02): no `border-radius` on this rule. Combined
-   with R4-7 removing radius from `[data-highlighted]`, the active+
+   2026-06-02: no `border-radius` on this rule. Combined
+   with the removal of radius from `[data-highlighted]`, the active+
    highlighted combinator now produces a flat color shift with stable
    box geometry across all states. */
 [role="menuitem"][data-active="true"],
@@ -668,7 +666,7 @@ body {
   font-weight: 600;
 }
 
-/* UAT-2 R4-6: AI-granted folder tint. data-ai-level is set on every
+/* AI-granted folder tint. data-ai-level is set on every
    TreeRow whose effective ancestor grant is non-null (root + all
    subfolders, per user choice 2026-05-31). Tier 1 = violet-400 8%;
    Tier 2 = violet-600 10% (deeper, since Full grant is the more
@@ -682,7 +680,7 @@ body {
   background: color-mix(in srgb, var(--color-ai-grant-strong) 10%, transparent);
 }
 
-/* UAT-2 R4-10 (2026-06-02): AI-granted rows retain their violet identity
+/* 2026-06-02: AI-granted rows retain their violet identity
    when selected or active. Pre-fix: TreeRow sets an inline `background`
    style (rowBackground = accent-8% for active, accent-4% for selected)
    that wins over the data-ai-level tint above; the user reported
@@ -704,7 +702,7 @@ body {
 }
 
 /* ── sb5 (2026-06-03) — vertical breathing room between menu items ────
-   User feedback after UAT-2 R5: items currently sit flush against each
+   User feedback: items previously sat flush against each
    other (item height 32px, no margin). Add a 4px top margin to every
    menu item that follows another menu item — adjacent-sibling so the
    gap appears BETWEEN items only, never above the first item or below
@@ -726,16 +724,16 @@ body {
   margin-top: 4px;
 }
 
-/* ── Phase 21 Plan 04 — Callouts (READ-02) ───────────────────────────────
+/* ── Callouts (READ-02) ─────────────────────────────────────────────────
    Six named types (tip/note/info/warning/danger/todo) + unknown→note
-   fallback. All six share one rendering formula (UI-SPEC §Color):
+   fallback. All six share one rendering formula:
    left border 3px solid {type-color}, background color-mix 8% tint, dot
    6px circle {type-color}, title 14px/700 {type-color}, body inherits
    normal --color-fg (untinted). Emitted as Decoration.line by
    livePreviewPlugin.ts's Blockquote branch; the title text itself is a
    CalloutTitleWidget (Decoration.replace) that hides/reveals per cursor
    line, but the dot below is pure CSS so it stays visible even while
-   editing the title line (D-06).
+   editing the title line.
    ───────────────────────────────────────────────────────────────────── */
 .cm-callout {
   padding: 8px 16px;
@@ -801,7 +799,7 @@ body {
 .cm-callout-todo.cm-callout-title-line::before { background: var(--color-accent); }
 .cm-callout-title-todo { color: var(--color-accent); }
 
-/* Fold chevron (Phase 21 Plan 04 Task 2 — D-07). Built via createElementNS
+/* Fold chevron. Built via createElementNS
    inside the CM6 widget (no lucide-react import in CM6 files); styled here
    like every other CM6-rendered SVG affordance. */
 .cm-callout-fold-chevron {
@@ -812,11 +810,11 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Phase 21 Plan 06 — GFM table widget (READ-04, D-11) ─────────────────
+/* ── GFM table widget (READ-04) ─────────────────────────────────────────
    Real <table> rendered by tableWidgetPlugin.ts's TableWidget when the
    cursor is outside the table's range; drops to raw markdown text on
    cursor entry (no CSS involved in that flip — the widget decoration is
-   simply absent). D-15: the wrapper scrolls horizontally INSIDE the
+   simply absent). The wrapper scrolls horizontally INSIDE the
    760px reading column — the column's own edges never move.
    No zebra-striping (not in the design contract). */
 .cm-table-scroll {
@@ -835,7 +833,7 @@ body {
   border: 1px solid var(--color-border);
   padding: 8px 16px;
   text-align: left;
-  white-space: nowrap; /* D-15: cells never wrap — a too-wide table scrolls instead */
+  white-space: nowrap; /* cells never wrap — a too-wide table scrolls instead */
 }
 
 .cm-table thead th {
@@ -853,7 +851,7 @@ body {
   font-family: var(--font-mono);
 }
 
-/* ── Phase 22 Plan 03 — zen reading-column override (ZEN-01, D-09) ───────
+/* ── Zen reading-column override (ZEN-01) ──────────────────────────────
    Overrides themeBridge.ts's .cm-content (760px / 44px 56px 200px) via
    attribute+class specificity, no !important. Absent when zen is off, so
    the 760px default applies unchanged. */
@@ -862,7 +860,7 @@ body {
   padding: 64px 32px;
 }
 
-/* ── Phase 26 — Find/Replace highlight-all + current-match (WS-09/D-04) ──
+/* ── Find/Replace highlight-all + current-match ────────────────────────
    CM6's built-in searchHighlighter only paints while its native panel is
    open; jasperSearchHighlight (MarkdownEditor.tsx) re-derives highlighting
    directly from the live SearchQuery state field instead, independent of

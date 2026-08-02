@@ -40,10 +40,10 @@ export const jasperEditorTheme = EditorView.theme(
       lineHeight: "var(--editor-line-height)",
     },
     ".cm-content": {
-      // D-14/D-15/D-17: 760px centered col (margin:auto+border-box). P0 fix:
-      // explicit fontFamily so .cm-line stops inheriting monospace from .cm-scroller.
-      // Horizontal gutter unchanged (56px, D-17). Top padding tightened
-      // 40px -> 22px (UAT round 3 #7): combined with the title wrapper's own
+      // 760px centered col (margin:auto+border-box). Explicit fontFamily so
+      // .cm-line stops inheriting monospace from .cm-scroller.
+      // Horizontal gutter is 56px. Top padding tightened
+      // 40px -> 22px: combined with the title wrapper's own
       // 6px bottom padding, the title->body gap is now ~28px — matching
       // Vault.dc.html's title `marginBottom: 28px` (colStyle's 40px was the
       // BAR-to-title gap in the mock, not the title-to-body gap; the old 40px
@@ -55,11 +55,11 @@ export const jasperEditorTheme = EditorView.theme(
       caretColor: "var(--color-fg)",
       fontFamily: "var(--font-reading)",
     },
-    // Phase 31 UAT round 3 (#5): CM6's OWN baseTheme applies
+    // CM6's OWN baseTheme applies
     // `.cm-line { padding: 0 2px 0 6px }` unconditionally — a 6px left inset
     // with no equivalent on TitleElement.tsx's 0-padding contentEditable div.
     // The two share the SAME `.cm-content`/title-wrapper left edge (both
-    // 760px-max, margin:auto, 56px horizontal padding — D-12), so that
+    // 760px-max, margin:auto, 56px horizontal padding), so that
     // inherited 6px was the entire visible misalignment between the title's
     // first glyph and the body's first glyph. Zeroing only the LEFT side
     // (right 2px is cosmetic breathing room before wrapped/long lines and
@@ -136,7 +136,7 @@ export const jasperEditorTheme = EditorView.theme(
       borderTop: "1px solid var(--color-border)",
       margin: "24px 0",
     },
-    // D-18 heading scale: 27/21/17.5/15.5/14/13px, weight 700 (retires the
+    // Heading scale: 27/21/17.5/15.5/14/13px, weight 700 (retires the
     // prior 600 mid-weight). H1 gains a bottom-border underline (READ-04).
     ".cm-heading-1": {
       fontSize: "27px",
@@ -152,9 +152,9 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-strong": { fontWeight: "700" },
     ".cm-emphasis": { fontStyle: "italic" },
     ".cm-highlight": {
-      // D-10: accent-tint background, NOT a fixed hue — follows the active
-      // accent so the 4-accent picker (Phase 17) stays correct. 28% verified
-      // (contrast-check evidence in 21-02-SUMMARY.md) to pass WCAG AA
+      // Accent-tint background, NOT a fixed hue — follows the active
+      // accent so the 4-accent picker stays correct. 28% is contrast-checked
+      // to pass WCAG AA
       // large-text contrast (>=3:1) for all 4 accents against --color-fg
       // text over --color-bg; text color intentionally untouched (stays
       // --color-fg) for legibility.
@@ -212,7 +212,7 @@ export const jasperEditorTheme = EditorView.theme(
       textUnderlineOffset: "2px",
       cursor: "text",
     },
-    // D-13: broken/unresolved wiki-links render with a solid reddish
+    // Broken/unresolved wiki-links render with a solid reddish
     // underline (not dashed). CSS-only — click-to-create behavior in
     // wikilinkPlugin.ts/linkClickHandler.ts is untouched.
     ".cm-wiki-link-pending": {
@@ -272,7 +272,7 @@ export const jasperEditorTheme = EditorView.theme(
 /**
  * jasperHighlightStyle — token-tag → color map for the CM6 syntax
  * highlighter. Most colors flow through var(--color-*); the three
- * documented exceptions (UI-SPEC §"Color exceptions") use fixed hex
+ * documented exceptions use fixed hex
  * because they are .cm-content-scoped and sit outside the chrome
  * palette.
  */

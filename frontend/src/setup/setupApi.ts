@@ -30,9 +30,9 @@ async function fetchSetupStatus(): Promise<SetupStatus> {
 }
 
 // pass-through, not cached: SetupApp runs pre-vault with no WebSocket, so
-// there is no invalidation channel to declare (D-15 as amended). /setup is
-// deliberately registered anyway — D-18's "zero exemptions" means every GET
-// lives in the resource layer even where caching offers no benefit yet.
+// there is no invalidation channel to declare. /setup is deliberately
+// registered anyway — the resource layer takes zero exemptions, so every
+// GET lives here even where caching offers no benefit yet.
 export const setupStatusResource = createResource("setupStatus", fetchSetupStatus, {
   mode: "pass-through",
 });

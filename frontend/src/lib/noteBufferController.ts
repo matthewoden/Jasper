@@ -2,7 +2,7 @@
  * noteBufferController — per-note module singleton owning content, save
  * state, debounce, coalesced flush, and WebSocket reconciliation.
  *
- * Lifted out of EditorPane (D-01/D-03): before this module existed, every
+ * Lifted out of EditorPane: before this module existed, every
  * mounted pane showing the same note owned its OWN copy of this state, so
  * two panes on one note could each run their own debounce/save cycle and
  * each reconcile the same note:updated event independently — a structural
@@ -104,7 +104,7 @@ export interface NoteBufferController {
    * call-site supplies the actual reindexing/connectionStatus check here,
    * reading its own refs so the predicate always sees CURRENT values.
    *
-   * Multi-owner (WR-03 fix, 25-REVIEW.md): every EditorPane showing this
+   * Multi-owner: every EditorPane showing this
    * note registers its OWN gate here (tracked in a Set); a save proceeds
    * only when ALL registered gates pass. Returns an unregister function
    * that removes ONLY this caller's gate — call it from the registering
@@ -119,13 +119,13 @@ export interface NoteBufferController {
    * with no tab (the noteId-prop-driven fallback pane) switches to a
    * different note out from under this controller, mirroring the old
    * per-pane "debounce armed for the previous note must never fire" guard
-   * (WR-02: no cross-note PUT). Does not touch content/history; a later
+   * (no cross-note PUT). Does not touch content/history; a later
    * hydrate() for the same noteId still fully resets state.
    */
   discardPendingEdit(): void;
   /**
-   * Updates the debounce interval used by the NEXT armed debounce (Plan 05
-   * WR-04: EditorPane's autosaveMs prop can arrive after mount, once the
+   * Updates the debounce interval used by the NEXT armed debounce
+   * (EditorPane's autosaveMs prop can arrive after mount, once the
    * async /config fetch resolves — getOrCreateController only honors its
    * autosaveMs argument on first construction, so a later change must be
    * pushed in explicitly rather than re-passed to getOrCreateController).
@@ -204,7 +204,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private isRenameInProgress = false;
   private lastH1Sent: string | null = null;
   private lastNotePath = "";
-  /** WR-03: multi-owner gate set — see setSaveGate's interface doc. */
+  /** Multi-owner gate set — see setSaveGate's interface doc. */
   private readonly saveGates = new Set<() => boolean>();
 
   /** Set true by releaseController; aborts any in-flight trailing chain. */
@@ -312,7 +312,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
             return;
           }
           this.content = data.content;
-          // WR-02 fix (25-REVIEW.md): re-seed the H1-rename comparator (and
+          // Re-seed the H1-rename comparator (and
           // the rename-comparator's path) from the JUST-adopted server
           // content. Without this, lastH1Sent/lastNotePath keep pointing at
           // this controller's stale pre-adopt values, so the next unrelated
@@ -414,14 +414,14 @@ class NoteBufferControllerImpl implements NoteBufferController {
     // Gate check FIRST, before any state transition or inFlight coalescing —
     // matches the pre-Plan-04 EditorPane.performSave ordering exactly: a
     // blocked attempt (reindexing/disconnected) leaves saveState untouched
-    // and is never queued as a trailing save. WR-03: ALL registered gates
+    // and is never queued as a trailing save. ALL registered gates
     // (one per pane showing this note) must pass.
     for (const gate of this.saveGates) {
       if (!gate()) return { ok: false };
     }
     if (this.inFlight) {
       // A save is already running; this content rides out as the trailing
-      // save. Resolve with ITS real outcome once it settles (UAT-3) — never
+      // save. Resolve with ITS real outcome once it settles — never
       // optimistically here.
       this.trailingPending = true;
       return new Promise<{ ok: boolean }>((resolve) => {
@@ -483,7 +483,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
         type: "saveSucceeded",
         updatedAt: new Date(data.updated_at),
       });
-      // WR-01 fix (25-REVIEW.md): the buffer now matches the server, so
+      // The buffer now matches the server, so
       // clear the dirty flag. Without this, userHasEdited stayed true for
       // the life of the buffer after the FIRST edit ever made, which (a)
       // made onNoteUpdated's silent-adopt guard permanently false — every

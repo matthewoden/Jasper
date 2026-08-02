@@ -101,7 +101,7 @@ export interface TreeViewProps<T extends TreeViewNode> {
    */
   onRootDrop?: (dragNodes: NodeApi<T>[]) => void;
   /**
-   * D-07 (Phase 29, FileTree only): pass `() => null` to suppress
+   * FileTree only: pass `() => null` to suppress
    * react-arborist's default between-rows insertion-line cursor, replacing
    * it with a target-folder-only highlight (rendered per-row via
    * NodeApi.willReceiveDrop in TreeRow). Omit to keep the default

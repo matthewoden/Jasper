@@ -1,11 +1,11 @@
 /**
- * NoteOptionsMenu — per-pane 3-dot note-options menu (CTX-03, D-21..D-25).
+ * NoteOptionsMenu — per-pane 3-dot note-options menu (CTX-03).
  *
  * DropdownMenu-only (click-triggered, never right-click) — structurally
  * copies TreeRowMenu.tsx's TreeRowDropdownMenu HALF, not the dual-primitive
  * ContextMenu/DropdownMenu pattern (this menu has no right-click trigger).
- * Deliberately does NOT import styles from TreeRowMenu — UI-SPEC §5 gives
- * this menu its own "floating card" formula (10px radius / 210px width),
+ * Deliberately does NOT import styles from TreeRowMenu — this menu has
+ * its own "floating card" formula (10px radius / 210px width),
  * distinct from TreeRowMenu/TabContextMenu's 6px shared convention — mixing
  * radii within one visual family would look like a bug, not a choice.
  *

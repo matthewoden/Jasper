@@ -1,7 +1,7 @@
 /**
  * calloutFoldField — CM6 extension tracking which foldable callouts
  * (`> [!type]-` — trailing dash) are collapsed, and hiding their body
- * lines when folded (READ-02, D-07).
+ * lines when folded (READ-02).
  *
  * Block decorations must come from a StateField, not a ViewPlugin (CM6
  * constraint: "Block decorations may not be specified via plugins").

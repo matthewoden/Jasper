@@ -11,7 +11,7 @@
 /** Floor each pill shrinks to before tabs start collapsing into the dropdown. */
 export const MIN_TAB_WIDTH = 120;
 /**
- * Natural cap a pill grows to. Reconciled to 185 for the Phase 18 flush-tab
+ * Natural cap a pill grows to. Reconciled to 185 for the flush-tab
  * restyle: the title span (flex:1) ellipsizes at roughly
  * (pill width - file icon 14 - gaps 8 - horizontal padding 16 - close X 20)
  * chrome, so 185 - ~58 = ~127px title width, matching DESIGN-NOTES.md §3's
@@ -89,7 +89,7 @@ export interface DropIndexInput {
 }
 
 /**
- * Map a drop onto the VISIBLE tab strip to a full-array insert index (WR-03).
+ * Map a drop onto the VISIBLE tab strip to a full-array insert index.
  *
  * Hidden (overflowed) tabs can be interleaved between visible ones, so the
  * naive `tabIds.findIndex(t => t.id === targetId)` spans those hidden tabs
@@ -118,7 +118,7 @@ export function computeDropIndex(input: DropIndexInput): number {
 
 /**
  * clampIndexToPinnedBoundary — enforces the pinned/unpinned region boundary
- * (D-15/D-16) on any computed insertion index (drag drop-index, foreign-strip
+ * on any computed insertion index (drag drop-index, foreign-strip
  * insert, or "New note to the right"). `pinnedCount` is the number of OTHER
  * pinned tabs already in the TARGET leaf — i.e. NOT counting the tab being
  * moved, whether or not it is currently a member of that leaf. Under that

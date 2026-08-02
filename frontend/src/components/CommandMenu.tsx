@@ -31,7 +31,7 @@ interface NoteItem {
   id: string;
   title: string;
   path: string;
-  /** 0-based char positions in `title` matched by the fuzzy query (D-15); undefined for the empty-query recency list. */
+  /** 0-based char positions in `title` matched by the fuzzy query; undefined for the empty-query recency list. */
   matchIndexes?: readonly number[];
 }
 
@@ -60,7 +60,7 @@ interface GroupItem {
   label: string;
 }
 
-/** D-08 synthetic row — action, not a note. Always the last item when eligible. */
+/** Synthetic row — an action, not a note. Always the last item when eligible. */
 interface CreateItem {
   kind: "create";
   id: "create";
@@ -79,9 +79,8 @@ export interface CommandMenuProps {
 
 
 // Kind badge — copied verbatim from the autocomplete detail-badge treatment
-// (theme.css:300-319) per the UI-SPEC contract; the padding: "0 6px" inset is
-// an owner-approved component-internal exception to the 4px grid (see
-// 22-UI-SPEC.md "Spacing Scale" + memory pill-inset-grid-exception).
+// (theme.css:300-319); the padding: "0 6px" inset is an owner-approved
+// component-internal exception to the 4px spacing grid.
 const kindBadgeBaseStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -129,7 +128,7 @@ const createKindBadgeStyle: React.CSSProperties = {
   color: "var(--color-success)",
 };
 
-// D-14: notes-mode rows are two-line 56px, no kind badge (unlike commands mode).
+// Notes-mode rows are two-line 56px, no kind badge (unlike commands mode).
 const noteRowTitleStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
@@ -169,7 +168,7 @@ const createRowSubtitleStyle: React.CSSProperties = {
 };
 
 /**
- * D-15: builds contiguous matched/unmatched runs from fuzzysort's 0-based
+ * Builds contiguous matched/unmatched runs from fuzzysort's 0-based
  * `matchIndexes`, wrapping matched runs in an accent-colored span. Plain
  * string return for empty-query rows (no indexes to highlight).
  */
@@ -273,7 +272,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     mode === "search" ? activeTagFilter : null,
   );
 
-  // D-06/D-07/D-08 create-row support (notes mode only) — REUSE only, no new
+  // Create-row support (notes mode only) — REUSE only, no new
   // title-matching or tree-walk logic lives in this component.
   const { tree } = useFileTree();
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
@@ -365,10 +364,10 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
 
   const recordOpenedNote = useTreeStore((s) => s.recordOpenedNote);
 
-  // D-05/D-06/D-09 create-from-query flow (Shift+Enter, plain Enter on the
+  // Create-from-query flow (Shift+Enter, plain Enter on the
   // create row, Cmd/Ctrl+Shift+Enter on the create row) — REUSE only:
   // useTreeMutations().createNote + the same error/toast mapping pattern as
-  // useTreeCreateActions (D-09's "same seam the Notes-tree + new note uses").
+  // useTreeCreateActions — the same seam the Notes tree's + new note uses.
   const { createNote } = useTreeMutations();
   const { toast } = useToast();
 
@@ -399,8 +398,8 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
 
   /**
    * createFromQuery — creates a note titled by the raw query text in the
-   * active note's folder (vault-root fallback, D-06), then opens it either
-   * in the active pane or a new row split (D-10/D-11's openNoteInNewSplit,
+   * active note's folder (vault-root fallback), then opens it either
+   * in the active pane or a new row split (openNoteInNewSplit,
    * which itself falls back to the active pane at MAX_DEPTH).
    */
   const createFromQuery = async (target: "row" | "active") => {
@@ -418,7 +417,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
   };
 
-  // ARIA combobox/listbox wiring (notes mode only, per UI-SPEC Accessibility).
+  // ARIA combobox/listbox wiring (notes mode only).
   const selectedItem = items[selectedIdx];
   const selectedOptionId =
     mode === "notes" &&
@@ -432,13 +431,12 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     if (!item) return;
     if (item.kind === "group") return;
     if (item.kind === "create") {
-      // D-09: plain Enter on the create row creates + opens in the active pane.
+      // Plain Enter on the create row creates + opens in the active pane.
       void createFromQuery("active");
       return;
     }
     if (item.kind === "note" || item.kind === "search-result") {
-      // Phase 25: opens as a tab in the active pane (WS-08's openInActivePane
-      // primitive) — replaces the retired flat useTabStore.openTab.
+      // Opens as a tab in the active pane via the openInActivePane primitive.
       usePaneStore.getState().openInActivePane(item.id);
       recordOpenedNote(item.id);
       onOpenChange(false);
@@ -464,7 +462,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
     }
     if (e.key !== "Enter") return;
 
-    // Cmd/Ctrl+Shift+Enter (D-10/D-11) — checked before the plain Shift+Enter
+    // Cmd/Ctrl+Shift+Enter — checked before the plain Shift+Enter
     // branch so a held Cmd/Ctrl doesn't also trigger the create-or-open path.
     if (mode === "notes" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault();
@@ -481,7 +479,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
       return;
     }
 
-    // Shift+Enter (D-05/D-07) — create a note named by the query text
+    // Shift+Enter — create a note named by the query text
     // regardless of which row is selected, unless an exact-title match
     // already exists (open it instead of duplicating).
     if (mode === "notes" && e.shiftKey) {
@@ -663,7 +661,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
                 />
               </>
             )}
-            {/* Esc hint — right-aligned, present in every mode (D-04). */}
+            {/* Esc hint — right-aligned, present in every mode. */}
             <KeyboardChip>Esc</KeyboardChip>
           </div>
 
@@ -921,7 +919,7 @@ export function CommandMenu({ open, onOpenChange, mode, actions }: CommandMenuPr
             )}
           </div>
 
-          {/* Footer legend (D-13) — always-on, notes mode only, sibling AFTER the scrollable list. */}
+          {/* Footer legend — always-on, notes mode only, sibling AFTER the scrollable list. */}
           {mode === "notes" && (
             <div
               style={{

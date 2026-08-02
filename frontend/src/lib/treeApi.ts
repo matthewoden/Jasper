@@ -61,7 +61,7 @@ export function walkTreeCollect(tree: Tree): {
 }
 
 // Not module-private: useTreeMutations.ts's moveFile() 404-reconciliation
-// path (an imperative D-06-style server-truth read after broadcastRefresh(),
+// path (an imperative server-truth read after broadcastRefresh(),
 // not a useResource() consumer) calls this directly. Kept exported so that
 // file's zero-diff contract holds; treeResource's own fetcher (fetchTree,
 // below) still owns the cached/coalesced path every display consumer uses.

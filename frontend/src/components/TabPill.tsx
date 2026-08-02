@@ -1,7 +1,7 @@
 /**
  * TabPill — a single editor tab: title (truncated), an always-visible close
  * (X), middle-click close, and a "(deleted)" read-only indicator. No file
- * icon (D-10) — the title alone carries the tab identity, matching the mock.
+ * icon — the title alone carries the tab identity, matching the mock.
  *
  * Pure props-in / callbacks-out. TabStrip owns pointer-event drag-to-reorder;
  * this pill only carries selection and close callbacks. Active styling uses
@@ -25,7 +25,7 @@ export interface TabPillProps {
   title: string;
   isActive: boolean;
   /**
-   * Whether this pill's leaf is the active pane (WS-07 / D-05). The active
+   * Whether this pill's leaf is the active pane (WS-07). The active
    * tab's 2px top-accent reads purple (--color-accent) when its pane is
    * active, and a neutral gray (--color-muted) when it is not — so the purple
    * accent itself is the active-PANE signal. Defaults true so single-pane /
@@ -38,7 +38,7 @@ export interface TabPillProps {
   /** Dim the pill while it is being dragged. NOT forwarded to the DOM. */
   isDragging?: boolean;
   /**
-   * Pinned tabs (D-14/D-15, Phase 30): the trailing close-× slot renders a
+   * Pinned tabs: the trailing close-× slot renders a
    * Pin glyph instead. Defaults false so every pre-existing caller keeps the
    * original close-× behavior unchanged.
    */
@@ -101,10 +101,10 @@ const closeButtonStyle: CSSProperties = {
   // centered on the tab's LABEL text, not bottom-pinned. tabPillStyle's row
   // already uses alignItems:"center", so simply not overriding alignSelf here
   // lets the button share the label's vertical center (this REVERSES the prior
-  // UAT-15.1-ALIGN bottom-pin/co-centering contract with the new-tab + and
+  // bottom-pin/co-centering contract with the new-tab + and
   // overflow chevron — TabStrip.tsx/TabOverflowDropdown.tsx were re-centered
   // to match, see their own comments).
-  // D-11 optical centering: lineHeight:0 strips the inherited text-line strut
+  // Optical centering: lineHeight:0 strips the inherited text-line strut
   // an inline-flex button otherwise reserves around its SVG child, which was
   // nudging the 12px X glyph a hair below true vertical center.
   lineHeight: 0,
@@ -128,7 +128,7 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
   ) {
     const [hovering, setHovering] = useState(false);
 
-    // Active-tab top-accent color (D-05): purple in the active pane, neutral
+    // Active-tab top-accent color: purple in the active pane, neutral
     // gray in an inactive pane — the purple is the active-PANE signal.
     const activeAccentColor = paneActive
       ? "var(--color-accent)"
@@ -163,14 +163,14 @@ export const TabPill = forwardRef<HTMLDivElement, TabPillAllProps>(
         onAuxClick={(e) => {
           if (e.button === 1) {
             e.preventDefault();
-            // D-14/CR-02: a pinned tab refuses the middle-click close, mirroring
+            // A pinned tab refuses the middle-click close, mirroring
             // the pin-glyph button's own guard — never call onClose() for a
             // pinned tab, only onPinnedClickRefused.
             if (isPinned) {
               onPinnedClickRefused?.();
               return;
             }
-            // Middle-click closes the tab (TAB-05 / D-14).
+            // Middle-click closes the tab (TAB-05).
             onClose();
           }
         }}

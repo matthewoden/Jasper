@@ -7,7 +7,7 @@
  * useOutlineStore (written by the active MarkdownEditor instance).
  *
  * Fold state is session-level (component useState, not persisted) per
- * CONTEXT.md's explicit discretion grant (D-14) — collapsing a parent hides
+ * CONTEXT.md's explicit discretion grant — collapsing a parent hides
  * every row until the next heading at an equal-or-shallower level.
  */
 import { useState } from "react";

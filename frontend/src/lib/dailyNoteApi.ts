@@ -40,7 +40,7 @@ async function fetchDailyNote(date: string): Promise<NoteDetail> {
 
 // Pass-through, never cached: the note can be created or deleted outside
 // this client, so a cached response would hide the change. Still keyed +
-// coalesced (D-05) — a double-click on "Today's note" for the same date
+// coalesced — a double-click on "Today's note" for the same date
 // produces one request pair, not two, on top of useDailyNote's own
 // dailyNoteLoading re-entrancy guard.
 const dailyNoteResource = createKeyedResource("dailyNote", fetchDailyNote, {

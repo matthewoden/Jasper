@@ -1,6 +1,5 @@
 /**
- * Shared app-wide tooltip system (D-06..D-09, Phase 31; UAT gap-closure
- * group A).
+ * Shared app-wide tooltip system.
  *
  * One shared token-styled Tooltip wrapper + a single app-root
  * TooltipProvider. delayDuration/skipDelayDuration give the Obsidian-style
@@ -98,10 +97,10 @@ const shortcutStyle: CSSProperties = {
 export interface TooltipProps {
   /** Required unless `content` is given, which fully replaces the label+shortcut rendering. */
   label?: string;
-  /** Rendered muted after the label, e.g. "⌘O" (D-08). Ignored when `content` is given. */
+  /** Rendered muted after the label, e.g. "⌘O". Ignored when `content` is given. */
   shortcut?: string;
   /**
-   * Rich-content escape hatch (needed by note-row dates, group B): when
+   * Rich-content escape hatch (needed by note-row dates): when
    * provided, renders in place of the label+shortcut spans. `label` becomes
    * optional in this mode.
    */

@@ -1,13 +1,12 @@
 /**
  * SearchSortDropdown — three-option sort control for the sidebar Search
- * panel (SORT-02, D-15). Mounted beside the search input in
+ * panel (SORT-02). Mounted beside the search input in
  * SidebarSearchPanel.tsx.
  *
  * Unlike NotesSortMenu's icon-only trigger, this trigger renders the
  * current selection as text ("Relevance ▾" etc.) at 12px muted — the
  * search panel already has a text status line at this size, so an
- * icon-only control here would look orphaned (UI-SPEC Component
- * Inventory, SearchSortDropdown row).
+ * icon-only control here would look orphaned.
  *
  * Style constants are re-declared here (not imported from TreeRowMenu.tsx)
  * to avoid a merge collision with the concurrently-running 29-05 plan,

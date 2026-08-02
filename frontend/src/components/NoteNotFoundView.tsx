@@ -63,8 +63,7 @@ export function NoteNotFoundView() {
       }}
       data-testid="note-not-found-view"
     >
-      {/* D-17: NoteNotFoundView kept at 480px per RESEARCH Open Question 1 —
-          compact error card, not a reading column; confirm at phase UAT. */}
+      {/* Kept at 480px — a compact error card, not a reading column. */}
       <div
         style={{
           maxWidth: 480,

@@ -1,20 +1,20 @@
 /**
  * paneTree — pure, React/Zustand-free operations on the recursive split-pane
- * layout tree (WS-04, D-09, D-10, D-16).
+ * layout tree (WS-04).
  *
- * Naming mirrors the design source (`DELTA-FROM-v1.2.md` §1) for continuity
- * between design and implementation: `splitPane` / `_updLeaf` / `_removeLeaf` /
- * `_findLeaf` / `_leaves`.
+ * Naming mirrors the design source for continuity between design and
+ * implementation: `splitPane` / `_updLeaf` / `_removeLeaf` / `_findLeaf` /
+ * `_leaves`.
  *
  * Every op returns a NEW tree (immutable-in, immutable-out) — no in-place
  * mutation, matching how `useTabStore.ts`'s array ops already build new arrays.
  *
- * Tab id is intentionally decoupled from noteId (D-16): use `newTabId()`, never
+ * Tab id is intentionally decoupled from noteId: use `newTabId()`, never
  * `id = noteId`. This lets the same note appear as independent tabs across
  * different leaves without an id collision.
  *
  * `_removeLeaf` on the last remaining leaf returns a single empty default leaf,
- * never null (D-10) — final-pane-never-collapses invariant.
+ * never null — the final-pane-never-collapses invariant.
  */
 import type { Tab } from "./useTabStore";
 
@@ -37,7 +37,7 @@ export type PaneNode = SplitNode | LeafNode;
 
 const DEFAULT_RATIO = 0.5;
 
-/** Generates a tab id decoupled from noteId (D-16). */
+/** Generates a tab id decoupled from noteId. */
 export function newTabId(): string {
   return crypto.randomUUID();
 }
@@ -45,8 +45,8 @@ export function newTabId(): string {
 /**
  * Generates a leaf/pane id. Functionally identical to newTabId() (both are
  * just crypto.randomUUID()), but named separately per-call-site for
- * readability (IN-02, 25-REVIEW.md): a leaf id and a tab id occupy distinct
- * id spaces (D-16) and reusing one generator name for both obscured that
+ * readability: a leaf id and a tab id occupy distinct
+ * id spaces, and reusing one generator name for both obscured that
  * distinction at call sites that mint a LEAF id, not a tab id.
  */
 export function newLeafId(): string {
@@ -64,11 +64,11 @@ export function newLeaf(id: string, tabs: Tab[] = [], active: string | null = nu
  * When `cloneActiveTab` is true and the target leaf has an active tab, the
  * sibling starts with a clone of that tab under a NEW tab id (same noteId,
  * distinct tab id) so it is independently closable. When the target leaf has
- * no active tab (D-10 empty-pane state), cloning is a no-op — the sibling
+ * no active tab (the empty-pane state), cloning is a no-op — the sibling
  * starts empty, with no phantom tab.
  *
  * Honors the EXPLICIT `dir` argument unconditionally, regardless of any
- * ancestor split's direction (RESEARCH.md Open Question 2 resolution) —
+ * ancestor split's direction —
  * nesting falls out of `_findLeaf` + replacement with no special-casing.
  *
  * Returns the tree unchanged if `leafId` is not found.
@@ -131,7 +131,7 @@ export function _updLeaf(tree: PaneNode, leafId: string, patch: Partial<LeafNode
  * split in the parent's place. Recurses so removal at any depth rebalances
  * correctly.
  *
- * D-10 invariant: removing the ONLY remaining leaf in the tree returns a
+ * Invariant: removing the ONLY remaining leaf in the tree returns a
  * single new empty leaf — never null. The final pane never collapses away.
  */
 export function _removeLeaf(tree: PaneNode, leafId: string): PaneNode {
@@ -187,9 +187,9 @@ export function splitWithTab(
 
 /**
  * Appends `tab` to the target leaf's tabs and activates it. Per-leaf dedup
- * (D-07): if the target leaf already holds a tab with the same `noteId`,
+ * if the target leaf already holds a tab with the same `noteId`,
  * activates that existing tab instead of adding a duplicate. A PINNED `tab`
- * (D-15) does not append past the leaf's unpinned tabs — it lands at the end
+ * does not append past the leaf's unpinned tabs — it lands at the end
  * of the target leaf's own pinned group instead, so a cross-pane center-drop
  * of a pinned tab never breaks the left-grouped invariant.
  *
@@ -213,9 +213,9 @@ export function moveTab(tree: PaneNode, targetLeafId: string, tab: Tab): PaneNod
 /**
  * Inserts `tab` at `insertIndex` (clamped to [0, tabs.length]) in the target
  * leaf's tabs and activates it — the positional counterpart to `moveTab`'s
- * append-only insert, used by TabStrip's foreign-strip drop (P26 Obsidian
+ * append-only insert, used by TabStrip's foreign-strip drop (Obsidian
  * parity: dropping onto a specific pill position lands there, not at the
- * end). Per-leaf dedup (D-07) still applies: an existing same-noteId tab is
+ * end). Per-leaf dedup still applies: an existing same-noteId tab is
  * activated in place rather than duplicated.
  *
  * Returns the tree unchanged if `targetLeafId` is not found.
@@ -263,7 +263,7 @@ export function setRatioAtPath(tree: PaneNode, path: ("a" | "b")[], ratio: numbe
 
 /**
  * depthAtLeaf — counts split-node ancestors between `tree` and the leaf
- * identified by `leafId` (P28 QUICK-03 max-depth guard). A root leaf (no
+ * identified by `leafId` (the QUICK-03 max-depth guard). A root leaf (no
  * ancestor splits) is depth 0; each split traversed on the way down adds 1.
  * Returns 0 (a safe non-blocking default) when `leafId` is not found —
  * callers only use this to gate a split action, and a missing leaf id is
@@ -280,7 +280,7 @@ export function depthAtLeaf(tree: PaneNode, leafId: string): number {
 
 /**
  * Flips a tab's `pinned` flag and repositions it to the pinned/unpinned
- * boundary (D-14) so pinned tabs stay auto-grouped at the left of the strip
+ * boundary so pinned tabs stay auto-grouped at the left of the strip
  * regardless of where the toggle was invoked from. Both directions land at
  * the SAME index — the count of the tab's new sibling group (other pinned
  * tabs when pinning, i.e. the tab becomes the last pinned tab; other pinned
@@ -304,7 +304,7 @@ export function _findLeaf(tree: PaneNode, leafId: string): LeafNode | null {
   return _findLeaf(tree.a, leafId) ?? _findLeaf(tree.b, leafId);
 }
 
-/** Flattens the tree into an in-order array of leaves (for e.g. focus-cycle, D-08). */
+/** Flattens the tree into an in-order array of leaves (for e.g. focus-cycle). */
 export function _leaves(tree: PaneNode): LeafNode[] {
   if (tree.t === "leaf") return [tree];
   return [..._leaves(tree.a), ..._leaves(tree.b)];

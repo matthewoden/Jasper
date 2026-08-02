@@ -1,11 +1,10 @@
 /**
  * SettingsDialogShell — composes the persistent left-nav Settings dialog
- * (D-19 locked 920x628 frame, 216px nav column, 56px header rows) around the
+ * (a locked 920x628 frame, 216px nav column, 56px header rows) around the
  * four section panes. Owns the single `useConfig` instance and the
  * save-error banner — replaces the retired `SettingsDialog.tsx`. The Server
  * section and its restart-pending signal were retired by ADR-002
- * (2026-07-26); Phase 36 reintroduces a Server pane with a different control
- * set.
+ * (2026-07-26).
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle } from "lucide-react";
@@ -29,13 +28,13 @@ import { PaneHeader } from "./PaneHeader";
 import { ResetConfirmDialog } from "./ResetConfirmDialog";
 import { SECTIONS, isResettable, type ResettableSectionId, type SectionId } from "./sections";
 
-// Fields a per-section Reset (D-07/D-10/D-12) is allowed to overwrite, built
+// Fields a per-section Reset is allowed to overwrite, built
 // from the CURRENT config with only the named fields swapped to
 // DEFAULT_CONFIG's values — never a wholesale DEFAULT_CONFIG spread, which
 // would silently wipe every section the user did not ask to reset.
 //
 // MCP write grants live in the `mcp_write_grants` SQLite table with no
-// representation in `Config` (D-09) — a Config-only write structurally
+// representation in `Config` — a Config-only write structurally
 // cannot reach them, so no defensive "skip grants" branch is needed here.
 //
 // Exhaustive over ResettableSectionId with NO default arm: a section that
@@ -87,16 +86,16 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-  // NavColumn's footer caption (UI-SPEC "{vault} · v{app version}") reads
+  // NavColumn's footer caption ("{vault} · v{app version}") reads
   // the SAME shared vaultAboutResource cache AboutSection reads — the shell
   // opens first and subscribes, About subscribes later (if selected) and
   // reads the already-hydrated entry, so opening Settings and then About
-  // issues one GET /vault/about, not two (D-07). The caption is decorative:
+  // issues one GET /vault/about, not two. The caption is decorative:
   // a failed fetch leaves it blank rather than blocking the pane.
   const shellAbout = useResource(open ? vaultAboutResource : null);
   const vaultAbout = shellAbout.data?.data ?? null;
 
-  // Settings always opens on Appearance (D-20) — no persisted or
+  // Settings always opens on Appearance — no persisted or
   // session-remembered active section. Resetting on close (rather than on
   // open) means a mid-session reopen never flashes the previous section.
   //
@@ -119,7 +118,7 @@ export function SettingsDialogShell({ open, onOpenChange }: SettingsDialogShellP
     async (section: SectionId) => {
       if (!config || !isResettable(section)) return;
       const patch = buildResetPatch(section, config);
-      // Reset is a whole-document write by decision (D-01/D-07): replaceConfig
+      // Reset is a whole-document write by design: replaceConfig
       // rebases this partial onto the freshest persisted config inside the
       // hook, so Reset can't carry a stale base even if `config` here is a
       // render behind the last successful save.

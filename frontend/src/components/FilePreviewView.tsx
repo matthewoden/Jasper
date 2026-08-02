@@ -34,7 +34,7 @@ const containerStyle: CSSProperties = {
   overflow: "auto",
 };
 
-// D-14/D-15/D-17: same 760px centered reading column as the note surface
+// Same 760px centered reading column as the note surface
 // (themeBridge.ts .cm-content) and the editor-pane-placeholder empty state
 // — values must stay identical across all three.
 const columnStyle: CSSProperties = {

@@ -1,16 +1,16 @@
 /**
  * searchHistory — vault-namespaced localStorage MRU search-history store
- * (HIST-01/02, D-16/D-17/D-18). Powers SearchHistoryHints.
+ * (HIST-01/02). Powers SearchHistoryHints.
  *
  * Recorded ONLY on committed searches (Enter-open or result-row click) —
- * NEVER from SidebarSearchPanel's debounced fetch effect (D-16). Capacity
+ * NEVER from SidebarSearchPanel's debounced fetch effect. Capacity
  * 10, MRU order (most-recent first), case-insensitive dedupe on the exact
- * query string (D-18): re-running an existing query moves it to the top.
+ * query string: re-running an existing query moves it to the top.
  *
  * Namespacing follows usePaneStore.ts's layoutKeyForVault precedent
  * (`jasper.layout.${encodeURIComponent(vaultPath)}`), NOT the stale
- * `jasper:tabs:<base64(vaultPath)>` key CONTEXT.md/UI-SPEC cite — that key
- * does not exist anywhere in the codebase (RESEARCH Pattern 7 correction).
+ * `jasper:tabs:<base64(vaultPath)>` key some docs cite — that key does not
+ * exist anywhere in the codebase.
  *
  * Plain module-level array + subscriber set (not a zustand store) — only
  * SearchHistoryHints and SidebarSearchPanel consume it, and a small pub/sub
@@ -75,7 +75,7 @@ export function getHistory(): string[] {
 }
 
 /**
- * recordSearchHistory — commit-point write (D-16). Trims the query, ignores
+ * recordSearchHistory — commit-point write. Trims the query, ignores
  * empty strings, dedupes case-insensitively (removing any existing
  * case-variant), unshifts to the front (MRU), and caps at CAPACITY.
  */
@@ -89,7 +89,7 @@ export function recordSearchHistory(query: string): void {
   notify();
 }
 
-/** removeHistoryEntry — per-row removal (D-21). Removes exactly one entry. */
+/** removeHistoryEntry — per-row removal. Removes exactly one entry. */
 export function removeHistoryEntry(query: string): void {
   const next = history.filter((q) => q !== query);
   if (next.length === history.length) return;
@@ -99,7 +99,7 @@ export function removeHistoryEntry(query: string): void {
 }
 
 /**
- * filterSearchHistory — shared prefix-match filter (D-19), used by both
+ * filterSearchHistory — shared prefix-match filter, used by both
  * SearchHistoryHints (rendering) and SidebarSearchPanel (keyboard routing)
  * so the two never drift out of sync on what counts as a "match".
  */

@@ -1,6 +1,6 @@
 /**
  * useBacklinks — reactive hook reading the shared `backlinksResource` cache
- * (D-10 keyed, single-slot: only the active note's entry is retained).
+ * (keyed, single-slot: only the active note's entry is retained).
  * Subscribing (mounting) never issues a network request by itself — only
  * the resource's own 0->1 subscriber transition and its declared WS events
  * (note:updated, note:created, links:rewritten) do. See backlinksApi.ts's

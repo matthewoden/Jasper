@@ -2,13 +2,13 @@
  * openNoteInLeaf — opens noteId as a tab in a given leaf (not necessarily the
  * active pane) — a leaf-targeted sibling of usePaneStore's own
  * openInActivePane, needed by App.tsx's per-leaf "open to the right" / "new
- * tab" context actions (D-16/D-17 dedup rules apply identically, just scoped
- * to an explicit leafId).
+ * tab" context actions (the same dedup rules apply, just scoped to an
+ * explicit leafId).
  *
  * `afterTabId`, when given, inserts the new (always-unpinned) tab
  * immediately after that tab's position instead of appending at the end —
  * used by "New note to the right" (App.tsx's openRightInLeaf). Per
- * D-16/Phase 30, the insertion index is clamped to the pinned/unpinned
+ * the pinned-tab contract, the insertion index is clamped to the pinned/unpinned
  * boundary so a new unpinned tab can never land inside a leaf's pinned
  * group, even when `afterTabId` itself is pinned (with more pinned tabs
  * after it).

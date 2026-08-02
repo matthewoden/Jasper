@@ -1,7 +1,7 @@
 /**
- * FindReplaceBar — per-pane Find / Find-and-Replace bar (P26, WS-09/D-01).
+ * FindReplaceBar — per-pane Find / Find-and-Replace bar (WS-09).
  *
- * A pixel-match of UI-SPEC §"Find/Replace bar": custom React chrome driving
+ * Custom React chrome driving
  * @codemirror/search commands underneath, replacing CM6's off-brand built-in
  * panel. Fully controlled — the parent (LeafPane) owns query/toggle state and
  * drives the active pane's EditorView; this component only renders and emits
@@ -93,7 +93,7 @@ const secondaryButtonStyle: React.CSSProperties = {
 const replaceAllButtonStyle: React.CSSProperties = {
   background: "color-mix(in srgb, var(--color-accent) 28%, transparent)",
   border: "1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)",
-  // WR-04 (26-REVIEW.md): the translucent accent tint keeps this button's
+  // The translucent accent tint keeps this button's
   // effective background dark, so it needs a bright foreground token, not
   // --color-bg (the dark-on-solid-accent pattern used by
   // .vault-picker-button-primary in theme.css, which doesn't apply here).
@@ -237,7 +237,7 @@ export function FindReplaceBar({
     findInputRef.current?.select();
   }, []);
 
-  // Item 6 (Phase 27 follow-up fix round): an empty query has nothing to
+  // An empty query has nothing to
   // step through, and stepping it would otherwise round-trip into CM6's
   // findNext/findPrevious with an invalid SearchQuery — LeafPane guards
   // that at the handler level, but the chevrons should also visually read
@@ -284,7 +284,7 @@ export function FindReplaceBar({
         >
           {formatMatchCount(matchCount)}
         </span>
-        {/* Prev/next match navigation (Phase 27 follow-up item 6) — steps the
+        {/* Prev/next match navigation — steps the
             active-match cursor exactly like Enter/Shift+Enter already do.
             Does NOT change @codemirror/search's all-matches highlighting. */}
         <button

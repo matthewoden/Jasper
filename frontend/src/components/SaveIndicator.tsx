@@ -14,9 +14,9 @@
  *   error  → "Save failed"    title="Save failed — your edit is still in the editor. Press ⌘S to retry."
  *
  * Button-mode tooltip: state copy + " — click to refresh", rendered through
- * the shared Tooltip system (Phase 31 UAT #1) rather than a native `title`
- * — matches every other status-bar icon control's Tooltip migration this
- * phase. aria-label is kept for accessibility/E2E stability.
+ * the shared Tooltip system rather than a native `title` — matching every
+ * other status-bar icon control. aria-label is kept for accessibility and
+ * E2E stability.
  */
 
 import type { CSSProperties } from "react";

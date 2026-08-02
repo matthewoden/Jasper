@@ -120,20 +120,20 @@ export interface MarkdownEditorRef {
   /**
    * Rewrites just the first H1 line via rewriteH1(getContent(), next) and
    * dispatches it as a normal user edit (same as setContent) — fires the
-   * EXISTING onChange/onH1Change flow unchanged (D-02: no second rename
-   * pathway). No-op if the doc has no H1 line (matches rewriteH1's contract).
+   * EXISTING onChange/onH1Change flow unchanged — no second rename
+   * pathway. No-op if the doc has no H1 line (matches rewriteH1's contract).
    */
   setH1(next: string): void;
   /**
-   * Enter the body from the title (D-19/D-20): focuses the view and places
+   * Enter the body from the title: focuses the view and places
    * the caret on firstVisibleBodyLine() (skipping hidden frontmatter AND the
-   * hidden first-H1 line — 31-RESEARCH.md Pitfall 2), at the column nearest
-   * measuredX (a pixel X, not a character offset — Pitfall 3). Lands at
+   * hidden first-H1 line), at the column nearest measuredX — a pixel X, not
+   * a character offset. Lands at
    * doc end when there is no visible body content below the hidden regions.
    */
   enterFromTitle(measuredX: number): void;
   /**
-   * Search commands (P26, WS-09/D-01) — each guards viewRef.current and
+   * Search commands (WS-09) — each guards viewRef.current and
    * dispatches/queries against THIS view's own EditorView, so scoping is
    * naturally per-pane even when the same note is open in two panes.
    */
@@ -171,13 +171,13 @@ interface Props {
   onSaveRequested?: () => void;
   /** Fires when CM6's contenteditable loses focus to any element OUTSIDE the editor. */
   onBlur?: () => void;
-  /** When true, the document is read-only (deleted-tab keep-alive — D-10). */
+  /** When true, the document is read-only (deleted-tab keep-alive). */
   readOnly?: boolean;
-  /** Cmd+F handler (P26, WS-09/D-02) — opens the pane's find-only bar. */
+  /** Cmd+F handler (WS-09) — opens the pane's find-only bar. */
   onOpenFind?: () => void;
-  /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens the pane's find+replace bar. */
+  /** Cmd+Opt+F handler (WS-09) — opens the pane's find+replace bar. */
   onOpenFindReplace?: () => void;
-  /** ArrowUp from the body's first visible line (D-19/D-20/D-21) — hands off to the title with the measured pixel-X. */
+  /** ArrowUp from the body's first visible line — hands off to the title with the measured pixel-X. */
   onCrossToTitle?: (measuredX: number) => void;
 }
 
@@ -212,9 +212,9 @@ function buildSearchMatchDecorations(view: EditorView): DecorationSet {
 
 /**
  * jasperSearchHighlight — highlight-all-matches with current-match emphasis
- * (P26, WS-09/D-04). CM6's built-in searchHighlighter only paints decorations
+ * (WS-09). CM6's built-in searchHighlighter only paints decorations
  * while its native search PANEL is open (a `panel != null` gate baked into
- * @codemirror/search) — since P26 drives search entirely through the custom
+ * @codemirror/search) — since Jasper drives search entirely through the custom
  * FindReplaceBar (no built-in panel is ever opened), this plugin re-derives
  * highlighting directly from the live SearchQuery state field, independent
  * of panel state.
@@ -297,7 +297,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
 
     const { tags: allTags } = useTagBrowser();
 
-    // WR-04 fix (25-REVIEW.md): keyed by THIS pane's own noteId prop, not the
+    // Keyed by THIS pane's own noteId prop, not the
     // global useTreeStore.activeNoteId. In a split view, a visible-but-not-
     // active pane shows a DIFFERENT note than the active pane, so resolving
     // attachments/wikilinks against the global active note produced broken
@@ -360,7 +360,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     }, [setActiveTagFilter, setTagBrowserExpanded]);
 
     const [dropActive, setDropActive] = useState(false);
-    // WR-04: scope drag/paste attachment uploads to THIS pane's own note, not
+    // Scope drag/paste attachment uploads to THIS pane's own note, not
     // the global active note — an inactive split pane must upload into its
     // own note's attachments folder, not whichever note is currently active
     // in a different pane.
@@ -414,8 +414,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
           extensions: [
             readOnlyCompartment.current.of(readOnlyExtension(readOnly)),
             historyExtensionFor(noteId, isPrimary),
-            search({ top: true }), // provides the SearchQuery state field; driven by the custom FindReplaceBar (P26, D-01), not the built-in panel
-            jasperSearchHighlight, // highlight-all + current-match emphasis, panel-independent (P26, D-04)
+            search({ top: true }), // provides the SearchQuery state field; driven by the custom FindReplaceBar, not the built-in panel
+            jasperSearchHighlight, // highlight-all + current-match emphasis, panel-independent
             // listEnterKeymap at Prec.high: runs before insertNewlineContinueMarkup (also Prec.high
             // from markdown()) because it is placed EARLIER in the extensions array.
             // Handles nested-empty-item de-indent; falls through to markdown() for all other Enter cases.
@@ -426,9 +426,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             jasperEditorTheme,
             jasperSyntaxHighlighting,
             frontmatterHideExtension, // hide frontmatter by default
-            firstH1HideExtension, // hide the first ATX H1 — TitleElement renders it above the editor (READ-01/D-02)
-            calloutFoldExtension, // fold state for `[!type]-` callouts (READ-02/D-07); chevron rendered by livePreviewPlugin
-            tableWidgetExtension, // GFM tables render as real <table> widgets outside the cursor (READ-04/D-11)
+            firstH1HideExtension, // hide the first ATX H1 — TitleElement renders it above the editor (READ-01)
+            calloutFoldExtension, // fold state for `[!type]-` callouts (READ-02); chevron rendered by livePreviewPlugin
+            tableWidgetExtension, // GFM tables render as real <table> widgets outside the cursor (READ-04)
             checkboxTransactionExtender, // CHK-01 toggle shim (char-flip is in taskCheckboxPlugin)
             taskCheckboxPlugin,          // checkbox decorations + click handler — must be BEFORE livePreviewPlugin
             livePreviewPlugin,
@@ -443,14 +443,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             dropIndicatorPlugin,  // ViewPlugin: dragover/dragleave/drop listeners
             autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // BEFORE defaultKeymap so Cmd+S takes precedence
-            findBarKeymap( // Cmd+F / Cmd+Opt+F open the pane's Find/Replace bar (P26, D-02)
+            findBarKeymap( // Cmd+F / Cmd+Opt+F open the pane's Find/Replace bar
               () => cbRef.current.onOpenFind?.(),
               () => cbRef.current.onOpenFindReplace?.(),
             ),
             frontmatterToggleKeymap, // Cmd-Shift-Y toggles raw frontmatter view
-            frontmatterBackspaceGuardKeymap, // D-23: no-ops Backspace at the hidden-frontmatter boundary
-            firstH1BackspaceGuardKeymap, // UAT round 4: no-ops Backspace/Delete that would erase the hidden first H1 (compose with the frontmatter guard above, D-21)
-            makeTitleBodyTraversalKeymap((x) => cbRef.current.onCrossToTitle?.(x)), // D-19/D-20/D-21: ArrowUp from the first visible body line hands off to the title
+            frontmatterBackspaceGuardKeymap, // no-ops Backspace at the hidden-frontmatter boundary
+            firstH1BackspaceGuardKeymap, // no-ops Backspace/Delete that would erase the hidden first H1 (composes with the frontmatter guard above)
+            makeTitleBodyTraversalKeymap((x) => cbRef.current.onCrossToTitle?.(x)), // ArrowUp from the first visible body line hands off to the title
             codeblockExpand,
             keymap.of([...jasperKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]), // jasperKeymap FIRST so Mod-b/Mod-i override defaultKeymap; indentWithTab before defaultKeymap so Tab→indent wins
             EditorView.lineWrapping,
@@ -522,7 +522,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         delete (window as any).__jasperOpenSearchPanel;
         unregisterView(noteId, view);
-        // sharedDocRegistry's keep-alive contract (T-25-05-Loss): if this view
+        // sharedDocRegistry's keep-alive contract: if this view
         // WAS the note's primary and a survivor remains, unregisterView keeps
         // it registered as primary (still off-DOM, undo history intact) rather
         // than releasing it — getPrimaryView still returning THIS view after
@@ -607,7 +607,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             v.dispatch({ selection: { anchor: docLen, head: docLen } });
             return;
           }
-          // Pixel-coordinate column matching (31-RESEARCH.md Pitfall 3): the
+          // Pixel-coordinate column matching: the
           // title's font size differs from the body's, so a character-index
           // mapping would land at the wrong visual column.
           let pos = target.from;

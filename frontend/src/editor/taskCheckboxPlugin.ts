@@ -20,10 +20,10 @@
  *   no-op shim so MarkdownEditor.tsx doesn't need to change its extensions array.
  *
  * Key decisions:
- *   - Reveal-on-cursor model (D-01): caret ON the task line → no widget emitted,
+ *   - Reveal-on-cursor model: caret ON the task line → no widget emitted,
  *     raw "- [ ] " text is visible and editable. caret OFF the line → checkbox
  *     widget + bullet are rendered. Mirrors wikilinkPlugin.
- *   - D-02 REVERSED (user design decision): widget replace range covers ONLY the
+ *   - Widget replace range covers ONLY the
  *     TaskMarker "[ ]" — [TaskMarker.from .. TaskMarker.to]. The leading "- " is
  *     left as normal list markup so livePreviewPlugin renders it as a bullet (•),
  *     and the TaskMarker's trailing space is left as a literal character so the
@@ -122,7 +122,7 @@ function makeLucideSvg(checked: boolean): SVGSVGElement {
     // White checkmark path centered in the filled square
     const path = document.createElementNS(ns, "path");
     path.setAttribute("d", "m9 12 2 2 4-4");
-    path.setAttribute("stroke", "#fff"); // intentional fixed color per UI-SPEC
+    path.setAttribute("stroke", "#fff"); // intentional fixed color
     path.setAttribute("stroke-width", "2");
     svg.appendChild(path);
   }
@@ -149,7 +149,7 @@ class CheckboxWidget extends WidgetType {
     span.setAttribute("role", "checkbox");
     span.setAttribute("aria-checked", this.checked ? "true" : "false");
     span.setAttribute("aria-label", "Toggle task");
-    span.setAttribute("tabIndex", "-1"); // D-04: out of DOM tab order; toggle still works via editor-level keydown handler
+    span.setAttribute("tabIndex", "-1"); // out of DOM tab order; toggle still works via editor-level keydown handler
     span.setAttribute("data-pos", String(this.markerPos));
 
     span.appendChild(makeLucideSvg(this.checked));
@@ -165,11 +165,11 @@ class CheckboxWidget extends WidgetType {
 
 function buildCheckboxDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
-  const cursorLines = computeCursorLines(view); // D-01: identify cursor-occupied lines
+  const cursorLines = computeCursorLines(view); // identify cursor-occupied lines
   const tree = syntaxTree(view.state);
 
   interface Entry {
-    markerFrom: number; // start of replace range: TaskMarker.from (D-02 reversed)
+    markerFrom: number; // start of replace range: TaskMarker.from
     markerTo: number;   // end of replace range: TaskMarker.to + 1 (trailing space)
     taskTo: number;
     checked: boolean;
@@ -184,7 +184,7 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
       enter(node) {
         if (node.name !== "TaskMarker") return;
 
-        // D-01 reveal: skip widget when cursor is on this task line so raw text is editable
+        // Reveal: skip widget when cursor is on this task line so raw text is editable
         const lineNum = view.state.doc.lineAt(node.from).number;
         if (cursorLines.has(lineNum)) return;
 
@@ -193,7 +193,7 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
         const taskNode = node.node.parent; // Task is direct parent of TaskMarker
         if (!taskNode) return;
 
-        // D-02 REVERSED: widget replace range covers ONLY "[ ] " (TaskMarker + trailing space)
+        // Widget replace range covers ONLY "[ ] " (TaskMarker + trailing space)
         // livePreviewPlugin retains ownership of the ListMark "-" and renders it as a bullet.
         // This gives the Obsidian-style "• ☐ text" layout and fixes:
         //   - Backspace atomicity: only the "[ ]" range is atomic, not the full "- [ ] " prefix
@@ -217,7 +217,7 @@ function buildCheckboxDecorations(view: EditorView): DecorationSet {
     // trailing space. Leaving the space as a literal character (a) preserves the
     // gap between the checkbox and the text, and (b) keeps the rendered width
     // close to the raw "[ ] " width, so the text barely shifts when the line
-    // toggles between raw and widget. D-02: ListMark "- " stays a bullet.
+    // toggles between raw and widget. ListMark "- " stays a bullet.
     builder.add(
       markerFrom,
       markerTo,
@@ -297,7 +297,7 @@ export const taskCheckboxPlugin = ViewPlugin.fromClass(
         return true;
       },
       keydown(e: KeyboardEvent, view: EditorView) {
-        // UI-SPEC a11y: Space/Enter on focused checkbox span dispatches toggle
+        // a11y: Space/Enter on focused checkbox span dispatches toggle
         if (e.key !== " " && e.key !== "Enter") return false;
         const target = e.target as HTMLElement;
         const btn = target.closest("span[data-pos]") as HTMLElement | null;

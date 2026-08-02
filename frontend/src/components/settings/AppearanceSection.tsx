@@ -1,11 +1,11 @@
 /**
  * AppearanceSection — the Appearance pane (SET3-07). Settings always opens
- * here (D-20); the accent-swatch row is this phase's primary visual anchor.
+ * here; the accent-swatch row is its primary visual anchor.
  *
  * Accent and reading font route through useAccent.ts's non-hook helpers
  * (applyAccent/persistAccentBootstrap/applyReadingFont/persistReadingFontBootstrap)
  * plus a single saveConfig call — never the config-mounting hook itself,
- * which would create a second independent config state and make D-10's
+ * which would create a second independent config state and make the
  * single-write pane Reset silently partial.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -39,7 +39,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
       const { error } = await saveConfig({ accent: id });
       if (error) {
         applyAccent(prev);
-        persistAccentBootstrap(prev); // WR-01: revert the bootstrap key, else next reload flashes the rejected accent
+        persistAccentBootstrap(prev); // revert the bootstrap key, else next reload flashes the rejected accent
         onSaveError(`Couldn't save your changes: ${error.message}.`);
       } else {
         onSaveError(null);
@@ -57,7 +57,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
       const { error } = await saveConfig({ readingFont: rf });
       if (error) {
         applyReadingFont(prev);
-        persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key, else next reload flashes the rejected font
+        persistReadingFontBootstrap(prev); // revert the bootstrap key, else next reload flashes the rejected font
         onSaveError(`Couldn't save your changes: ${error.message}.`);
       } else {
         onSaveError(null);
@@ -247,7 +247,7 @@ export function AppearanceSection({ config, saveConfig, onSaveError }: SectionPr
 
       {/* SliderNumberPair writes --editor-font-size / --editor-line-height onto
           document.documentElement, so the real note editor behind this dialog
-          restyles in step (D-26) — a whole-app restyle by design, not a
+          restyles in step — a whole-app restyle by design, not a
           scoping leak. */}
       <TypePreviewPanel fontSize={fontSize} lineHeight={lineHeight} />
     </section>

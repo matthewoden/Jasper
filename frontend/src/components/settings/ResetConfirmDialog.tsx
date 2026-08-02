@@ -2,8 +2,8 @@
  * ResetConfirmDialog — destructive confirm gating a per-section config Reset
  * (SET3-02). Structural template: TagDeleteConfirmDialog.tsx (Root/Portal/
  * Overlay/Content/Title/Description/Cancel+Action). Diverges in geometry
- * (380px/20px, D-19 exception) and copy (single Title + single Description,
- * D-11 — names the section only, never MCP write grants, D-09).
+ * (380px/20px) and copy (a single Title + single Description naming the
+ * section only, never MCP write grants).
  *
  * KNOWN UNVERIFIED BEHAVIOR: this AlertDialog is designed to render while a
  * Settings Dialog.Root is still open. Radix documents nesting as supported,
@@ -75,7 +75,7 @@ const cancelBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-// Danger-styled per UI-SPEC Color contract — the same color-mix tint the
+// Danger-styled — the same color-mix tint the
 // existing save-error banner uses (10% bg / 40% border / full-strength text),
 // not a solid fill. Reset is the ONLY control in this phase using --color-destructive.
 const confirmBtnStyle: React.CSSProperties = {

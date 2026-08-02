@@ -1,9 +1,9 @@
 /**
  * DeleteConfirmDialog — Radix AlertDialog for note/folder/file/multi deletion.
  *
- * The single, universal delete-confirm dialog (D-26) — every delete entry
- * point (tree menu, tree bulk-selection, ⌫, and Plan 09's note-options
- * menu) renders this same component. Copy is derived entirely from `target`
+ * The single, universal delete-confirm dialog — every delete entry point
+ * (tree menu, tree bulk-selection, ⌫, and the note-options menu) renders
+ * this same component. Copy is derived entirely from `target`
  * via `buildDeleteCopy` (deleteConfirmDialog.utils.ts) so no call site
  * duplicates the locked trash-based strings.
  *

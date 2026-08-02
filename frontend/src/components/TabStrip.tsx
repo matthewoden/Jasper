@@ -1,8 +1,8 @@
 /**
- * TabStrip — a leaf-scoped editor tab row (Phase 25 / WS-03: one strip per
- * pane, not a workspace singleton).
+ * TabStrip — a leaf-scoped editor tab row (WS-03: one strip per pane, not a
+ * workspace singleton).
  *
- * Composes the Plan-03 presentational pieces: each ordered tab renders a
+ * Composes the presentational pieces: each ordered tab renders a
  * `TabPill` wrapped in `TabContextMenu`, with a `TabOverflowDropdown` always
  * pinned at the right edge (UAT round 2, item 7) listing EVERY open tab, not
  * just the ones the strip's own overflow hid. Reorder uses pointer-event drag
@@ -13,7 +13,7 @@
  *
  * Capture-phase keyboard shortcuts (Alt+]/Alt+[/Ctrl+Tab cycle, Alt+W close)
  * are registered here, gated on `usePaneStore.getState().activePaneId ===
- * leafId` (Pitfall 3 / T-25-06-Dup): with N leaves mounted, N TabStrips each
+ * leafId`: with N leaves mounted, N TabStrips each
  * register a window listener, so every leaf's handler must no-op unless its
  * OWN leaf is the active pane — otherwise one Alt+W keypress would close a
  * tab in every pane simultaneously.
@@ -69,15 +69,15 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
 //   itself is always rendered rather than only appearing on overflow.
 const LEFT_CLUSTER = 37;
 export const RESERVED = 8 + 32 + LEFT_CLUSTER;
-// D-14 shrank the overflow-dropdown trigger to a square 24x24 hit area
-// (TabOverflowDropdown.tsx's triggerButtonStyle) — was 28x24. Keeping this at
-// 28 over-reserved 4px the trigger no longer occupies (WR-01, 31-REVIEW.md).
-// UAT gap-closure group B (item 6) added "0 4px" L/R margin to the trigger
-// for vertical-centering + padding (see TabOverflowDropdown.tsx's
-// triggerButtonStyle comment), growing its true horizontal footprint back to
-// 32 (24 + 8 margin) — bumped here too so this stays accurate (same WR-01
-// drift class this constant exists to prevent).
-// UAT round 2 (item 7): the trigger this reserves for is now ALWAYS
+// The overflow-dropdown trigger is a square 24x24 hit area
+// (TabOverflowDropdown.tsx's triggerButtonStyle) — it was 28x24. Keeping this
+// at 28 over-reserved 4px the trigger no longer occupies.
+// A "0 4px" L/R margin was later added to the trigger for vertical-centering
+// + padding (see TabOverflowDropdown.tsx's triggerButtonStyle comment),
+// growing its true horizontal footprint back to 32 (24 + 8 margin) — bumped
+// here too so this stays accurate (the same drift this constant exists to
+// prevent).
+// The trigger this reserves for is ALWAYS
 // rendered (not just on overflow) — computeHiddenTabIds subtracts this
 // unconditionally as a permanent reservation, not a conditional one.
 export const OVERFLOW_BTN = 32;
@@ -106,7 +106,7 @@ export interface TabStripProps {
   onCloseToRight: (tabId: string) => void;
   onCloseAll: () => void;
   onOpenRight: (tabId: string) => void;
-  /** Pin/unpin a tab (D-14). Threaded through to the tab-menu invocation site; Plan 07 wires it into TabContextMenu's Pin item. */
+  /** Pin/unpin a tab. Threaded through to the tab-menu invocation site and into TabContextMenu's Pin item. */
   onTogglePin: (tabId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   /** Create a new untitled note and open it as a tab (TAB-14, + button / ⌥T). */
@@ -124,24 +124,24 @@ export interface TabStripProps {
 }
 
 /** + button styled like SidebarToolbar's icon buttons; pinned at the strip's
- *  right edge (flexShrink:0) so it survives tab overflow. D-14: square 24×24
+ *  right edge (flexShrink:0) so it survives tab overflow. Square 24×24
  *  hit area + rounded hover background (NotesSortMenu.triggerButtonStyle
- *  treatment) — owner's "no hover state" complaint.
+ *  treatment) — closes the owner's "no hover state" complaint.
  *
- *  UAT gap-closure (group B, item 6): owner wants L/R breathing room plus
+ *  The owner also wants L/R breathing room plus
  *  vertical centering in the tab-strip row, aligned on roughly the same axis
  *  as the left-rail/right-rail icon rows (ActivityRibbon / RightRailTabRow —
  *  both center a 16px glyph in a ~30x32px button). `alignSelf:"center"`
  *  overrides the strip's own `alignItems:"flex-end"` (tabStripStyle) so this
  *  button centers in the full 40px row instead of bottom-pinning against the
- *  40px-tall TabPills — this REVERSES the prior UAT-15.1-ALIGN bottom-pin
- *  contract that co-centered this button with TabPill's close-× (see
+ *  40px-tall TabPills — this REVERSES the prior bottom-pin contract that
+ *  co-centered this button with TabPill's close-× (see
  *  TabPill.tsx's closeButtonStyle comment; that × is now itself centered on
  *  the label instead). `marginLeft`/`marginRight` give the L/R padding the
  *  owner asked for. NOTE: exact cross-region pixel alignment with the rail
  *  icon axis is NOT guaranteed — the tab strip and the rails are different
  *  DOM regions with independent top offsets (same deferral ActivityRibbon's
- *  own D-13 comment documents); only the vertical-centering + padding
+ *  own comment documents); only the vertical-centering + padding
  *  ask is guaranteed here. */
 const newTabButtonStyle: CSSProperties = {
   width: 24,
@@ -334,7 +334,7 @@ export function TabStrip({
   forceHiddenTabIds,
   style,
 }: TabStripProps) {
-  // Pinned tabs refuse a direct pin-glyph click with a toast (D-14) rather
+  // Pinned tabs refuse a direct pin-glyph click with a toast rather
   // than closing — same toast-on-refusal idiom as useWorkspace.ts/useReveal.ts.
   const { toast } = useToast();
   const handlePinnedClickRefused = () => {
@@ -360,14 +360,14 @@ export function TabStrip({
     useTreeStore.getState().startRename("note", noteId);
   };
 
-  // Whether THIS strip's leaf is the active pane (D-05 active-pane cue): the
+  // Whether THIS strip's leaf is the active pane: the
   // active tab's top-accent reads purple (--color-accent) only in the active
   // pane, and a neutral gray (--color-muted) in inactive panes — so the purple
   // accent itself signals which pane is active. Subscribed (not getState) so
   // the accent flips live when focus moves between panes.
   const isActivePane = usePaneStore((s) => s.activePaneId === leafId);
 
-  // Foreign-strip insertion caret (P26 Obsidian parity): every mounted
+  // Foreign-strip insertion caret (Obsidian parity): every mounted
   // TabStrip subscribes to usePaneDragStore's stripHover, but only renders
   // the caret when IT is the hovered foreign strip — a SEPARATE render
   // branch from the source strip's own dragGhost/dropIndicatorX indicator
@@ -378,11 +378,11 @@ export function TabStrip({
 
   // The left sidebar is collapsed from its own header (SidebarTabRow) and
   // reopened via PaneCornerReopenButton — the tab strip no longer carries a
-  // redundant left-sidebar toggle (Phase 27 NAV-03; mock shows a tab-bar left
+  // redundant left-sidebar toggle (NAV-03; the mock shows a tab-bar left
   // toggle only when the sidebar is closed, never when it's open).
   //
-  // The right rail is DIFFERENT as of 260721-cjt: while expanded, its own
-  // header owns the sole collapse control (unchanged from 30-13) — the tab
+  // The right rail is DIFFERENT: while expanded, its own
+  // header owns the sole collapse control — the tab
   // strip carries no toggle. But collapsing the rail now unmounts it
   // entirely (0 width, flush editor) instead of leaving a collapsed strip,
   // so the reopen affordance moves into the tab bar's right cluster —
@@ -458,8 +458,8 @@ export function TabStrip({
     return () => ro.disconnect();
   }, [tabs, activeTabId, showRailToggle]);
 
-  // Capture-phase keyboard shortcuts (D-13), gated to the ACTIVE pane
-  // (Pitfall 3 / T-25-06-Dup): every mounted leaf's TabStrip registers this
+  // Capture-phase keyboard shortcuts, gated to the ACTIVE pane:
+  // every mounted leaf's TabStrip registers this
   // same window listener, so without the guard below N leaves would all act
   // on one keypress. Registered once per leafId; tabs/activeTabId/callbacks
   // are read through refs kept fresh each render so the listener stays stable.
@@ -470,7 +470,7 @@ export function TabStrip({
 
       // Alt+W → request close of the active tab (flush-aware via prop).
       // Never bind plain Cmd/Ctrl+W — the browser owns it.
-      // D-14 / CR-02 gap closure: a pinned active tab refuses the close (same
+      // A pinned active tab refuses the close (same
       // toast the x-path and middle-click already surface) instead of
       // reaching requestCloseRef — read through tabsRef so the stable window
       // listener always sees the current pin state.
@@ -513,15 +513,15 @@ export function TabStrip({
     return () => window.removeEventListener("keydown", handler, true);
   }, [leafId]);
 
-  // Cross-pane drag tracking (P26 / WS-01/WS-02, D-10/D-11): once a drag is
+  // Cross-pane drag tracking (WS-01/WS-02): once a drag is
   // active, the strip's own onPointerMove/onPointerUp only fire while the
   // cursor is physically over THIS strip's DOM subtree — as soon as it
   // leaves (over another pane's body, another leaf's strip, or this leaf's
   // own body outside the strip), no more React synthetic events reach us.
   // These WINDOW-level listeners pick up the slack: pointermove keeps the
-  // reused ghost pill (D-11) tracking the cursor and hit-tests
-  // `elementFromPoint` against `[data-droppane]` (LeafPane root, added in
-  // Task 2) to publish the hovered region to usePaneDragStore; pointerup
+  // reused ghost pill tracking the cursor and hit-tests
+  // `elementFromPoint` against `[data-droppane]` (LeafPane root) to publish
+  // the hovered region to usePaneDragStore; pointerup
   // routes the drop. Native window listeners bubble AFTER React's delegated
   // handlers reach the root container, so when a release lands back inside
   // THIS strip, handleStripPointerUp already clears dragRef.current before
@@ -565,7 +565,7 @@ export function TabStrip({
       // publishes, so a solo pane can be split by dragging its own tab out.
       const overStrip = hit?.closest('[data-testid="tab-strip"]') != null;
       if (overStrip && targetLeafId && targetLeafId !== leafId) {
-        // Foreign-strip positional insert (P26 Obsidian parity): compute the
+        // Foreign-strip positional insert (Obsidian parity): compute the
         // insertion index/x from the FOREIGN strip's own visible pill rects
         // — never from this (source) strip's data. Same-pane strip hover
         // (targetLeafId === leafId) intentionally falls through to the final
@@ -605,7 +605,7 @@ export function TabStrip({
               targetId,
             })
           : -1;
-        // D-15/D-16: an unpinned dragged tab can never land inside the
+        // An unpinned dragged tab can never land inside the
         // FOREIGN leaf's pinned region, and a pinned dragged tab can never
         // land outside it — pinnedCount counts the foreign leaf's OWN pinned
         // tabs (the dragged tab is not yet a member of it). This effect only
@@ -846,7 +846,7 @@ export function TabStrip({
       // Map the drop onto the VISIBLE strip to a full-array insert index.
       // Hidden (overflowed) tabs can be interleaved between visible ones, so
       // this anchors on the previous VISIBLE tab's full-array position + 1
-      // rather than the target's own full-array index (WR-03).
+      // rather than the target's own full-array index.
       const toIdx = computeDropIndex({
         tabIds: tabs.map((t) => t.id),
         visibleTabIds: visibleTabs.map((t) => t.id),
@@ -854,9 +854,9 @@ export function TabStrip({
       });
       // reorderTabs splices fromIndex OUT before inserting at toIndex
       // (splice-first), so a left-to-right drop must compensate by one to
-      // land where the left-edge indicator promised (gap 6 / WR-01).
+      // land where the left-edge indicator promised.
       const adjusted = drag.fromIndex < toIdx ? toIdx - 1 : toIdx;
-      // D-15/D-16: `adjusted` is already an index into the array with the
+      // `adjusted` is already an index into the array with the
       // dragged tab spliced OUT, so pinnedCount (this leaf's OTHER pinned
       // tabs) clamps it directly — an unpinned tab can never land inside the
       // pinned region, a pinned tab can never land outside it.
@@ -980,7 +980,7 @@ export function TabStrip({
           style={{ ...dropOverlayStyle, left: dropIndicatorX }}
         />
       )}
-      {/* Foreign-strip insertion caret (P26 Obsidian parity): renders on a
+      {/* Foreign-strip insertion caret (Obsidian parity): renders on a
           DIFFERENT strip than the one being dragged from — dragGhost/
           dropIndicatorX are null here, so this never doubles up with the
           source strip's own indicator above. */}

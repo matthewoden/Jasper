@@ -16,7 +16,7 @@
  *                existing folders · sep · New folder…) — NEVER rename, MCP-grant,
  *                reveal, or delete-note (quick task 260719-jv1, item 5).
  *
- * Bulk variant (D-19, CTX-02): when `selectionCount` (a prop independent of
+ * Bulk variant (CTX-02): when `selectionCount` (a prop independent of
  * rowKind) is > 1, MenuItems renders a COMPLETELY different body — Open
  * ({N} tabs) · Open in split · sep · Bookmark {N} notes · sep · Delete
  * {N} notes — and every single-target item above is hidden entirely (not
@@ -87,7 +87,7 @@ export interface TreeRowMenuProps {
    * every bookmark folder for the "Move to folder" submenu; the submenu
    * always leads with "(No folder)" (top-level) and ends with
    * "New folder…" below a separator — mirrors the pre-existing bespoke
-   * BookmarkRow menu verbatim (D-18 discretion), just hosted on the
+   * BookmarkRow menu verbatim, just hosted on the
    * shared TreeRowMenu chrome now.
    */
   bookmarkFolders?: Array<{ id: string; name: string }>;
@@ -95,18 +95,18 @@ export interface TreeRowMenuProps {
   onMoveBookmarkToFolder?: (folderId: string | null) => void;
   onNewBookmarkFolder?: () => void;
 
-  /** note rows only: single right/row split (D-13), same target as the
+  /** note rows only: single right/row split, same target as the
    *  quick-switcher's Cmd+Shift+Enter and the note-options split-right item. */
   onOpenInSplit?: () => void;
   /** note rows only: true when bookmarked anywhere (root or any folder) —
    *  drives the "Bookmark" / "Remove bookmark" label + icon. */
   isBookmarked?: boolean;
   /** note rows only: toggles the bookmark (always adds to the bookmarks
-   *  root when turning on — D-17, no folder-picker submenu here). */
+   *  root when turning on — no folder-picker submenu here). */
   onToggleBookmark?: () => void;
 
   /**
-   * Bulk-selection variant (D-19). When set to a number > 1, MenuItems
+   * Bulk-selection variant. When set to a number > 1, MenuItems
    * renders ONLY the bulk item set below, ignoring rowKind entirely.
    * Meaningless (omit or leave <= 1) outside a multi-select right-click.
    */
@@ -131,7 +131,7 @@ export interface InheritedGrant {
   ancestorPath: string;
 }
 
-/** Tier label per UI-SPEC §Surface 2 — locked copy. */
+/** Tier label — locked copy. */
 function tierLabel(level: 1 | 2): string {
   return level === 2 ? "Full Access" : "Edit only";
 }
@@ -283,13 +283,13 @@ function MenuItems({
     ) : null;
 
   if (selectionCount !== undefined && selectionCount > 1) {
-    // Bulk-selection variant (D-19) — completely replaces the rowKind-
+    // Bulk-selection variant — completely replaces the rowKind-
     // specific body; single-target items (Rename, Show in file manager)
     // are hidden entirely, not disabled.
     //
     // event.stopPropagation() is required on BOTH onClick and onSelect here
     // (bulkItemHandlers below) — this is stronger than the pre-existing
-    // "New note"/"New folder" UX-12/Pitfall-7 defense (onSelect only),
+    // "New note"/"New folder" defense (onSelect only),
     // because that defense turned out to be insufficient in a real browser
     // for THIS interaction: Radix's onSelect fires from an internal
     // custom-event dispatch, not the originating click, so calling
@@ -302,7 +302,7 @@ function MenuItems({
     // otherwise collapse the live multi-selection down to just the row the
     // context menu was opened on — silently truncating every bulk action
     // to N=1 between menu-open and the actual mutation. Verified against
-    // the real-browser regression this fixes (D-19/D-20), not just JSDOM.
+    // the real-browser regression this fixes, not just JSDOM.
     const bulkItemHandlers = (
       onSelectHandler?: () => void,
     ): { onClick: (e: MouseEvent) => void; onSelect: (e: Event) => void } => ({
@@ -380,8 +380,8 @@ function MenuItems({
           <span>Open</span>
         </Item>
       )}
-      {/* Note rows: Open in split, below "Open" (D-13). stopPropagation
-          mirrors the UX-12/Pitfall-7 defense (see bulk-variant comment
+      {/* Note rows: Open in split, below "Open". stopPropagation
+          mirrors the same defense (see bulk-variant comment
           above) — harmless here (single-target select+activate would be a
           no-op re-select of the same row) but kept consistent. */}
       {rowKind === "note" && onOpenInSplit && (
@@ -412,7 +412,7 @@ function MenuItems({
           <span>New note</span>
         </Item>
       )}
-      {/* Note rows: Bookmark toggle, below "New note" (D-17 — always adds to
+      {/* Note rows: Bookmark toggle, below "New note" (always adds to
           the bookmarks root; no folder-picker submenu here). */}
       {rowKind === "note" && onToggleBookmark && (
         <>

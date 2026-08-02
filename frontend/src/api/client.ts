@@ -21,7 +21,7 @@ import { generateOrLoadSessionId } from "../lib/sessionId";
  * (notesApi, treeApi, adminApi, foldersApi) inherits this automatically
  * because they all share `client`.
  *
- * Pitfall 1: the same generateOrLoadSessionId() helper is read by
+ * The same generateOrLoadSessionId() helper is read by
  * useSessionSync's WS upgrade — guarantees the X-Session-ID header
  * value MATCHES the WS connection's session_id, which is required for
  * server-side origin filtering to work.

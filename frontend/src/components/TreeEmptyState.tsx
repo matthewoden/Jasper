@@ -1,5 +1,5 @@
 /**
- * Tree empty state — UI-SPEC §Surface 1 §Empty state.
+ * Tree empty state.
  *
  * Rendered ONLY when tree.root is empty (zero notes AND zero folders).
  * Left-aligned (NOT centered — keeps visual anchor consistent with where

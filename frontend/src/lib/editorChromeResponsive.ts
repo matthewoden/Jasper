@@ -1,7 +1,7 @@
 /**
  * editorChromeResponsive — pure width-driven layout decisions for the
  * editor's top-chrome bar (breadcrumb + right-pinned favorite star / note-
- * options menu, Phase 31 UAT rounds 2-3).
+ * options menu).
  *
  * Mirrors the tabOverflow.ts pattern: visibility/max-width is arithmetic over
  * measured widths, deterministically testable without ResizeObserver or

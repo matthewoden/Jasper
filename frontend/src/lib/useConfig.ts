@@ -1,10 +1,10 @@
 /**
  * useConfig — thin hook over configApi's shared, boot-scoped resource
- * (D-15: fetched once per session, no per-mount GET /config). Reads are a
+ * (fetched once per session, no per-mount GET /config). Reads are a
  * useResource() render-time snapshot; writes go through
  * configResource.mutate() so every mounted instance's optimistic frame and
  * rollback target the same cache entry. Two write channels: `saveConfig`
- * sends a sparse patch via PATCH (serialised server-side, WR-06);
+ * sends a sparse patch via PATCH (serialised server-side);
  * `replaceConfig` sends a whole document via PUT, used only by per-section
  * Reset.
  */
@@ -74,7 +74,7 @@ export function useConfig(): {
     return {};
   }, []);
 
-  // replaceConfig (D-07): per-section Reset needs a whole-document write
+  // replaceConfig: per-section Reset needs a whole-document write
   // (PUT), rebased on the freshest persisted document at call time — not a
   // stale closure — so Reset can never clobber a save that landed after the
   // caller's last render.

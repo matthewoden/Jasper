@@ -1,6 +1,6 @@
 /**
  * titleBodyTraversal — the CM6 keymap + helper bridging the plain-DOM
- * TitleElement and the CM6 body (D-18 through D-21).
+ * TitleElement and the CM6 body.
  *
  * "First visible body line" must skip BOTH independently-hidden regions:
  * the frontmatter block AND the first ATX H1 line (both hidden AND
@@ -55,7 +55,7 @@ function frontmatterBoundary(state: EditorState): number | null {
  * NOT simply the node's `.to` — firstH1HidePlugin.ts's hide decoration
  * extends through the H1's own trailing newline (required for CM6 to
  * collapse the row's height correctly; a bare node-range replace leaves a
- * normal-height phantom row behind, the Phase 31 UAT round-2 root cause).
+ * normal-height phantom row behind).
  * As an emergent CM6 rendering behavior, that one-character extension ALSO
  * merges an immediately-following BLANK line (if any) into the same hidden
  * block — a zero-length line starting exactly at that boundary never gets
@@ -102,9 +102,9 @@ export function firstVisibleBodyLine(state: EditorState): Line | null {
   // (zero-length) start === end. For a fresh/near-empty note whose only
   // remaining content IS that trailing blank line, skipping "past" it would
   // incorrectly report null ("no visible body line") — there is nowhere
-  // left to skip TO, and the line is still a legitimate target (Phase 31
-  // UAT round 2: this previously broke ArrowUp entirely for a brand-new,
-  // not-yet-typed-into note).
+  // left to skip TO, and the line is still a legitimate target (this
+  // previously broke ArrowUp entirely for a brand-new, not-yet-typed-into
+  // note).
   if (line.to <= bound && line.number < state.doc.lines) {
     return state.doc.line(line.number + 1);
   }
@@ -112,16 +112,16 @@ export function firstVisibleBodyLine(state: EditorState): Line | null {
 }
 
 /**
- * makeTitleBodyTraversalKeymap — ArrowUp handoff (D-19/D-20/D-21). No-ops
+ * makeTitleBodyTraversalKeymap — ArrowUp handoff. No-ops
  * (returns false, falls through to CM6's normal Up) unless the selection is
- * empty AND the caret sits AT OR BEFORE the first visible body line (CR-01:
+ * empty AND the caret sits AT OR BEFORE the first visible body line —
  * gating on the logical line alone hijacks Up on any wrapped first line
  * before the caret reaches its own top row). Otherwise reads the caret's
  * pixel X (column preservation is coordinate-based, not character-index —
- * the title renders at a different font size, see 31-RESEARCH.md Pitfall 3)
+ * the title renders at a different font size)
  * and hands off to the title via the callback.
  *
- * "At or before" (not "on", Phase 31 UAT round 3): clicking the mouse in the
+ * "At or before" (not "on"): clicking the mouse in the
  * visual empty gap ABOVE the first visible line — real, un-decorated
  * `.cm-content` padding, or one of the emergent zero-length "merge" lines
  * frontmatterBoundary()/firstH1To() already document (a blank line sitting

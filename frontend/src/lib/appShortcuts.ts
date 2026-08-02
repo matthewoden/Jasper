@@ -78,7 +78,7 @@ function selectRightPanel(panel: RightPanelTab): void {
  * Global panel-select shortcuts.
  * Cmd+Alt+T — select the right-rail Tags tab; Cmd+Alt+B — select the
  * right-rail Linked-mentions tab. Cmd+Alt prefix avoids collisions with
- * the heavily-used Cmd-only namespace. Repointed (Phase 30, TAGS-01) from
+ * the heavily-used Cmd-only namespace. Repointed (TAGS-01) from
  * the retired per-section collapse booleans onto the tab-row's persisted
  * rightPanel field: pressing the shortcut for the ALREADY-active tab while
  * the rail is visible collapses the rail (closest available analog to the
@@ -136,8 +136,8 @@ export function handleAppCmdO(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+. — toggle zen mode (Phase 22, ZEN-01).
- * Verified CM6's keymap stack does not bind Mod-. (see 22-PATTERNS.md);
+ * Cmd+. — toggle zen mode (ZEN-01).
+ * CM6's keymap stack does not bind Mod-, so this is
  * safe to claim at the window capture-phase tier with no editor-side guard.
  */
 export function handleAppCmdDot(e: KeyboardEvent): void {
@@ -194,9 +194,9 @@ export function handleAppCmdSlash(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Shift+F — opens the sidebar Search panel + focuses its input (D-05).
- * Re-pointed from the Phase 7 palette-search stopgap: the in-sidebar Search
- * panel (Plan 06) is now the target, not CommandMenu. While the panel is
+ * Cmd+Shift+F — opens the sidebar Search panel + focuses its input.
+ * Re-pointed from an earlier palette-search stopgap: the in-sidebar Search
+ * panel is now the target, not CommandMenu. While the panel is
  * already open, this refocuses the input and selects the existing query
  * (SidebarSearchPanel's own focusSearch subscriber owns that behavior).
  */
@@ -217,9 +217,9 @@ export function handleAppCmdShiftF(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Shift+E — toggle the left sidebar (Phase 27 NAV-03, D-13).
- * The header collapse control (Plan 03) and PaneCornerReopenButton (Plan 04
- * Task 1) both read/write the same notesSidebarVisible flag; this is the
+ * Cmd+Shift+E — toggle the left sidebar (NAV-03).
+ * The header collapse control and PaneCornerReopenButton both read/write
+ * the same notesSidebarVisible flag; this is the
  * keyboard path so removing the ribbon Files/Search toggles doesn't leave
  * keyboard users without a way to collapse/reopen the sidebar.
  */
@@ -235,7 +235,7 @@ export function handleAppSidebarToggle(e: KeyboardEvent): void {
 
 /**
  * Cmd+Shift+B — bookmark/un-bookmark the active pane's active note
- * (Phase 27 BOOK-01, D-14). toggleBookmark lives inside the useBookmarks
+ * (BOOK-01). toggleBookmark lives inside the useBookmarks
  * hook (React state + a WS subscriber), unreachable from this window-level
  * handler — dispatched via the same phase7 event bus handleAppCmdShiftD
  * uses for openToday, so App.tsx's subscriber (which HAS toggleBookmark in
@@ -258,7 +258,7 @@ export function handleAppBookmarkToggle(e: KeyboardEvent): void {
  * unconditional preventDefault sets event.defaultPrevented and CM6's
  * eventBelongsToEditor returns false, causing toggleBold to be skipped.
  *
- * e.shiftKey is explicitly excluded (WR-05) so this handler never matches
+ * e.shiftKey is explicitly excluded so this handler never matches
  * Cmd+Shift+B, which handleAppBookmarkToggle owns independently on the same
  * window listener list; without the guard both handlers would run on the
  * same keystroke.
@@ -278,7 +278,7 @@ export function handleAppCmdB(e: KeyboardEvent): void {
 /**
  * Cmd+I — italic (CM6 owns via jasperKeymap.ts toggleItalic).
  * Same Brave/Chromium interception fix as handleAppCmdB. Same e.shiftKey
- * exclusion rationale as handleAppCmdB (WR-05) — no Shift-I shortcut exists
+ * exclusion rationale as handleAppCmdB — no Shift-I shortcut exists
  * today, but the guard keeps the two Cmd/Shift-prefixed handler families
  * disjoint on principle.
  */
@@ -296,7 +296,7 @@ export function handleAppCmdI(e: KeyboardEvent): void {
 /**
  * True when the event target is a form control that should keep receiving
  * raw keystrokes (input / textarea / contenteditable) — shared guard for the
- * Phase 25 split/focus-pane shortcuts below, mirroring handleAppF2KeyDown's
+ * split/focus-pane shortcuts below, mirroring handleAppF2KeyDown's
  * do-not-hijack-typing check.
  */
 function isTypingTarget(e: KeyboardEvent): boolean {
@@ -308,7 +308,7 @@ function isTypingTarget(e: KeyboardEvent): boolean {
 }
 
 /**
- * Cmd+\ — Split right (D-14/D-15): new leaf to the right of the active pane,
+ * Cmd+\ — Split right: new leaf to the right of the active pane,
  * cloning its current note. Chosen to mirror VSCode's "split editor right"
  * muscle memory; grep-audited against SHORTCUTS_REGISTRY for collisions.
  */
@@ -322,7 +322,7 @@ export function handleAppSplitRight(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Shift+\ — Split down (D-14/D-15): new leaf below the active pane,
+ * Cmd+Shift+\ — Split down: new leaf below the active pane,
  * cloning its current note.
  */
 export function handleAppSplitDown(e: KeyboardEvent): void {
@@ -335,7 +335,7 @@ export function handleAppSplitDown(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Alt+Right — Focus next pane (D-08), cycling activePaneId forward
+ * Cmd+Alt+Right — Focus next pane, cycling activePaneId forward
  * through the leaf order. No-ops (via usePaneStore.focusCyclePane) with a
  * single leaf.
  */
@@ -349,7 +349,7 @@ export function handleAppFocusNextPane(e: KeyboardEvent): void {
 }
 
 /**
- * Cmd+Alt+Left — Focus previous pane (D-08), cycling activePaneId backward
+ * Cmd+Alt+Left — Focus previous pane, cycling activePaneId backward
  * through the leaf order.
  */
 export function handleAppFocusPrevPane(e: KeyboardEvent): void {

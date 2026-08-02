@@ -1,7 +1,7 @@
 /**
  * firstH1HidePlugin — CM6 extension that visually hides the document's
  * FIRST ATX H1 line (the doc's title, now rendered above the editor by
- * TitleElement — READ-01/D-01/D-02).
+ * TitleElement — READ-01).
  *
  * Scoped to `ATXHeading1` only — underline-style ("Setext") H1 nodes are
  * deliberately NOT matched: TitleElement, onH1Change, and h1Extract.ts all
@@ -14,7 +14,7 @@
  *
  * The replace range spans THROUGH the line's own trailing newline (ending
  * at the START of the next line, not at the H1 node's own `.to`). Three
- * approaches were tried, in order, all discovered via real Phase 31 UAT bugs:
+ * approaches were tried, in order, each discovered via a real UAT bug:
  *
  * 1. A bare `Decoration.replace({block: true})` over just the H1 NODE's own
  *    range (node.from..node.to, EXCLUDING its trailing newline) hides the
@@ -49,7 +49,7 @@
  *    line while `view.state.doc` silently keeps the note's ORIGINAL
  *    pre-edit content. onH1Change / the tree's live label then never fires
  *    for the real edit (phase3-uat.spec.ts Scenario G, phase5_5-uat.spec.ts
- *    UX-08 — Phase 31 UAT round-2 regression). Confirmed via isolated
+ *    the H1-rename case). Confirmed via isolated
  *    real-browser repro: removing ONLY the widget — keeping the
  *    newline-extended range AND firstH1AtomicRanges exactly as coded for the
  *    ArrowUp fix below — resolves the corruption; the widget itself, not the
@@ -142,7 +142,7 @@ const firstH1DecoField = StateField.define<{ decos: DecorationSet }>({
  * click landing where the hidden H1 line used to be could still resolve to
  * a position inside it, one document line away from
  * firstVisibleBodyLine()'s target — the actual root cause of the
- * ArrowUp-doesn't-reach-title bug (Phase 31 UAT round 2).
+ * ArrowUp-doesn't-reach-title bug.
  */
 const firstH1AtomicRanges = EditorView.atomicRanges.of(
   (view) => view.state.field(firstH1DecoField).decos,
@@ -163,12 +163,12 @@ const firstH1AtomicRanges = EditorView.atomicRanges.of(
  * is exactly this case: the click Y-coordinate falls above the first
  * rendered line, and CM6 resolves it to a position in the collapsed region
  * rather than onto the first VISIBLE line — this is the root cause of the
- * "Delete/Backspace does nothing after clicking the gap" bug (Phase 31 UAT
- * round 4). Clamp any selection that falls ENTIRELY before the boundary out
+ * "Delete/Backspace does nothing after clicking the gap" bug.
+ * Clamp any selection that falls ENTIRELY before the boundary out
  * to the boundary itself; selections that extend past it (select-all) pass
  * through untouched, matching frontmatterSelectionClamp's contract exactly.
  *
- * GATE (Phase 31 UAT round 5 regression fix): mirrors
+ * GATE: mirrors
  * frontmatterSelectionClamp's own `if (!hidden) return tr` fast-gate — a doc
  * with NO first H1 at all must leave this filter completely inert.
  * firstVisibleBodyLine() falls back to `frontmatterBoundary(state) ?? 0`
@@ -211,11 +211,11 @@ const firstH1SelectionClamp = EditorState.transactionFilter.of((tr) => {
  * when a Backspace/Delete's naive motion would land inside one: a Backspace
  * at the boundary would otherwise delete the entire hidden H1 (erasing the
  * title); a Delete or selection reaching back into the collapsed preamble
- * would do the same. D-19: Backspace at body-start is a GUARDED NO-OP, not a
+ * would do the same. Backspace at body-start is a GUARDED NO-OP, not a
  * cross-to-title (ArrowUp, titleBodyTraversal.ts, already owns that
  * gesture) — so this guard only ever blocks, never redirects.
  *
- * EXTENDS-PAST CARVE-OUT (Phase 31 UAT round 5 regression fix): a
+ * EXTENDS-PAST CARVE-OUT: a
  * non-empty selection whose far edge (`.to`) reaches AT OR PAST the
  * boundary is a legitimate broader edit — e.g. Cmd/Ctrl-A "select all" on a
  * note whose first REAL DOM-selectable position (native browser selection
@@ -253,7 +253,7 @@ function guardHiddenFirstH1Delete(view: EditorView, forward: boolean): boolean {
  * otherwise falls through to defaultKeymap. Place in the SAME extensions-
  * array slot as frontmatterBackspaceGuardKeymap (before defaultKeymap) —
  * MarkdownEditor.tsx registers both; each guards its own boundary
- * independently and neither interferes with the other (D-19/D-21 compose:
+ * independently and neither interferes with the other (they compose:
  * whichever boundary the caret is at or before triggers its own guard, and
  * a Delete/Backspace genuinely past BOTH boundaries falls through to normal
  * editing in either order).

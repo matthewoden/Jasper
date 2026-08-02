@@ -26,10 +26,10 @@ export interface TabOverflowDropdownProps {
   onSelectTab: (id: string) => void;
 }
 
-// D-14: square 24×24 hit area (NotesSortMenu.triggerButtonStyle treatment,
-// copied verbatim) — was 28×24 (not square, owner complaint).
+// Square 24×24 hit area (NotesSortMenu.triggerButtonStyle treatment,
+// copied verbatim) — it was 28×24 (not square, owner complaint).
 //
-// UAT gap-closure (group B, item 6): owner wants L/R breathing room plus
+// The owner also wants L/R breathing room plus
 // vertical centering in the tab-strip row (see TabStrip.tsx's
 // newTabButtonStyle comment for the full rationale — this REVERSES the prior
 // bottom-pin/co-centering contract with TabPill's close-× and the new-tab +).

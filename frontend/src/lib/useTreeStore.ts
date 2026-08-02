@@ -1,7 +1,7 @@
 /**
  * useTreeStore — zustand store for the file-tree sidebar.
  *
- * Client UI state only (D-08) — no server data lives here. notesSort/
+ * Client UI state only — no server data lives here. notesSort/
  * searchSort/rightPanel are backend-persisted but hydrated INTO these
  * slices by useWorkspace.ts, not read from them directly by other hooks;
  * bookmarks/bookmarkFolders/mcpGrants (formerly slices here) now live in
@@ -54,7 +54,7 @@ export const LS_KEY_SWITCHER_RECENCY = "jasper:switcher:recency";
 /**
  * Notes-panel sort order (SORT-01) + search-result sort order (SORT-02).
  * Backend-persisted via workspace.json (useWorkspace.ts) — deliberately
- * NOT an LS_KEY_* localStorage slice like its siblings above (D-09).
+ * NOT an LS_KEY_* localStorage slice like its siblings above.
  */
 export type NotesSortOrder =
   | "name-asc"
@@ -64,13 +64,13 @@ export type NotesSortOrder =
   | "created-desc"
   | "created-asc";
 export type SearchSortOrder = "relevance" | "modified" | "created";
-export const NOTES_SORT_DEFAULT: NotesSortOrder = "name-asc"; // D-06
+export const NOTES_SORT_DEFAULT: NotesSortOrder = "name-asc";
 export const SEARCH_SORT_DEFAULT: SearchSortOrder = "relevance";
 
 /**
  * Right-rail active tab (TAGS-01). Backend-persisted via workspace.json
  * (useWorkspace.ts) — same "no localStorage" treatment as
- * notesSort/searchSort above (D-09).
+ * notesSort/searchSort above.
  */
 export type RightPanelTab = "outline" | "backlinks" | "tags";
 export const RIGHT_PANEL_DEFAULT: RightPanelTab = "outline";
@@ -104,7 +104,7 @@ export interface TreeStore {
   expandAllNonce: number;
   /** True immediately after collapseAllFolders(); flips false on expandAllFolders()
    *  or any manual folder expand (toggleExpanded). Drives the Collapse-all button's
-   *  icon — ephemeral view state, never persisted (Phase 27 follow-up item 1). */
+   *  icon — ephemeral view state, never persisted. */
   allCollapsed: boolean;
   activeNoteId: string | null;
 
@@ -171,14 +171,14 @@ export interface TreeStore {
   setNotesSidebarVisible: (v: boolean) => void;
 
   /**
-   * Zen mode (Phase 22, D-08) — ephemeral, NOT persisted to localStorage.
+   * Zen mode (ZEN-01) — ephemeral, NOT persisted to localStorage.
    * Always resets to false on reload by design.
    */
   zen: boolean;
   setZen: (v: boolean) => void;
   toggleZen: () => void;
 
-  /** Which left-sidebar panel is active — Notes, Search, or Bookmarks (Phase 27 D-08). */
+  /** Which left-sidebar panel is active — Notes, Search, or Bookmarks. */
   sidebarPanel: "notes" | "search" | "bookmarks";
   setSidebarPanel: (p: "notes" | "search" | "bookmarks") => void;
 
@@ -214,7 +214,7 @@ export interface TreeStore {
   /**
    * Notes/search sort preferences (SORT-01/02/03). Backend-persisted via
    * workspace.json — no localStorage debounce/persistence block below,
-   * unlike every other slice in this file (D-09/D-12).
+   * unlike every other slice in this file.
    */
   notesSort: NotesSortOrder;
   setNotesSort: (v: NotesSortOrder) => void;
@@ -498,7 +498,7 @@ if (typeof window !== "undefined") {
   try {
     const raw = window.localStorage.getItem(LS_KEY_BACKLINKS_RAIL_EXPANDED);
     if (raw === "false") useTreeStore.setState({ backlinksRailExpanded: false });
-    // any other value (including missing) keeps the default `true` (D-06)
+    // any other value (including missing) keeps the default `true`
   } catch {
     // Corrupted storage — fall through to default; do NOT throw.
   }

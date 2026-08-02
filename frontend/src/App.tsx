@@ -222,7 +222,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   // --- Pane-tree state (Plan 07 — replaces the flat useTabStore model) ----
   const paneDeletedTabIds = usePaneStore((s) => s.deletedTabIds);
 
-  // Flush-confirm dialog state: set when an on-close flush rejects (D-04).
+  // Flush-confirm dialog state: set when an on-close flush rejects.
   // leaf-scoped (a leaf's own tab, not a workspace-wide tab id — WS-03).
   const [flushConfirm, setFlushConfirm] = useState<{
     leafId: string;
@@ -268,13 +268,13 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     () => ({
       onNoteUpdated: (p) => {
         // Single dispatch to the per-note controller — no per-pane fan-out
-        // (Pitfall 1 / WS-10): every pane showing this note shares one
+        // (WS-10): every pane showing this note shares one
         // controller instance, so one call reconciles all of them.
         getOrCreateController(p.id).onNoteUpdated(p);
       },
       onNoteDeleted: (p) => {
         getOrCreateController(p.id).onNoteDeleted(p);
-        // Freeze the matching tab read-only for the rest of the session (D-10).
+        // Freeze the matching tab read-only for the rest of the session.
         usePaneStore.getState().markDeleted(p.id);
       },
       onReindexStarted: () => {
@@ -413,7 +413,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   // --- Pane ↔ tree synchronization & persistence (Plan 07) ----------------
 
   // Keep useTreeStore.activeNoteId mirrored to the ACTIVE PANE's active tab
-  // (D-07) so the tree highlight, breadcrumbs, RightRail, and backlinks rail
+  // so the tree highlight, breadcrumbs, RightRail, and backlinks rail
   // retarget automatically whenever the focused pane or its active tab
   // changes — no changes needed in those singleton components themselves.
   useEffect(() => {
@@ -427,11 +427,11 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     return usePaneStore.subscribe(syncActiveNote);
   }, []);
 
-  // Hydrate per-vault layout state once the vault is resolved (D-08/D-11). The
+  // Hydrate per-vault layout state once the vault is resolved. The
   // layout key is vault-scoped, so this can only run after BootGate hands us
   // the path. A fresh vault (no persisted layout) starts with a single empty
   // leaf — the legacy shouldPromoteActiveNote single-open promotion is
-  // dropped entirely (pre-launch, D-18; deep-link routing is Plan 08's job).
+  // dropped entirely (pre-launch: no back-compat burden).
   useEffect(() => {
     if (vaultPath === null) return;
     usePaneStore.getState().initForVault(vaultPath);
@@ -440,7 +440,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
 
   // After the first tree fetch, drop any persisted tab whose note no longer
   // exists in this vault (deleted-on-disk, or a stale UUID from another vault).
-  // Deleted-session tabs are retained by pruneLayoutForMissingNotes itself (D-10).
+  // Deleted-session tabs are retained by pruneLayoutForMissingNotes itself.
   const prunedRef = useRef(false);
   useEffect(() => {
     if (prunedRef.current || tree === null) return;
@@ -460,8 +460,8 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
 
   // flushAndCloseInLeaf — persist a closing tab's pending edits before removal
   // (TAB-13), scoped to the leaf it lives in. A deleted tab is frozen
-  // read-only, so it has nothing to flush (D-10). On flush rejection, surface
-  // the confirm dialog rather than dropping edits (D-04). Flushing goes
+  // read-only, so it has nothing to flush. On flush rejection, surface
+  // the confirm dialog rather than dropping edits. Flushing goes
   // straight through the per-note controller (WS-10) — no per-pane ref lookup
   // needed, since exactly one controller instance exists per open noteId.
   const flushAndCloseInLeaf = useCallback(
@@ -486,7 +486,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     [titleForTab],
   );
 
-  // Bulk closes run SEQUENTIALLY (Pitfall 7 — never Promise.all): each dirty tab
+  // Bulk closes run SEQUENTIALLY (never Promise.all): each dirty tab
   // flushes and resolves before the next starts, so the confirm dialog (if any)
   // is handled one tab at a time. A rejected flush aborts the remaining loop.
   const closeOthersInLeaf = useCallback(
@@ -533,7 +533,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
     [flushAndCloseInLeaf],
   );
 
-  // closeAllInLeaf — closes every non-pinned tab in the leaf (D-14: pinned
+  // closeAllInLeaf — closes every non-pinned tab in the leaf (pinned
   // tabs are immune to every bulk-close path), mirroring closeOthersInLeaf's
   // sequential flush-then-close loop verbatim.
   const closeAllInLeaf = useCallback(
@@ -579,7 +579,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   // Shared create-then-open handler for both new-tab affordances (TAB-14):
   // the TabStrip + button and the Alt+T shortcut. Mirrors openRightInLeaf but
   // targets the GIVEN leaf's own active tab's note (parent dir), falling back
-  // to the vault root "" when that leaf has no active tab (D-10 empty state).
+  // to the vault root "" when that leaf has no active tab (empty state).
   const newTabInLeaf = useCallback(
     (leafId: string): void => {
       const leaf = _findLeaf(usePaneStore.getState().tree, leafId);
@@ -701,9 +701,9 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         usePaneStore.getState().focusCyclePane(-1);
       },
 
-      // Palette invocation should NOT depend on the keyboard handler (Task 2,
-      // D-13) — both this and handleAppSidebarToggle call the same store
-      // action independently.
+      // Palette invocation should NOT depend on the keyboard handler — both
+      // this and handleAppSidebarToggle call the same store action
+      // independently.
       onToggleSidebar: () => {
         setPaletteOpen(false);
         const s = useTreeStore.getState();
@@ -783,7 +783,7 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
         open={cheatSheetOpen}
         onOpenChange={setCheatSheetOpen}
       />
-      {/* Flush-on-close confirm dialog (TAB-13 / D-04). Shown only when an
+      {/* Flush-on-close confirm dialog (TAB-13). Shown only when an
           on-close flush save rejected; the user explicitly keeps or drops edits. */}
       <FlushConfirmDialog
         open={flushConfirm !== null}
@@ -832,9 +832,9 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
 
         {/* PaneTree: spans both rows (gridRow 1/3) — column 3. Recursively
             renders every leaf's own tab strip + keep-alive EditorPane stack
-            (D-01 keep-alive preserved per leaf). During reindex,
+            (keep-alive preserved per leaf). During reindex,
             ReindexProgress OVERLAYS the same cell (row 2 only, matching the
-            pre-Plan-07 editor-only overlay footprint) while every leaf's
+            editor-only overlay footprint) while every leaf's
             EditorPane stays mounted with reindexing=true — unmounting would
             discard unsaved buffers and pending debounces (data loss). */}
         {reindexing && (

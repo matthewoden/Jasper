@@ -2,13 +2,13 @@
  * SliderNumberPair — paired range + number input bound to one value
  * (SET3-07). Dragging the slider restyles live via a CSS
  * custom property but commits to the network exactly once, on pointer-up /
- * key-up (D-26). The number half enforces the real validator bounds
+ * key-up. The number half enforces the real validator bounds
  * (numberMin/numberMax), which may be wider than the slider's comfortable
- * sub-range (D-27).
+ * sub-range.
  *
  * Keyboard commits are debounced (KEY_COMMIT_DEBOUNCE_MS): arrow-key
  * auto-repeat would otherwise fire one PUT /config per key event — an
- * overwrite storm D-26 explicitly rules out for drag-steps. A single
+ * overwrite storm the drag path deliberately avoids. A single
  * discrete key press still commits shortly after release; a held/repeated
  * key coalesces into one commit once key activity settles.
  */
@@ -62,7 +62,7 @@ export function SliderNumberPair({
   // Held in a ref, deliberately out of the sync effect's deps: the formatter
   // only derives a string from `value`, so a fresh inline arrow from the
   // parent must not re-run a *reset* effect that would wipe in-progress
-  // number input and clear the validation alert (32-REVIEW WR-01).
+  // number input and clear the validation alert.
   const formatCssValueRef = useRef(formatCssValue);
   formatCssValueRef.current = formatCssValue;
 
@@ -109,7 +109,7 @@ export function SliderNumberPair({
     onCommit(sliderValue);
   };
 
-  // Pointer-driven commit stays immediate (D-26: commit on pointer-up).
+  // Pointer-driven commit stays immediate (commit on pointer-up).
   // Cancel any pending debounced keyboard commit so a drag right after a
   // key press can't double-fire.
   const handlePointerUpCommit = () => {

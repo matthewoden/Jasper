@@ -7,8 +7,7 @@
  * Flanking rule: whitespace-only (no punctuation check). Strikethrough's
  * verbatim shape also tests a `Punctuation` regex, but that symbol is a
  * private, unexported helper in @lezer/markdown — copying it verbatim would
- * hit a missing import. Per RESEARCH.md Pitfall 8 / Assumption A1, this is a
- * deliberate, documented scope reduction: `==word==` still parses correctly;
+ * hit a missing import. This is a deliberate, documented scope reduction: `==word==` still parses correctly;
  * the only edge case is punctuation-adjacent delimiters (e.g. `word==word.`)
  * being flanked slightly differently than CommonMark emphasis would be.
  */

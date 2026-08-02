@@ -13,7 +13,7 @@
  * `EditorView` instances are mutable, non-serializable, and identity-
  * sensitive — putting them in reactive state would either break shallow-
  * equality re-renders or invite treating a view as immutable data it isn't
- * (see RESEARCH.md Anti-Patterns, Phase 25).
+ * treating a view as immutable data it isn't.
  */
 import { redo, undo, history } from "@codemirror/commands";
 import { Annotation, Compartment, type Extension, type Transaction } from "@codemirror/state";
@@ -88,7 +88,7 @@ export function unregisterView(noteId: string, view: EditorView): void {
   }
 
   entry.views.delete(view);
-  // CR-02 fix (25-REVIEW.md): if the primary was already detached (its own
+  // If the primary was already detached (its own
   // pane closed while a survivor remained) and the view just removed here
   // was the LAST survivor, no live view depends on the detached primary's
   // history any longer — release it too so the registry entry, the primary
@@ -142,8 +142,8 @@ const historyCompartments = new WeakMap<EditorView, Compartment>();
  * Returns the CM6 extensions that make a view either the single undo-history
  * owner for `noteId` (`isPrimary`) or a history-less secondary whose
  * Undo/Redo keys route to the registry's CURRENT primary view instead of a
- * local (absent) history — see Pattern 2 / Pitfall 2 and `unregisterView`'s
- * docs for the promotion behavior.
+ * local (absent) history — see `unregisterView`'s docs for the promotion
+ * behavior.
  */
 export function historyExtensionFor(noteId: string, isPrimary: boolean): Extension {
   const historyCompartment = new Compartment();

@@ -1,8 +1,8 @@
 /**
- * NewBookmarkFolderInput — inline "New bookmark folder" text input (D-18).
+ * NewBookmarkFolderInput — inline "New bookmark folder" text input.
  *
  * Reuses RenameInput's Enter/Tab/Esc/blur-commit keyboard shell and
- * inputBaseStyle verbatim (bumped to Heading 13/600 per UI-SPEC, since this
+ * inputBaseStyle verbatim (bumped to Heading 13/600, since this
  * replaces a Heading-weight row, not a Body-weight tree row) — but does NOT
  * import validateRename (`renameInput.utils.ts`), which enforces filesystem-
  * legal-character + on-disk sibling-collision rules that don't apply to a

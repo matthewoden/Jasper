@@ -1,10 +1,10 @@
 /**
  * SidebarTabRow — icon-only Notes / Search / Bookmarks tab row + collapse
- * control, rendered inside the Sidebar's 40px header (Phase 27 NAV-01/NAV-03,
+ * control, rendered inside the Sidebar's 40px header (NAV-01/NAV-03,
  * replaces the old vault-name label + SidebarToolbar header content).
  *
  * Reuses ActivityRibbon's RibbonButton hover/active color-mix formula
- * verbatim (27-UI-SPEC.md): active tab = accent icon + accent-14%-tint
+ * verbatim: active tab = accent icon + accent-14%-tint
  * background; inactive = muted icon; hover = fg-8%-tint background.
  *
  * Clicking a tab both switches the panel AND reopens the sidebar

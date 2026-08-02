@@ -10,7 +10,7 @@ import "./theme.css";
 
 const path = window.location.pathname;
 if (path === "/setup") {
-  // Dark-only (D-01): the wizard has no theme toggle, so pin dark for the setup page.
+  // Dark-only: the wizard has no theme toggle, so pin dark for the setup page.
   document.documentElement.setAttribute("data-theme", "dark");
 }
 

@@ -85,7 +85,7 @@ async function getConfig(): Promise<Config> {
   return res.data;
 }
 
-// D-15's honest boot-scoped classification for /config: there is no
+// The boot-scoped classification for /config: there is no
 // WebSocket event for config changes — phase32.1-uat.spec.ts's own header
 // records that config edits are never pushed to other sessions — so there
 // is nothing to put in invalidatedBy. The only in-session mutation path is

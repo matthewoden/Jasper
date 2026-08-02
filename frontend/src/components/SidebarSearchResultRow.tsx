@@ -4,9 +4,9 @@
  * Reuses SearchResultRow's visual layout (title / path / 2-line excerpt / tag
  * pills) but CRITICALLY DIVERGES on activation: clicking or pressing
  * Enter/Space calls usePaneStore.getState().openInActivePane(result.id) — NOT
- * the tree-store's active-note setter (the Pitfall-1 bug in the palette's
- * SearchResultRow). Query and results are left untouched on click (D-18
- * session persistence): the panel stays populated after opening a note.
+ * the tree-store's active-note setter (the bug in the palette's
+ * SearchResultRow). Query and results are left untouched on click, so the
+ * panel stays populated after opening a note.
  */
 import { useState } from "react";
 import { sanitizeHtml } from "../lib/sanitize";

@@ -56,7 +56,7 @@ export function persistReadingFontBootstrap(rf: string): void {
 }
 
 /**
- * @deprecated Unused as of 2026-07-27 (Phase 32.1 review WR-01). Mounting this
+ * @deprecated Unused as of 2026-07-27. Mounting this
  * creates a SECOND independent `useConfig()` instance, which makes a pane Reset
  * silently partial — the anti-pattern AppearanceSection's header warns against.
  * Settings panes must use the non-hook helpers (`applyAccent`,
@@ -92,7 +92,7 @@ export function useAccent(): {
       const { error } = await saveConfig({ accent: a as Config["accent"] });
       if (error) {
         applyAccent(prev);
-        persistAccentBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected accent
+        persistAccentBootstrap(prev); // revert the bootstrap key too, else next reload flashes the rejected accent
         return { error: { message: error.message } };
       }
       return {};
@@ -109,7 +109,7 @@ export function useAccent(): {
       const { error } = await saveConfig({ readingFont: rf as Config["readingFont"] });
       if (error) {
         applyReadingFont(prev);
-        persistReadingFontBootstrap(prev); // WR-01: revert the bootstrap key too, else next reload flashes the rejected font
+        persistReadingFontBootstrap(prev); // revert the bootstrap key too, else next reload flashes the rejected font
         return { error: { message: error.message } };
       }
       return {};

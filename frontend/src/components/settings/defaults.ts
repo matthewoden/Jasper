@@ -1,6 +1,6 @@
 /**
  * DEFAULT_CONFIG — frontend mirror of `backend/internal/config/defaults.go`'s
- * `Defaults()`, scoped to the fields a per-pane Reset (D-12) is allowed to
+ * `Defaults()`, scoped to the fields a per-pane Reset is allowed to
  * write. `server.port`, `server.dataDir`, and `mcp.port` are deliberately
  * omitted — a Reset must never rewrite the listening port or data directory.
  *
@@ -49,9 +49,9 @@ export const DEFAULT_CONFIG: DefaultConfigShape = {
   },
   // ORPHANED 2026-07-26 (ADR-002 v2): buildResetPatch's `case "server"` went
   // with the Server pane, so no reset path writes server.* any more.
-  // Retained for Phase 36's Server pane; delete (with DefaultConfigShape's
-  // `server` field and the parked defaults.test.ts assertions) if Phase 36
-  // lands without it.
+  // Retained for a future Server pane; delete (with DefaultConfigShape's
+  // `server` field and the parked defaults.test.ts assertions) if no such
+  // pane ever lands.
   server: {
     bind: "127.0.0.1",
   },

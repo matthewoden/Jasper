@@ -4,7 +4,7 @@
  * 260719-jv1, item 5). Mirrors fileTree.utils.ts's adaptTree/adaptToArborist
  * role for the Notes tree.
  *
- * Two-level shape (bookmarks have no nesting, D-04/BOOK-03): each
+ * Two-level shape (bookmarks have no nesting, BOOK-03): each
  * BookmarkFolder becomes a `bookmark-folder` ArboristNode containing its
  * member bookmarks (sorted by `order`) as `bookmark` leaf children;
  * top-level (folder_id === null) bookmarks are leaves at the root.
@@ -15,8 +15,8 @@ import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
 import type { TreeNode as WireTreeNode } from "../lib/treeApi";
 
 /**
- * Live note title by UUID — walks the Notes wire tree (D-02 noteId
- * identity: a bookmark only ever stores note_id, never a cached title).
+ * Live note title by UUID — walks the Notes wire tree (a bookmark only
+ * ever stores note_id, never a cached title).
  * Verbatim port of BookmarksPanel's pre-existing private findNoteTitle,
  * relocated here so both the panel and the adapter can share it.
  */
@@ -57,7 +57,7 @@ function byOrder(a: Bookmark, b: Bookmark): number {
 
 /**
  * Bookmark -> ArboristNode adapter. resolveTitle resolves a note's live
- * title (D-02); noteExists gates the D-04 absent-note prune (a bookmark
+ * title; noteExists gates the absent-note prune (a bookmark
  * whose note no longer resolves is dropped from the visible tree — same
  * defense-in-depth as the pre-existing bespoke BookmarksPanel).
  */

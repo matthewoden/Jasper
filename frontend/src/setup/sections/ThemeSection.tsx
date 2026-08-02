@@ -1,7 +1,7 @@
 /**
  * ThemeSection — Appearance step for the first-run wizard.
  *
- * Dark-only (D-01): no theme toggle offered. Shows the accent swatch picker
+ * Dark-only: no theme toggle offered. Shows the accent swatch picker
  * and the reading-font toggle (Sans / Serif). Live preview applies on each
  * selection so the wizard restyles as the user picks.
  *

@@ -1,13 +1,11 @@
 /**
- * DeleteConfirmDialog data shapes + copy builder (D-26, UI-SPEC §7
- * Copywriting Contract).
+ * DeleteConfirmDialog data shapes + copy builder.
  *
  * Every delete entry point (tree menu single-target, tree bulk-selection,
  * the ⌫ keyboard shortcut, and Plan 09's note-options menu) renders the
  * SAME <DeleteConfirmDialog> against `buildDeleteCopy(target)` so no call
  * site duplicates the locked strings — the dialog derives title/body/
- * confirm-label from `target` internally (D-26's "generalization"
- * requirement).
+ * confirm-label from `target` internally.
  *
  * Extracted so the component file only exports React components, which
  * satisfies react-refresh/only-export-components and keeps Fast Refresh.
@@ -32,8 +30,7 @@ export interface DeleteCopy {
 }
 
 /**
- * Locked copy per the Copywriting Contract (Phase 30 UI-SPEC §7, D-26):
- * note/folder/bulk deletes move the target to Trash — Phase 14's
+ * Locked copy: note/folder/bulk deletes move the target to Trash — the
  * soft-delete-to-`.trash/` behavior is unchanged underneath; this dialog
  * only gates the UI trigger (the ⌫ shortcut now opens this dialog instead
  * of deleting immediately).

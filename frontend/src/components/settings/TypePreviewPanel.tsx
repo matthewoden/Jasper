@@ -1,6 +1,6 @@
 /**
- * TypePreviewPanel — live type-preview card for the Appearance pane (SET3-07,
- * D-25). Renders exactly one reading-font paragraph so a font-size/line-height
+ * TypePreviewPanel — live type-preview card for the Appearance pane
+ * (SET3-07). Renders exactly one reading-font paragraph so a font-size/line-height
  * drag has an immediate, mid-drag visual payoff without waiting on a config
  * write. No heading, list, or excerpt of the open note — this is a fixed
  * sample sentence, not a live document render.

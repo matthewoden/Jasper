@@ -5,7 +5,7 @@
  *
  * Endpoints:
  *   GET    /api/v1/tags              → tagsResource (module-private listTags fetcher)
- *   GET    /api/v1/tags/{name}/notes → tagNotesResource, keyed on tag name (D-10 single-slot;
+ *   GET    /api/v1/tags/{name}/notes → tagNotesResource, keyed on tag name (single-slot;
  *                                       module-private listTagNotes fetcher)
  *   PUT    /api/v1/tags/{name}       → renameTag(old, new): TagRenameResponse
  *   DELETE /api/v1/tags/{name}       → deleteTag(name): TagDeleteResponse

@@ -1,7 +1,7 @@
 /**
  * StatusBar — layout: [ConnectionStatusDot] [vault segment?] [word count?] [spacer] [SaveIndicator-button] [zen toggle]
  *
- * Phase 31 UAT #3: the duplicate Settings gear (SettingsMenu) that used to
+ * The duplicate Settings gear (SettingsMenu) that used to
  * sit at the far right was removed — ActivityRibbon's own gear is now the
  * sole Settings entry point (it keeps the `settings-menu-trigger` testid so
  * existing E2E selectors keep resolving).
@@ -13,7 +13,7 @@
  * Word count (UAT round 3 #6): moved here from the editor's top-chrome
  * cluster — reflects the currently FOCUSED pane's note, not a sum across
  * split panes. `activeNoteId` already mirrors the active pane's active tab
- * (App.tsx's usePaneStore -> useTreeStore sync, D-07), so reading it here
+ * (App.tsx's usePaneStore -> useTreeStore sync), so reading it here
  * gets split-pane-aware focus tracking for free. The note's live content
  * comes from its noteBufferController (one singleton per open note,
  * shared by every pane showing it) via the SAME subscribe/getContent
@@ -45,7 +45,7 @@ const statusBarStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-// Phase 31 UAT #2: ActivityRibbon is a 48px-wide column flush against the
+// ActivityRibbon is a 48px-wide column flush against the
 // window's left edge (App.tsx grid column 1), with every RibbonButton
 // horizontally centered inside it (32px button in 48px column -> icon
 // center at x=24). This wrapper mirrors that same 48px width so

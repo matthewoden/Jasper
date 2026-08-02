@@ -30,13 +30,13 @@ export function useVaultSwitch() {
       useTreeStore.getState().setActiveNote(null);
       useTreeStore.getState().setActiveFilePath(null);
       // Drop this vault's tabs before the reload so the new vault's session
-      // never inherits cross-vault tabs (D-09/TAB-10, threat T-15-03b).
+      // never inherits cross-vault tabs (TAB-10).
       useTabStore.getState().clearAllTabs();
       // Every cached entry in the resource layer (tags, grants, bookmarks,
       // backlinks, workspace, config, vault-about) describes the OUTGOING
       // vault — clearing tabs without also clearing the cache would let the
       // swapped-in vault render the previous vault's data during the
-      // window before the reload (T-32.2-01).
+      // window before the reload.
       clearAllResources();
 
       setSwitching({ active: true, targetName: name });

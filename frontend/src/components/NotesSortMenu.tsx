@@ -1,6 +1,6 @@
 /**
  * NotesSortMenu — Notes-panel sort trigger + six-option Radix DropdownMenu
- * (SORT-01, D-02/D-05). Mounted in SidebarToolbar beside New note/New folder.
+ * (SORT-01). Mounted in SidebarToolbar beside New note/New folder.
  *
  * menuContainerStyle/itemStyle/shortcutStyle below are re-declared identically
  * from TreeRowMenu.tsx (not imported — those constants are module-private
@@ -8,8 +8,8 @@
  * verbatim rather than inventing new menu CSS.
  *
  * The trigger glyph is a single constant `ArrowUpDown` regardless of the
- * selected order — Phase 31's D-16 (order-reflecting six-glyph trigger) was
- * reversed by owner UAT gap-closure: a changing icon read as confusing;
+ * selected order — an earlier order-reflecting six-glyph trigger was
+ * reversed by owner feedback: a changing icon read as confusing;
  * consistency was preferred. The order itself is still chosen from the
  * dropdown below, unchanged.
  */
@@ -79,7 +79,7 @@ const triggerButtonStyle: CSSProperties = {
   borderRadius: 4,
 };
 
-/** D-02 (exact order + copy — flat six-row list, no section headers). */
+/** Exact order + copy — a flat six-row list, no section headers. */
 const SORT_ITEMS: ReadonlyArray<{ order: NotesSortOrder; label: string }> = [
   { order: "name-asc", label: "Name (A → Z)" },
   { order: "name-desc", label: "Name (Z → A)" },

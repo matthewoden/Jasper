@@ -1,5 +1,5 @@
 /**
- * Tree-fetch error state — UI-SPEC §Surface 1 §Error state.
+ * Tree-fetch error state.
  *
  * Locked copy (verbatim):
  *   Headline:   "Couldn't load the tree."   (text-destructive)
@@ -8,7 +8,7 @@
  * Container exposes role="alert" so screen readers announce the failure.
  * The Try-again button is intentionally sized SMALLER (28px) than the
  * dialog buttons (32px) because it's an inline-tree affordance, not a
- * primary surface — UI-SPEC §Surface 1 §Error state.
+ * primary surface.
  */
 
 export interface TreeErrorStateProps {

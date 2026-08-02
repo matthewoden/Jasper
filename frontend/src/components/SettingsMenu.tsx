@@ -5,7 +5,7 @@
  * and avoid Radix asChild composition subtleties.
  * Trigger contract (E2E-stable): aria-label="Settings"
  * data-testid="settings-menu-trigger". Native title= migrated to the shared
- * Tooltip (D-07); aria-label kept for E2E stability.
+ * Tooltip; aria-label kept for E2E stability.
  */
 import { useState } from "react";
 import { Settings } from "lucide-react";

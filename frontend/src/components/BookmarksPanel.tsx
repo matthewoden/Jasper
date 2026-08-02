@@ -9,7 +9,7 @@
  * across the initial-hydrate window) with adaptBookmarks() (bookmarkTree.
  * utils.ts) to build the same ArboristNode shape FileTree feeds into
  * TreeView. Row activation goes through usePaneStore.openInActivePane(noteId)
- * (BOOK-02/D-16), wired as TreeRow's injected onActivate — never
+ * (BOOK-02), wired as TreeRow's injected onActivate — never
  * useTreeStore's setActiveNoteId.
  *
  * Bookmark-folder collapse/expand flows through react-arborist's own open
@@ -104,7 +104,7 @@ const panelColumnStyle: CSSProperties = {
 export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   // Kept for prop-shape parity with the other sidebar panels (FileTree,
   // SidebarSearchPanel) — rows activate via usePaneStore.openInActivePane
-  // directly (BOOK-02/D-16), so this callback is currently unused.
+  // directly (BOOK-02), so this callback is currently unused.
   void onSelectNote;
 
   const {
@@ -258,7 +258,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
 
   // Bordered 40px toolbar row — mirrors Sidebar.tsx's Notes-panel toolbar
   // chrome (same height/padding/borderBottom) so Bookmarks presents the same
-  // panel-top interface as Notes (Phase 27 follow-up item 5).
+  // panel-top interface as Notes.
   const header = (
     <div style={toolbarRowStyle}>
       <NewBookmarkFolderButton onClick={() => setCreatingFolder(true)} />

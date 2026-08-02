@@ -1,7 +1,7 @@
 /**
  * AboutSection — the About pane. Read-only vault facts (SET3-04); no Reset
- * (D-08), no live grant editing (Phase 36 owns that surface). Reads the
- * shared `vaultAboutResource` cache (D-15) gated on `visible` (D-23) —
+ * button, no live grant editing. Reads the
+ * shared `vaultAboutResource` cache gated on `visible` —
  * reselecting About after the first open is a cache hit, not a refetch,
  * unless a note/folder/grant mutation or a reindex invalidated it meanwhile.
  */

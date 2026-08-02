@@ -3,8 +3,8 @@
  * coalescer (leading-plus-trailing single-flight with a 100ms tail) to
  * every GET endpoint in the app.
  *
- * The one property every caller must be able to rely on (D-12, commit
- * 7494174d): a read() issued while a fetch is in flight MAY join it — a
+ * The one property every caller must be able to rely on: a read() issued
+ * while a fetch is in flight MAY join it — a
  * component just mounted and wants whatever is current. An invalidate()
  * issued at the same moment must NEVER join it — a WS event said data
  * changed at time T, so a request issued before T cannot be trusted to
@@ -215,7 +215,7 @@ function invalidateEntry<T>(
   // (e.g. notesApi's getNoteFresh) never subscribe — they call invalidate()
   // directly and await the result. Skipping the fetch there would resolve
   // every such call to undefined instead of the server truth it was asked
-  // for (D-06 lost-write risk), so pass-through always fetches.
+  // for (a lost-write risk), so pass-through always fetches.
   if (mode !== "pass-through" && entry.listeners.size === 0) {
     entry.hydrated = false;
     entry.data = undefined;
@@ -266,10 +266,10 @@ function subscribeEntry<T>(
   entry.listeners.add(listener);
   if (wasEmpty) {
     evictSiblingIfKeyed(fullKey, baseKey);
-    // D-14: the first subscriber triggers the fetch; every later
+    // The first subscriber triggers the fetch; every later
     // subscriber reads cache. read() resolves from cache with no network
     // call when the entry is already hydrated, so a later remount costs
-    // zero requests (D-15).
+    // zero requests.
     void readEntry(entry, fetcher, mode).catch(() => undefined);
   }
   return () => {

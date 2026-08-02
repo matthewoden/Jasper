@@ -2,20 +2,20 @@
  * useWorkspace — reads the shared `workspaceResource` cache and projects it
  * into the notesSort/searchSort/rightPanel zustand UI slices, then composes
  * those slices with PUT /vault/workspace calls. The GET side is
- * fetch-once-and-cache via the resource layer (D-08/D-11/D-14): mounting
+ * fetch-once-and-cache via the resource layer: mounting
  * never issues a network request by itself; only the resource's own 0->1
  * subscriber transition and `workspace:changed` WS invalidation do.
  *
  * Public surface:
  *   - notesSort / searchSort / rightPanel: current store slices (hydrated
- *                              from the shared cache, never localStorage — D-09)
- *   - setNotesSort(value):    optimistic write, NO debounce (D-12) — one
+ *                              from the shared cache, never localStorage)
+ *   - setNotesSort(value):    optimistic write, NO debounce — one
  *                              PUT per selection. Reverts + toasts on failure.
  *   - setSearchSort(value):   same shape as setNotesSort, other field.
  *   - setRightPanel(value):   same shape as setNotesSort, rightPanel field
  *                              (TAGS-01).
  *
- * D-08 note: notesSort/searchSort/rightPanel remain zustand slices (they're
+ * Note: notesSort/searchSort/rightPanel remain zustand slices (they're
  * read directly by components through their own store selectors), not the
  * resource cache itself. This hook is the ONLY place that projects the
  * shared cache INTO those slices — see the sync effect below.
@@ -58,7 +58,7 @@ export function useWorkspace(): UseWorkspaceResult {
   // network call of its own (that's workspaceResource's job, triggered by
   // useResource's subscribe). Keyed on snapshot.data identity, so N
   // mounted instances each run this once per actual cache change, not
-  // once per render. Empty string means "use the default" (D-06) — the
+  // once per render. Empty string means "use the default" — the
   // store already carries the correct default, so only overwrite on a
   // real value.
   useEffect(() => {

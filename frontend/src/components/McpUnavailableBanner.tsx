@@ -4,7 +4,7 @@
  *
  * Banner is server-state-driven: Dismiss only hides it for the current
  * browser session; if MCP is still down on next reload/boot, the server
- * reports up=false again and the banner reappears (D-05). Informational
+ * reports up=false again and the banner reappears. Informational
  * only — no remediation action (see `jasper doctor` for a fix hint).
  */
 

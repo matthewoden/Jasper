@@ -4,7 +4,7 @@
  * the existing Cmd+P palette; does not replace it.
  *
  * Query/results live in useTreeStore's session-only searchQuery/searchResults
- * slice (D-18) so switching panels or unmounting/remounting this component
+ * slice so switching panels or unmounting/remounting this component
  * does not lose the in-progress search.
  *
  * Debounce mirrors useSearch.ts's cancelled-ref shape but writes to the store
@@ -38,7 +38,7 @@ export interface SidebarSearchPanelProps {
 
 export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
   // Kept for prop-shape parity with FileTree's onSelectNote; rows activate via
-  // usePaneStore.openInActivePane directly (D-17), so this callback is
+  // usePaneStore.openInActivePane directly, so this callback is
   // currently unused.
   void onSelectNote;
 
@@ -101,7 +101,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
     setSelectedIdx(0);
   }, [searchResults]);
 
-  // D-19: reset the keyboard-highlighted hint whenever the match set changes
+  // Reset the keyboard-highlighted hint whenever the match set changes
   // (query typed, history mutated) — mirrors the selectedIdx/searchResults effect above.
   useEffect(() => {
     setActiveHintIndex(0);
@@ -139,7 +139,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const hintsActive = hintsOpen && hintMatches.length > 0;
 
-    // D-20: hints-priority branch — while hints are open with matches, arrows/Enter
+    // Hints-priority branch — while hints are open with matches, arrows/Enter
     // act on the hints list and results keyboard nav is suspended.
     if (hintsActive) {
       if (e.key === "ArrowDown") {
@@ -184,7 +184,7 @@ export function SidebarSearchPanel({ onSelectNote }: SidebarSearchPanelProps) {
         recordSearchHistory(searchQuery);
         // Close hints at the commit point: the just-recorded query
         // prefix-matches itself, so leaving hintsOpen true would reopen the
-        // dropdown over the results and hijack arrow-key nav (WR-02).
+        // dropdown over the results and hijack arrow-key nav.
         setHintsOpen(false);
         setActiveHintIndex(-1);
         usePaneStore.getState().openInActivePane(result.id);

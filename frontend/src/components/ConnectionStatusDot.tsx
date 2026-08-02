@@ -8,7 +8,7 @@ import { Tooltip } from "./Tooltip";
  * Retry-forever means there is no red/failed state — amber persists until
  * reconnect succeeds. Renders only a 3-value enum, never the session ID.
  *
- * Phase 31 UAT #2: treated as an icon-tier control now — a 24x24/padding-4
+ * Treated as an icon-tier control — a 24x24/padding-4
  * footprint matching the other status-bar icon buttons (StatusBar.tsx's
  * zenButtonBase / SettingsMenu's buttonBase), wrapped in the shared Tooltip
  * (native `title` dropped, same Tooltip-migration every other icon control

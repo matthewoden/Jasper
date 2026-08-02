@@ -7,9 +7,9 @@
  * Gates on `treeReady` so openInActivePane runs after GET /tree resolves —
  * hooks that consume activeNoteId assume the tree is populated.
  *
- * Opens the resolved note as a real tab in the active pane (Phase 25,
- * WS-08's openInActivePane) rather than the retired setActiveNote +
- * promoteActiveNote load-time-promotion path (D-18): a deep link now lands
+ * Opens the resolved note as a real tab in the active pane (WS-08's
+ * openInActivePane) rather than the retired setActiveNote +
+ * promoteActiveNote load-time-promotion path: a deep link now lands
  * as a tab directly, so there is nothing left for promotion to do.
  *
  * On successful resolve, strips the params via history.replaceState so a

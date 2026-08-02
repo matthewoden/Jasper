@@ -18,7 +18,7 @@
  *   - Decoration.mark with cm-marker for the same hideable nodes when
  *     their line is on-cursor (markers visible-but-muted).
  *
- * Callout detection (READ-02, D-05/D-06/D-08/D-09): a Blockquote's first
+ * Callout detection (READ-02): a Blockquote's first
  * line is checked for a `[!type]` or `[!type]-` prefix (regex, not a lezer
  * node — CommonMark has no callout grammar). A match replaces the plain
  * `.cm-blockquote` line treatment with `cm-callout cm-callout-{type}` for
@@ -131,7 +131,7 @@ const BLOCK_LINE_DECOS: Record<string, Decoration> = {
 /**
  * CALLOUT_TYPES — the six named callout types with dedicated CSS color
  * treatment (theme.css). Any other `[!word]` value falls back to the
- * "note" style per D-08, but keeps its own word as the title.
+ * "note" style, but keeps its own word as the title.
  */
 export const CALLOUT_TYPES = new Set([
   "tip",
@@ -145,7 +145,7 @@ export const CALLOUT_TYPES = new Set([
 /** Regex for the marker portion of a callout's first line, after stripping the "> " quote prefix. */
 const CALLOUT_MARKER_RE = /^\[!(\w+)\](-)?\s*(.*)$/;
 
-/** Capitalizes the first character only (D-08/D-09 auto-title rule). */
+/** Capitalizes the first character only (the auto-title rule). */
 function capitalizeWord(s: string): string {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -185,10 +185,10 @@ function makeChevronSvg(expanded: boolean): SVGSVGElement {
 /**
  * CalloutTitleWidget — replaces a callout's first-line `[!type](-)?\s*title?`
  * span (off-cursor only) with the synthesized title text (+ fold chevron for
- * foldable callouts, D-07). The colored dot is NOT part of this widget — it
+ * foldable callouts). The colored dot is NOT part of this widget — it
  * is a pure-CSS `::before` on the title line's class so it stays rendered
  * even while the cursor is on that line and the raw markers are revealed
- * (D-06).
+ * revealed.
  */
 export class CalloutTitleWidget extends WidgetType {
   constructor(
@@ -551,9 +551,9 @@ export function buildDecorations(view: EditorView): DecorationSet {
 
         if (node.name === "ListMark") {
           if (isInsideCode(node)) return;
-          // Coexistence guard (D-02 reversed): cursor-state-aware coordination with taskCheckboxPlugin.
+          // Coexistence guard: cursor-state-aware coordination with taskCheckboxPlugin.
           if (node.node.parent?.getChild("Task")) {
-            // Task line: D-02 is REVERSED — taskCheckboxPlugin now owns only "[ ]" (TaskMarker),
+            // Task line: taskCheckboxPlugin owns only "[ ]" (TaskMarker),
             // NOT the full "- [ ] " prefix. livePreviewPlugin therefore handles the ListMark "-"
             // identically to a regular list item:
             //   Off-cursor: render bullet widget (•) replacing the "-"
@@ -649,7 +649,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
         this.decorations = this.decorations.map(u.changes);
         return;
       }
-      // Callout fold toggles (READ-02/D-07) don't touch the doc, viewport,
+      // Callout fold toggles (READ-02) don't touch the doc, viewport,
       // selection, or syntax tree — rebuild explicitly so the chevron
       // direction and folded body decoration stay in sync with
       // calloutFoldField's own StateField.

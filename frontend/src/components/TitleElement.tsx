@@ -1,5 +1,5 @@
 /**
- * TitleElement — Obsidian-style editable inline title (D-01/D-02/READ-01).
+ * TitleElement — Obsidian-style editable inline title (READ-01).
  *
  * A plain contentEditable <div> (NOT a second CodeMirror instance) that
  * reads/writes the note's H1 through the EXISTING rename binding. This
@@ -13,16 +13,16 @@
  * before the user has typed anything. Clicking/focusing clears it; blurring
  * on an empty div restores it.
  *
- * Focus (D-18): caret-only — no focus ring, no hover affordance. The title
+ * Focus: caret-only — no focus ring, no hover affordance. The title
  * reads as an ordinary line of the note, not a form field.
  *
- * Enter/ArrowDown (D-19/D-20): both hand off focus to the body, column-
+ * Enter/ArrowDown: both hand off focus to the body, column-
  * preserving. Column preservation is pixel-based, not character-index — the
  * title's much larger font would otherwise land at the wrong visual column
- * (31-RESEARCH.md Pitfall 3). Tab is unchanged (out of scope, D-19).
+ * Tab is unchanged (out of scope).
  *
  * ArrowDown crosses to the body ONLY when the caret is on the title's LAST
- * visual row (CR-01) — the title is `white-space: pre-wrap` and any long
+ * visual row — the title is `white-space: pre-wrap` and any long
  * enough note title wraps across multiple visual rows; hijacking every
  * ArrowDown regardless of row broke ordinary in-title downward navigation.
  * See caretOnLastVisualRow() below (delegates to isLastVisualRow from

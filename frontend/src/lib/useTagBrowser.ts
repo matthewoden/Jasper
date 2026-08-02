@@ -1,6 +1,6 @@
 /**
  * useTagBrowser — reactive tag list hook, reading the shared `tagsResource`
- * cache (D-08/D-11/D-14). There is no per-instance copy of the tag list any
+ * cache. There is no per-instance copy of the tag list any
  * more: every mounted `MarkdownEditor` pane and `RightRailTagsPanel` reads
  * the SAME cache entry, so split view no longer duplicates the list or the
  * fetch.

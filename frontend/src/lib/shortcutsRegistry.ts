@@ -20,7 +20,7 @@ export type CommandCategory = "Layout" | "Navigate" | "Create" | "Organize" | "A
 export interface Shortcut {
   /** Stable identifier; commands wire actions by id. */
   id: string;
-  /** User-visible label. MUST match UI-SPEC §Command Registry table strings exactly. */
+  /** User-visible label. Shown verbatim in the palette and cheat sheet. */
   label: string;
   /** Group used by both palette grouping and cheat-sheet sectioning. */
   group: ShortcutGroup;

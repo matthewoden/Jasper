@@ -1,6 +1,6 @@
 /**
  * useMigrationStatus — reads the shared cached /admin/status resource
- * (D-15: cached, invalidated by reindex:complete).
+ * (cached, invalidated by reindex:complete).
  *
  * Shape { state, failedMigration, logsPath, notesIndexed, loading, error, refresh }
  * is the contract MigrationBanner depends on; do not change without sweeping

@@ -1,15 +1,15 @@
 /**
  * SearchHistoryHints — focus-triggered, prefix-filtered recent-search
- * dropdown (HIST-01/02, D-19/D-20/D-21/D-22). Mounted inside
+ * dropdown (HIST-01/02). Mounted inside
  * SidebarSearchPanel.tsx's search-input container (absolute-positioned
  * below the input), only while SidebarSearchPanel considers hints "open".
  *
  * Renders nothing (returns null) when history is empty or no entries
- * prefix-match the current query (D-19) — there is no "no recent
+ * prefix-match the current query — there is no "no recent
  * searches" placeholder row; the layer simply doesn't mount.
  *
  * Query text is rendered as plain JSX text content — React auto-escapes
- * it, so this is never a dangerouslySetInnerHTML surface (T-29-12 XSS).
+ * it, so this is never a dangerouslySetInnerHTML surface.
  * Container styling matches TreeRowMenu.tsx's menuContainerStyle so this
  * reads as part of the existing menu family, not a bespoke popover.
  */

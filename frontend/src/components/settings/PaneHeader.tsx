@@ -1,8 +1,8 @@
 /**
- * PaneHeader — 56px fixed content-pane header (D-19 locked geometry). Left
+ * PaneHeader — 56px fixed content-pane header (locked geometry). Left
  * cluster shows the active section's title + subtitle; right cluster holds
  * an optional neutral Reset and the Close control. About renders no Reset
- * (D-08) — `showReset` gates the button out of the DOM entirely, not a
+ * — `showReset` gates the button out of the DOM entirely, not a
  * disabled/greyed state.
  */
 import { X } from "lucide-react";

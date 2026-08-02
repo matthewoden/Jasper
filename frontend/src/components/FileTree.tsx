@@ -18,10 +18,10 @@
  * the file has no H1 or when H1 already matches — loop guard against
  * the editor's direction-A round-trips).
  *
- * Sort (SORT-01, Phase 29): the tree-data memo applies sortTree(...,
- * notesSort) — folders always A→Z, notes/files reorder per the six D-02
- * orders. `renderCursor={() => null}` on <TreeView> suppresses react-
- * arborist's between-rows insertion line (D-07); the remaining drag
+ * Sort (SORT-01): the tree-data memo applies sortTree(..., notesSort) —
+ * folders always A→Z, notes/files reorder per the six sort modes.
+ * `renderCursor={() => null}` on <TreeView> suppresses react-arborist's
+ * between-rows insertion line; the remaining drag
  * feedback is TreeRow's willReceiveDrop-driven folder highlight.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -128,7 +128,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   useEffect(() => {
     if (expandAllNonce > 0) treeRef.current?.openAll();
   }, [expandAllNonce]);
-  // D-10 keyed single-slot: toggling the same filter off/on reads cache.
+  // Keyed single-slot: toggling the same filter off/on reads cache.
   const tagNotes = useResource(
     useMemo(() => (activeTagFilter ? tagNotesResource.forKey(activeTagFilter) : null), [activeTagFilter]),
   );
@@ -136,12 +136,12 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
   const flatNotes = activeTagFilter ? (tagNotes.data ?? (tagNotes.error ? [] : null)) : null;
   const flatLoading = tagNotes.loading;
 
-  // D-08: no in-tree fuzzy filter exists here to gate against (confirmed via
+  // No in-tree fuzzy filter exists here to gate against (confirmed via
   // grep — Cmd+O's fuzzysort ranking lives entirely in useQuickSwitcher.ts,
   // a separate overlay component that never consumes this tree's `data`).
   // The activeTagFilter branch below bypasses <TreeView>/`data` altogether
   // (renders its own flat `flatNotes` list), so sortTree here can never
-  // double-apply against another ordering — SORT-01's D-02 order is safe
+  // double-apply against another ordering — the sort order is safe
   // to apply unconditionally.
   const data = useMemo(
     () => (tree ? sortTree(adaptTree(tree), notesSort) : []),
@@ -166,8 +166,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
       // onToggle fires (dispatch happens before the callback) — read it back
       // deterministically rather than blindly toggling. onToggle fires for
       // BOTH individual clicks AND bulk openAll()/closeAll(); a blind toggle
-      // would fight expandAllFolders()/collapseAllFolders() (Rule 1 fix,
-      // Phase 27 follow-up item 1).
+      // would fight expandAllFolders()/collapseAllFolders().
       const isOpen = treeRef.current?.isOpen(id) ?? true;
       useTreeStore.getState().setFolderExpanded(path, isOpen);
     }
@@ -403,8 +402,8 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
     [handleRequestDelete],
   );
 
-  // Bulk-selection menu wiring (D-19, CTX-02) — reads react-arborist's live
-  // selection off treeRef at call time (Pitfall 5: TreeRow's onOpenChange
+  // Bulk-selection menu wiring (CTX-02) — reads react-arborist's live
+  // selection off treeRef at call time (TreeRow's onOpenChange
   // calls getSelectionCount at menu-OPEN time, not row-render time).
   const getSelectionCount = useCallback(
     (): number => treeRef.current?.selectedIds.size ?? 0,

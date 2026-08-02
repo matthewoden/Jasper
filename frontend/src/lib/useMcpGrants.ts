@@ -1,7 +1,7 @@
 /**
  * useMcpGrants — reads the shared `mcpGrantsResource` cache and composes it
  * with POST/DELETE backend calls. The GET side is fetch-once-and-cache via
- * the resource layer (D-08/D-11/D-14): subscribing (mounting) never issues a
+ * the resource layer: subscribing (mounting) never issues a
  * network request by itself; only the resource's own 0->1 subscriber
  * transition and `mcp:grant_changed` WS invalidation do.
  *

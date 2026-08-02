@@ -1,5 +1,5 @@
 /**
- * usePaneDragStore — TRANSIENT cross-pane drag UI state (WS-01/WS-02, D-10/D-11).
+ * usePaneDragStore — TRANSIENT cross-pane drag UI state (WS-01/WS-02).
  *
  * Deliberately NOT the persisted usePaneStore: no browser-storage write, no
  * subscribe/debounced write. This is purely the shared channel between the
@@ -23,7 +23,7 @@ export interface Hover {
   region: DropRegion;
 }
 
-/** Foreign-strip positional insertion target (P26 Obsidian-parity tab-bar drop). */
+/** Foreign-strip positional insertion target (Obsidian-parity tab-bar drop). */
 export interface StripHover {
   leafId: string;
   index: number;

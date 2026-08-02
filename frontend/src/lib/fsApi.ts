@@ -26,7 +26,7 @@ async function fetchFsList(path?: string): Promise<FsListResponse> {
   return data;
 }
 
-// D-05: pass-through, coalesced on path — "" stands in for the undefined
+// Pass-through, coalesced on path — "" stands in for the undefined
 // ($HOME-default) key since createKeyedResource requires a string param.
 const fsListResource = createKeyedResource(
   "fsList",

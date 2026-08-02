@@ -1,5 +1,5 @@
 /**
- * Row primitives shared by every Settings section file (D-06). Originally
+ * Row primitives shared by every Settings section file. Originally
  * lifted from `SettingsDialog.tsx`; `ControlRow` has since been restructured
  * (fixed 160px label column + optional description slot) so the two are no
  * longer identical.
@@ -15,9 +15,9 @@ import { AlertCircle } from "lucide-react";
 // aria-label ensures screen readers announce it (not color only).
 //
 // ORPHANED 2026-07-26 (ADR-002 v2): ServerSection was its only consumer and
-// was removed with the Server pane. Kept — not deleted — because Phase 36's
-// mcp.port control needs the same restart-signal primitive. If Phase 36
-// lands without adopting it, delete this and the AlertCircle import above.
+// was removed with the Server pane. Kept — not deleted — because a future
+// mcp.port control needs the same restart-signal primitive. If that never
+// lands, delete this and the AlertCircle import above.
 export function RestartBadge() {
   return (
     <span

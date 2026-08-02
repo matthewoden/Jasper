@@ -1,9 +1,9 @@
 /**
  * SectionHeader — unified, whole-row-clickable collapse header shared by the
- * right rail's Outline / Linked mentions / Tags sections (Phase 20, D-01/D-03).
+ * right rail's Outline / Linked mentions / Tags sections.
  *
  * Entire 32px row is a <button> that toggles collapse — no separate "×" close
- * affordance (D-01 removes the legacy per-panel close button entirely).
+ * affordance — the legacy per-panel close button is gone entirely.
  * Chevron uses icon-swap (ChevronDown/ChevronRight), never CSS rotate, matching
  * TreeRow.tsx's folder-fold convention.
  */

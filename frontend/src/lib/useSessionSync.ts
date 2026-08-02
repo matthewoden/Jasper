@@ -54,7 +54,7 @@ export interface UseSessionSyncOptions {
  * Reconnect sequence: setStatus("reconnecting") → await an explicit tree
  * invalidation on open → resume processing inbound events →
  * setStatus("connected"). A reconnect is a "we may have missed events"
- * signal, so it invalidates rather than publishes — the same D-12 reasoning
+ * signal, so it invalidates rather than publishes — the same reasoning
  * that governs every other resource, applied at the transport layer.
  *
  * Security: inbound `origin_session_id` is treated as opaque — never rendered
@@ -133,7 +133,7 @@ export function useSessionSync(
           // treeResource declares each of these seven events in its own
           // invalidatedBy list (treeApi.ts), so publishing is exactly one
           // invalidate for whoever is subscribed, and zero requests when
-          // nothing is mounted (D-13).
+          // nothing is mounted.
           case "note:moved":
             publish("note:moved");
             break;

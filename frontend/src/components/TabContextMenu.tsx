@@ -1,8 +1,8 @@
 /**
  * TabContextMenu — Radix ContextMenu wrapping a tab pill trigger.
  *
- * 9 items in the locked UI-SPEC §3 order (CTX-01, D-11/D-12 — Obsidian-literal
- * mapping onto Jasper's item set), with separators after items 4, 6, and 7:
+ * 9 items in the locked order (CTX-01 — an Obsidian-literal mapping onto
+ * Jasper's item set), with separators after items 4, 6, and 7:
  *   1. Close
  *   2. Close others
  *   3. Close to the right
@@ -16,8 +16,8 @@
  *   8. Rename
  *   9. Show in file manager
  *
- * Styling tokens mirror TreeRowMenu; item font size is 12px per UI-SPEC —
- * reused verbatim for every new item, do not resize.
+ * Styling tokens mirror TreeRowMenu; item font size is 12px — reused
+ * verbatim for every new item, do not resize.
  */
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { CSSProperties, ReactNode } from "react";

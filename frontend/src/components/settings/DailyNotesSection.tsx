@@ -1,7 +1,7 @@
 /**
  * DailyNotesSection — the Daily notes pane. Carries the template control
  * over verbatim; the mock's template picker/preview/"New note from
- * template" affordances are Phase 35 work (Templates don't exist yet). Its
+ * template" affordances belong to Templates, which does not exist yet. Its
  * folder-picking control was retired (UAT test 6, 2026-07-29): the config
  * field it wrote had zero functional consumers — daily-note creation
  * hardcodes "daily/".

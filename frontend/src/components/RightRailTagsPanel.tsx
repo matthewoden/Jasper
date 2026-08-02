@@ -1,6 +1,6 @@
 /**
  * RightRailTagsPanel — the entire Tags tab body: a single vault-wide tag
- * list (Phase 31 D-01..D-05 collapse of the Phase 30 two-section split —
+ * list (a collapse of the earlier two-section split —
  * the upper active-note section and its own sub-header are gone, this
  * component owns no header of its own either). No × close button, no
  * substring filter input. Body renders only the tag list, click-to-filter,
@@ -8,8 +8,7 @@
  * remaining panel space (no fixed maxHeight).
  *
  * The legacy left-sidebar TagBrowserSection.tsx (superseded by this
- * component in Phase 20) was deleted in Phase 30 Plan 05 as confirmed
- * dead code.
+ * component) was deleted as confirmed dead code.
  */
 import { type CSSProperties, useState } from "react";
 
@@ -25,9 +24,9 @@ import { useToast } from "./toast.utils";
 
 
 /** Panel shell — flat inside the tabbed rail. The floating-card chrome
- * (border + radius) predates the Phase 30 rail rewrite; inside the flat rail
+ * (border + radius) predates the rail rewrite; inside the flat rail
  * body it read as a double border with rounded inner corners. paddingTop
- * absorbs the vertical space the retired sub-header (D-01) used to occupy. */
+ * absorbs the vertical space the retired sub-header used to occupy. */
 const panelCardStyle: CSSProperties = {
   background: "var(--color-surface)",
   overflow: "hidden",
@@ -221,7 +220,7 @@ export function RightRailTagsPanel() {
       <div style={rootStyle}>
         <div style={panelCardStyle}>
           <ul role="list" style={listStyle}>
-            {/* Empty state: vault has zero tags (D-10, mock-literal copy) */}
+            {/* Empty state: vault has zero tags (mock-literal copy) */}
             {sortedTags.length === 0 ? (
               <li>
                 <p role="status" style={emptyStateStyle}>
@@ -292,7 +291,7 @@ export function RightRailTagsPanel() {
                               />
                             ) : (
                               <>
-                                {/* plain fg text; only the active tag gets accent (UI-SPEC: vault list stays plain) */}
+                                {/* plain fg text; only the active tag gets accent — the vault list stays plain */}
                                 <span
                                   style={
                                     isActive ? tagNameActiveStyle : tagNameStyle

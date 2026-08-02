@@ -192,7 +192,7 @@ function frontmatterBoundary(state: EditorState): number | null {
 /**
  * frontmatterAtomicRanges — while hidden, the replaced block is atomic so
  * cursor-motion commands can never place the caret strictly inside it
- * (WR-03: an inside caret let Backspace/Delete/typing silently mutate the
+ * (an inside caret let Backspace/Delete/typing silently mutate the
  * invisible YAML one keystroke past the boundary guard).
  */
 const frontmatterAtomicRanges = EditorView.atomicRanges.of((view) => {
@@ -274,7 +274,7 @@ export const frontmatterToggleKeymap = keymap.of([
 
 
 /**
- * guardHiddenFrontmatterDelete — shared Backspace/Delete guard (D-23, WR-03).
+ * guardHiddenFrontmatterDelete — shared Backspace/Delete guard.
  * With frontmatterAtomicRanges the caret only ever sits on the block's edges
  * (0 or boundary), but CM6's delete commands skip atomic ranges by consuming
  * them WHOLE: Backspace at the boundary or Delete at 0 would silently erase
@@ -295,7 +295,7 @@ function guardHiddenFrontmatterDelete(view: EditorView, forward: boolean): boole
 
 /**
  * frontmatterBackspaceGuardKeymap — no-ops Backspace/Delete keystrokes that
- * would erase hidden frontmatter (D-23 boundary case plus the WR-03 atomic
+ * would erase hidden frontmatter (the boundary case plus the atomic-range
  * edge cases); otherwise falls through to defaultKeymap. Place before
  * defaultKeymap (same extensions-array slot as frontmatterToggleKeymap).
  */

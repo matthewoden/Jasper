@@ -2,7 +2,7 @@
  * EditorPane — thin view over the per-note noteBufferController (Plan 05).
  *
  * Content/save-state/debounce/coalesced-flush/WS-reconciliation logic lives
- * in `noteBufferController.ts` (Plan 04) — exactly one buffer per open note,
+ * in `noteBufferController.ts` — exactly one buffer per open note,
  * regardless of how many panes show it (WS-10). EditorPane bridges that
  * React-free controller into React via useSyncExternalStore, and keeps only
  * pane-local UI concerns: breadcrumb, inline title/H1 UI, outline
@@ -16,7 +16,7 @@
  * When noteId is null, renders a locked placeholder with no API calls, no
  * controller. When noteId changes on an already-mounted instance (the
  * no-tabs fallback pane), the previous note's pending debounced edit is
- * discarded (never saved cross-note — WR-02), matching the old per-pane
+ * discarded (never saved cross-note), matching the old per-pane
  * "debounce armed for the previous note must never fire" guard.
  */
 
@@ -78,7 +78,7 @@ export interface EditorPaneHandlers {
   onNoteUpdated: (p: WSNoteUpdatedPayload) => void;
   onNoteDeleted: (p: WSNoteDeletedPayload) => void;
   /**
-   * Search commands (P26, WS-09/D-01) — delegate straight to the internal
+   * Search commands (WS-09) — delegate straight to the internal
    * MarkdownEditor ref, so the Find bar reaches THIS pane's own EditorView
    * via LeafPane's handlerRefs map.
    */
@@ -89,7 +89,7 @@ export interface EditorPaneHandlers {
   replaceAll: () => boolean;
   matchInfo: () => { current: number; total: number };
   clearSearch: () => void;
-  /** Returns focus to this pane's editor (P26, D-02 — Esc closes the Find bar and refocuses). */
+  /** Returns focus to this pane's editor — Esc closes the Find bar and refocuses. */
   focus: () => void;
 }
 
@@ -111,29 +111,29 @@ interface EditorPaneProps {
   style?: React.CSSProperties;
   /** Autosave debounce interval in ms. Read through a ref at debounce-arm time; follows prop updates (config loads async). */
   autosaveMs?: number;
-  /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive, D-01). */
+  /** display:none when true; CM6 stays mounted so cursor/scroll/undo survive (keep-alive). */
   hidden?: boolean;
   /**
-   * True when this pane's leaf is the active pane (WS-07). Gates programmatic
+   * True when this pane's leaf is the active pane. Gates programmatic
    * autofocus: only the ACTIVE pane's editor steals DOM focus when a note
    * finishes loading. Without this gate, EVERY visible pane's editor focuses
    * on mount, so on a reload with a restored two-pane layout the last note to
    * load would win DOM focus and (via LeafPane's onFocusCapture → setActivePane)
-   * override the restored active pane — making WS-08's active-pane restore
-   * non-deterministic (D-12). Defaults true so single-pane / non-LeafPane
+   * override the restored active pane — making the active-pane restore
+   * non-deterministic. Defaults true so single-pane / non-LeafPane
    * callers keep today's autofocus behavior.
    */
   paneActive?: boolean;
-  /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator (D-10). */
+  /** Read-only + suppress the in-pane deletion banner; the tab pill owns the "(deleted)" indicator. */
   isDeleted?: boolean;
   /** tab-close awaits flush() to persist pending edits before the tab is removed (TAB-13). */
   flushRef?: MutableRefObject<{ flush: () => Promise<void> } | null>;
-  /** Cmd+F handler (P26, WS-09/D-02) — opens this pane's find-only bar. */
+  /** Cmd+F handler (WS-09) — opens this pane's find-only bar. */
   onOpenFind?: () => void;
-  /** Cmd+Opt+F handler (P26, WS-09/D-02) — opens this pane's find+replace bar. */
+  /** Cmd+Opt+F handler (WS-09) — opens this pane's find+replace bar. */
   onOpenFindReplace?: () => void;
   /**
-   * Leaf-owned Find/Replace bar (P26 polish, UI-SPEC line 151), rendered
+   * Leaf-owned Find/Replace bar, rendered
    * between the breadcrumb header and the note body; passed only to the
    * ACTIVE tab's pane by LeafPane (findBar state/handlers stay in LeafPane —
    * this is pure slot injection, not a state hoist).
@@ -221,7 +221,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // per-pane useFileTree() fetch. This makes the breadcrumb + word-count
   // metadata bar appear atomically with the note content — independent of the
   // async tree fetch and of which pane is active — so an inactive or
-  // freshly-split pane always shows its OWN metadata bar (Phase 25 UAT-4).
+  // freshly-split pane always shows its OWN metadata bar.
   const controllerNotePath = useSyncExternalStore(
     subscribeController,
     () => controller?.getNotePath() ?? "",
@@ -240,7 +240,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const zen = useTreeStore((s) => s.zen);
 
-  // Breadcrumb bookmark star (BOOK-01, D-14). Renders in every visible pane's
+  // Breadcrumb bookmark star (BOOK-01). Renders in every visible pane's
   // breadcrumb (not just the active pane) so a note can be bookmarked from any
   // pane; each pane's star reflects and toggles its OWN note's bookmark state.
   const { isBookmarked, toggleBookmark } = useBookmarks();
@@ -318,7 +318,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [toggleExpanded, setPulseTarget, setNotesSidebarVisible, activeNoteId]);
 
   const editorRef = useRef<MarkdownEditorRef>(null);
-  // Note-options "Rename" (CTX-03, D-22) reuses the existing inline-title
+  // Note-options "Rename" (CTX-03) reuses the existing inline-title
   // rename affordance (H1-is-the-filename binding, TitleElement) rather than
   // a separate rename modal — focusing + selecting the title's text lets the
   // user immediately start typing a replacement, same as clicking into it.
@@ -333,10 +333,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     selection?.removeAllRanges();
     selection?.addRange(range);
   }, []);
-  // ArrowUp from the body's first visible line (D-19/D-20/D-21): places the
+  // ArrowUp from the body's first visible line: places the
   // DOM caret in the title at the measured pixel-X, column-preserving across
-  // the CM6-view <-> plain-contentEditable boundary (31-RESEARCH.md
-  // Pitfall 3). document.caretRangeFromPoint has no CM6 equivalent for a
+  // the CM6-view <-> plain-contentEditable boundary.
+  // document.caretRangeFromPoint has no CM6 equivalent for a
   // plain DOM element — it is the only way to convert a pixel X back into a
   // Range/offset within the title's text node.
   const handleCrossToTitle = useCallback((measuredX: number) => {
@@ -419,7 +419,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // it never goes stale.
   useEffect(() => {
     if (!controller) return;
-    // WR-03 fix (25-REVIEW.md): setSaveGate is now multi-owner — it returns
+    // setSaveGate is multi-owner — it returns
     // an unregister function scoped to THIS pane's gate only. Returning it
     // directly as the effect cleanup means one pane's unmount can no longer
     // null out a gate that a surviving sibling pane on the same note still
@@ -429,7 +429,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     );
   }, [controller]);
 
-  // WR-04: autosaveMs can arrive after mount (async /config fetch) — push it
+  // autosaveMs can arrive after mount (async /config fetch) — push it
   // into the controller explicitly since getOrCreateController only honors
   // its autosaveMs argument on first construction.
   useEffect(() => {
@@ -477,10 +477,10 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // noteId-prop switch (the no-tabs fallback pane keeps the SAME EditorPane
   // instance alive across notes; releasing here would flush/save the
   // abandoned note's buffer via releaseController's own flush-before-release
-  // step, contradicting WR-02's "no cross-note PUT" — discardPendingEdit
+  // step, contradicting the "no cross-note PUT" rule — discardPendingEdit
   // below handles that transition instead). noteIdRef.current at cleanup
   // time reflects whichever note this pane was LAST showing. Never fires on
-  // a mere hide (D-01 keep-alive): hidden panes stay mounted, nothing here
+  // a mere hide (keep-alive): hidden panes stay mounted, nothing here
   // re-runs. getPrimaryView guards against releasing a controller another
   // view still depends on.
   useEffect(() => {
@@ -498,8 +498,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   useEffect(() => {
     // A debounce armed for the previous note must never fire against the new
     // note — the abandoned controller's content may still hold an unsaved
-    // edit and the save would write it under the wrong note (WR-02:
-    // cross-note corruption guard).
+    // edit and the save would write it under the wrong note — the
+    // cross-note corruption guard.
     {
       const prevId = prevNoteIdRef.current;
       if (prevId !== null && prevId !== noteId) {
@@ -542,7 +542,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [noteId]);
 
   useEffect(() => {
-    // paletteOpen guard (Phase 30 WS-06 fix): without it, a note that
+    // paletteOpen guard: without it, a note that
     // finishes loading into a JUST-split pane (e.g. splitPane's cloneActiveTab
     // path, or a slow getNote() resolving late) steals DOM focus out from
     // under the Cmd+O/Cmd+P/Cmd+Shift+F palette if the user opened it in the
@@ -566,7 +566,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   useEffect(() => {
     const prev = prevConnectionStatusRef.current;
     if (prev !== connectionStatus && prev !== "connected" && connectionStatus === "connected") {
-      // Reconnect-flush (WR-02): a debounced save blocked by the closed gate
+      // Reconnect-flush: a debounced save blocked by the closed gate
       // while disconnected never fired; retry once the gate re-opens.
       // flush() itself no-ops when there is nothing pending.
       if (controller) {
@@ -680,7 +680,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   }, [controller]);
 
   // flush() — cancel the pending debounce and save synchronously, awaitable by the
-  // tab-close flow so a closing tab never drops mid-debounce edits (TAB-13, D-04).
+  // tab-close flow so a closing tab never drops mid-debounce edits (TAB-13).
   // Rejects when the save fails so the caller can surface a confirm dialog.
   const flush = useCallback(async () => {
     if (!controller) return;
@@ -753,9 +753,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
 
 
   // Delegate straight to the controller — fired once per noteId regardless
-  // of how many panes have this note open (Pitfall 1: no per-pane fan-out).
-  // Plan 07 will have App call the controller directly; this indirection
-  // stays for now so editorHandlersRef's existing wiring is untouched.
+  // of how many panes have this note open — no per-pane fan-out.
   const onNoteUpdated = useCallback(
     (p: WSNoteUpdatedPayload) => {
       controller?.onNoteUpdated(p);
@@ -770,7 +768,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     [controller],
   );
 
-  // Search commands (P26, WS-09/D-01) — thin delegates to the internal
+  // Search commands (WS-09) — thin delegates to the internal
   // MarkdownEditor ref, exposed through editorHandlersRef so LeafPane's Find
   // bar can reach THIS pane's own EditorView.
   const setSearchQuery = useCallback((query: SearchQuery) => {
@@ -821,7 +819,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
     focusEditor,
   ]);
 
-  // WR-05 fix (25-REVIEW.md): activeFilePath is a single GLOBAL value in
+  // activeFilePath is a single GLOBAL value in
   // useTreeStore, so without the paneActive gate every mounted EditorPane
   // (every pane in a split layout) would render the SAME file preview,
   // hijacking panes that should keep showing their own note. Scoping this
@@ -885,7 +883,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
   // fetch or on which pane is active.
   const notePath = controllerNotePath !== "" ? controllerNotePath : null;
 
-  // Inline title (D-01/D-02): the H1 IS the title. When a note has no H1
+  // Inline title: the H1 IS the title. When a note has no H1
   // (API/MCP-created, imported, or not-yet-headed), fall back to the note's
   // filename so a named file never reads as "Untitled" — matches Obsidian,
   // where the inline title is the filename. Only a genuinely nameless note
@@ -1023,7 +1021,7 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
       )}
       {/* deletion banner — informational only; content is never cleared.
           Suppressed when isDeleted: the tab pill's "(deleted)" indicator is the
-          single source of that signal under the tab model (D-10). */}
+          single source of that signal under the tab model. */}
       {!isDeleted && deletedBanner?.visible && (
         <div className="px-4" role="alert" data-testid="deleted-banner">
           <span>This note was deleted in another session</span>
@@ -1141,8 +1139,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
               })}
             </div>
           </nav>
-          {/* Right-pinned cluster (star -> ⋯, UAT round 3 #3; flush + tab-strip
-              alignment, Phase 31 UAT #4): pinned `right: 8px` — NOT
+          {/* Right-pinned cluster (star -> ⋯), aligned with the tab strip:
+              pinned `right: 8px` — NOT
               --editor-content-x (56px, that inset was read as "too far from
               the edge") — matching the tab strip's own pinned-right button
               offset (TabStrip.tsx's newTabButtonStyle / TabOverflowDropdown's
@@ -1207,14 +1205,14 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           </div>
         </div>
       )}
-      {/* Leaf-owned Find/Replace bar slot (P26 polish, UI-SPEC line 151):
+      {/* Leaf-owned Find/Replace bar slot:
           tabStrip -> breadcrumb (above) -> findBar (here) -> body (below).
           Only the active tab's EditorPane receives a non-undefined slot
           (LeafPane); every other tab renders nothing here. */}
       {findBarSlot}
-      {/* Title element (READ-01/D-01/D-02/D-04): inside the same 760px column,
+      {/* Title element (READ-01): inside the same 760px column,
           sharing its 56px horizontal padding (NOT --editor-content-x, which
-          is the breadcrumb's pane-wide chrome padding, D-16). Reads/writes
+          is the breadcrumb's pane-wide chrome padding). Reads/writes
           through the EXISTING onH1Change/rewriteH1 binding via the
           MarkdownEditor ref's setH1 — no second rename pathway. */}
       <div
@@ -1224,11 +1222,11 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           width: "100%",
           maxWidth: zen ? 700 : 760,
           margin: "0 auto",
-          // paddingTop (Phase 31 UAT #5) gives the title a little breathing
+          // paddingTop gives the title a little breathing
           // room below the chrome bar — a modest bump off the prior flush 0,
           // on the 4px spacing scale. paddingBottom is untouched: it still
           // combines with .cm-content's own top padding (themeBridge.ts) for
-          // the ~28px title->body gap tightened in UAT round 3 #7 — don't
+          // the ~28px title->body gap — don't
           // touch that math here.
           padding: zen ? "8px 32px 6px" : "8px 56px 6px",
           boxSizing: "border-box",
@@ -1244,8 +1242,8 @@ export function EditorPane({ noteId, reindexing = false, editorHandlersRef, styl
           updates flow through the ref API. Click-anywhere-to-type: clicks outside
           .cm-content call focusEnd() to move caret to end-of-doc.
           The shell carries NO horizontal padding: the reading column is the
-          self-centering 760px .cm-content (margin:0 auto, 21-01/D-14). Adding
-          --editor-content-x here (pane-wide breadcrumb chrome, D-16) would shift
+          self-centering 760px .cm-content (margin:0 auto). Adding
+          --editor-content-x here (pane-wide breadcrumb chrome) would shift
           that centered column's axis and push the body out of alignment with the
           inline title, which centers against the full pane. */}
       <div

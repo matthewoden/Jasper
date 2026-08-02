@@ -7,7 +7,7 @@
  *   1. loadDraft() hydrates from localStorage on mount so mid-wizard reloads resume.
  *   2. Every field change calls updateDraft() → setState + saveDraft().
  *   3. DataDirSection calls onValidityChange to gate the submit button.
- *   4. Appearance step applies accent + reading font live (dark-only, D-01);
+ *   4. Appearance step applies accent + reading font live (dark-only);
  *      useEffects on draft.accent/draft.readingFont keep the DOM in sync.
  *   5. On success: clearDraft() then window.location.assign("/") (reload IS the
  *      confirmation — no toast). On failure: surface the error message and re-enable.
@@ -52,11 +52,11 @@ export function SetupApp() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      // theme is pinned to "dark" (D-01); the server accepts it per D-02
-      // back-compat. accent + readingFont are first-class optional fields on
+      // theme is pinned to "dark"; the server still accepts the field for
+      // wire compat. accent + readingFont are first-class optional fields on
       // SetupRequest — the backend persists them into config.json at vault
       // creation (firstrun.RunSetup → vault.CreateVault). The wizard no
-      // longer seeds MCP grants (D-03) — grants are managed post-setup via
+      // longer seeds MCP grants — grants are managed post-setup via
       // the folder right-click menu.
       const payload: SetupRequest = {
         data_dir: draft.dataDir,

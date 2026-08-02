@@ -10,7 +10,7 @@ const TAG_PREFIX = "tag:";
  * leaving the remaining free text. Case-sensitive prefix (matches Obsidian).
  *
  * Split-then-prefix-check is O(n) — no backtracking regex over the full
- * string (ReDoS mitigation, T-19-08).
+ * string (ReDoS mitigation).
  */
 export function parseSearchQuery(raw: string): ParsedSearchQuery {
   const tokens = raw.trim().split(/\s+/).filter(Boolean);

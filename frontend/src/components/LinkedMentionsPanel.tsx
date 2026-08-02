@@ -1,14 +1,14 @@
 /**
- * LinkedMentionsPanel — body-only linked-mentions card list (Phase 20 rename
- * of BacklinksRail, RSIDE-02).
+ * LinkedMentionsPanel — body-only linked-mentions card list (RSIDE-02;
+ * formerly BacklinksRail).
  *
  * No own header, no × close button — SectionHeader (RightRail.tsx) wraps this
  * component. One <li> card per linking note (row.sourceId), title button in
  * var(--color-accent) (never the literal mockup hex), stacked per-mention
- * excerpts sanitized individually — never join-then-sanitize (T-20-07).
+ * excerpts sanitized individually — never join-then-sanitize.
  *
  * Card click uses usePaneStore.getState().openInActivePane(row.sourceId)
- * (D-15) — NOT the legacy active-note setter, which this rename retires from
+ * — NOT the legacy active-note setter, which this rename retires from
  * this surface.
  *
  * Backlink data arrives as props from RightRail's single useBacklinks call —

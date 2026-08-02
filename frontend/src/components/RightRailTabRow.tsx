@@ -1,7 +1,6 @@
 /**
  * RightRailTabRow — icon-only Outline / Linked mentions / Tags tab row +
- * collapse control for the right rail's tab-row shell (Phase 30 TAGS-01,
- * D-01/D-02; collapse control added in 30-13 gap closure per owner UAT).
+ * collapse control for the right rail's tab-row shell (TAGS-01).
  *
  * Mirrors SidebarTabRow.tsx: same tabBase, same active/hover color-mix
  * formula, same 8px gap, same space-between + collapse-button pattern —

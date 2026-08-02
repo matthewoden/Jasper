@@ -99,7 +99,7 @@ export async function postBookmarkFolder(
  * Sets the explicit display order for EVERY bookmark in one folder scope
  * (folderId null = top-level). orderedIds must be exactly the current
  * membership of that scope — the backend rejects a mismatch with 404
- * (T-JV1-01) and an unknown folderId with 400 (T-JV1-02).
+ * and an unknown folderId with 400.
  */
 export async function reorderBookmarks(
   folderId: string | null,

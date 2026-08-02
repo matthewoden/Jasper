@@ -1,6 +1,6 @@
 /**
- * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut and (P26,
- * WS-09/D-02) the Cmd+F / Cmd+Opt+F pane Find/Replace bar openers.
+ * jasperKeymap — CM6 keymap factory for the Cmd+S save shortcut and the
+ * Cmd+F / Cmd+Opt+F pane Find/Replace bar openers (WS-09).
  * Find/Replace is a custom per-pane React bar (FindReplaceBar.tsx) that
  * drives @codemirror/search commands directly against the pane's EditorView
  * — searchKeymap and the built-in search panel are not used. findBarKeymap
@@ -125,7 +125,7 @@ export function saveKeymap(onSave: () => void): Extension {
 
 /**
  * findBarKeymap — Cmd+F / Cmd+Opt+F bindings that open the pane's custom
- * Find/Replace bar (P26, WS-09/D-02). Both preventDefault the browser's
+ * Find/Replace bar (WS-09). Both preventDefault the browser's
  * native find; the actual bar UI opens in React (LeafPane), so `run` always
  * returns true regardless of the callback's own effect.
  */

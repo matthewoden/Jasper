@@ -25,7 +25,7 @@ function fetchNote(id: string, signal?: AbortSignal) {
   });
 }
 
-// D-06: note bodies are pass-through — never cached, still coalesced.
+// Note bodies are pass-through — never cached, still coalesced.
 // A cached body handed to a save path is a lost-write bug, not a
 // stale-render bug (ETag/If-Match live on the note, not this layer).
 const noteResource = createKeyedResource(
@@ -46,8 +46,9 @@ export function getNote(id: string, options?: { signal?: AbortSignal }) {
 }
 
 /**
- * getNoteFresh — never joins a request issued before this call (D-12
- * applied at a call site rather than a resource). Use where the caller
+ * getNoteFresh — never joins a request issued before this call (the
+ * invalidate-never-joins rule, applied at a call site rather than a
+ * resource). Use where the caller
  * already knows server state changed at this instant and a stale
  * pre-change snapshot would be a lost-write risk: save-conflict
  * resolution, an explicit "reload from disk", or the post-rename H1
@@ -103,7 +104,7 @@ async function fetchSearchTitles(
   return data.results as NoteSearchResult[];
 }
 
-// D-05: pass-through, coalesced on q+limit — a wiki-link autocomplete
+// Pass-through, coalesced on q+limit — a wiki-link autocomplete
 // keystroke and any other concurrent caller asking for the same q/limit
 // collapse to one request.
 const searchTitlesResource = createKeyedResource(

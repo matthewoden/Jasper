@@ -1,9 +1,8 @@
 /**
  * EditorSection — the Editor pane. Ships the autosave interval alone
- * (D-03/D-18); font size and line height live on the Appearance pane, and
+ * alone; font size and line height live on the Appearance pane, and
  * `showProperties`/`autoPair`/`foldGutter`/`lineNumbers`/`lineWidth` have no
- * behavior yet (Phase 34 adds the properties toggle, Phase 37 adds the rest)
- * — rendering a row for any of them now would be an inert control.
+ * behavior yet — rendering a row for any of them would be an inert control.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Eyebrow, ControlRow, inputStyle } from "./shared";
@@ -87,10 +86,7 @@ export function EditorSection({ config, saveConfig, onSaveError }: SectionProps)
   );
 }
 
-// Not shipped this phase (D-18 — no inert rows):
-//   - editor.showProperties        → Phase 34
-//   - editor.autoPair               → Phase 37
-//   - editor.foldGutter             → Phase 37
-//   - editor.lineNumbers            → Phase 37
-//   - editor.lineWidth              → Phase 37
-// Font size / line height live on the Appearance pane (D-03), not here.
+// Deliberately not rendered here — no inert rows:
+//   editor.showProperties, editor.autoPair, editor.foldGutter,
+//   editor.lineNumbers, editor.lineWidth.
+// Font size / line height live on the Appearance pane, not here.

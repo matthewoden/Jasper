@@ -23,7 +23,7 @@ export interface NoteHit {
   score?: number;
   /**
    * 0-based character positions in `title` that matched the query
-   * (fuzzysort's `Result.indexes`), for D-15 match highlighting. Only
+   * (fuzzysort's `Result.indexes`), for match highlighting. Only
    * populated for non-empty queries — the empty-query recency branch has no
    * query to match against, so this stays undefined there.
    */

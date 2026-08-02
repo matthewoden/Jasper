@@ -52,7 +52,7 @@ async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
 }
 
 /**
- * Backlinks are keyed by note id, single-slot (D-10) — only the active
+ * Backlinks are keyed by note id, single-slot — only the active
  * note's entry is retained. Events that invalidate:
  *   - note:updated    — a save anywhere could change [[...]] content
  *   - note:created    — a new note might link to the current one

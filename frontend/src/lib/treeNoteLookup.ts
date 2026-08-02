@@ -26,7 +26,7 @@ export function parentDir(path: string): string {
 
 /**
  * Resolve the containing folder path for a note id. Returns "" (vault root,
- * D-06 fallback) when noteId is null, the note is not found, or the note
+ * the fallback) when noteId is null, the note is not found, or the note
  * sits at the vault root.
  */
 export function getNoteFolder(

@@ -2,7 +2,7 @@
  * Sidebar — layout shell: floating card with a 40px header hosting the
  * SidebarTabRow (Notes/Search/Bookmarks icon tabs + collapse control), below
  * which one of FileTree / SidebarSearchPanel / BookmarksPanel renders
- * (Phase 27 NAV-01/NAV-03).
+ * (NAV-01/NAV-03).
  *
  * Structure:
  *   <nav width=sidebarWidth>
@@ -22,7 +22,7 @@
  * SidebarToolbar (New note / New folder) moved from the shared header down
  * to the Notes panel's own top edge — it is note-scoped chrome, not global,
  * and the shared header no longer has room for it once the tab row + collapse
- * control occupy it (Phase 27 D-07 / Task 2 discretion).
+ * control occupy it.
  *
  * Toolbar wiring:
  *   - New note / New folder → useTreeCreateActions().createNoteAt/FolderAt(parent),
@@ -157,7 +157,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
       }}
       aria-label="Notes navigation"
     >
-      {/* Flush panel — border-right only, matching the mock's file-tree rail (D-06 owner-approved 23-03) */}
+      {/* Flush panel — border-right only, matching the mock's file-tree rail */}
       <div
         style={{
           flex: 1,
@@ -209,8 +209,8 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                 panel): a bordered 40px row with New note / New folder on the
                 left and Collapse-all on the right. New note / New folder are
                 note-scoped chrome (not global), so they live here rather than
-                the shared tab-row header (Phase 27 D-07). The sort-order menu
-                the mock also shows in this row is Phase 29 scope (SORT-01).
+                the shared tab-row header. The sort-order menu the mock also
+                shows in this row is NotesSortMenu (SORT-01).
 
                 Left inset is 19px (not the header's 16px) so SidebarToolbar's
                 first button — which adds its own 4px button padding before
@@ -218,8 +218,7 @@ export function Sidebar({ onSelectNote = () => {}, style }: SidebarProps) {
                 the sidebar's left edge, matching SidebarTabRow's Notes tab
                 icon column directly above it (16px header padding + (30-16)/2
                 button inset = 23px). Only the left side moves; Collapse-all
-                keeps its original 8px right inset (Phase 27 follow-up fix
-                round, item 3 revision).
+                keeps its original 8px right inset.
               */}
               <div
                 style={{

@@ -7,15 +7,14 @@
  * parse) onto a recursive PaneNode tree instead of a flat tab list.
  *
  * Persistence key is NEW (`jasper.layout.<vault>`) — the prior flat tab-list
- * storage key is never read or migrated (D-11/D-18, pre-launch: no
- * back-compat burden).
+ * storage key is never read or migrated (pre-launch: no back-compat
+ * burden).
  *
- * Tab id is decoupled from noteId (D-16): dedup is per-leaf, not workspace
- * wide (D-17) — the same note may exist as independent tabs in different
- * leaves.
+ * Tab id is decoupled from noteId: dedup is per-leaf, not workspace wide —
+ * the same note may exist as independent tabs in different leaves.
  *
  * deletedTabIds is live-session only and is NEVER persisted, mirroring
- * useTabStore's D-11 contract: a session-deleted note's tab stays open
+ * useTabStore's contract: a session-deleted note's tab stays open
  * read-only until reload, but that state must not outlive one.
  */
 import { create } from "zustand";
@@ -45,7 +44,7 @@ const MAX_DEPTH = 32;
 export interface PaneStore {
   tree: PaneNode;
   activePaneId: string;
-  deletedTabIds: Set<string>; // live-session only; NEVER persisted (D-11 pattern)
+  deletedTabIds: Set<string>; // live-session only; NEVER persisted
 
   splitActivePane: (dir: "row" | "col") => void;
   closeTabInLeaf: (leafId: string, tabId: string) => void;
@@ -114,7 +113,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
     const allLeaves = _leaves(tree);
     if (allLeaves.length > 1) {
-      // D-09: collapse + rebalance; retarget active pane to a survivor.
+      // Collapse + rebalance; retarget the active pane to a survivor.
       const nextTree = _removeLeaf(tree, leafId);
       const survivors = _leaves(nextTree);
       const nextActivePaneId = survivors.some((l) => l.id === activePaneId)
@@ -124,12 +123,12 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
       return;
     }
 
-    // D-10: final pane never collapses — keep it, empty, active=null.
+    // The final pane never collapses — keep it, empty, active=null.
     set({ tree: _updLeaf(tree, leafId, { tabs: nextTabs, active: null }) });
   },
 
   /**
-   * togglePinTab — flips a tab's pinned flag (D-14) and repositions it to
+   * togglePinTab — flips a tab's pinned flag and repositions it to
    * the pinned/unpinned boundary via paneTree's togglePinInTabs, so pinned
    * tabs stay auto-grouped at the left of the strip. Synchronous/pure, like
    * every other tree-shape mutation in this store — persistence rides the
@@ -223,7 +222,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
   /**
    * openNotesInNewSplit — bulk-selection sibling to openNoteInNewSplit
-   * (D-19, CTX-02): opens ONE new split pane containing ALL of `noteIds` as
+   * (CTX-02): opens ONE new split pane containing ALL of `noteIds` as
    * tabs (not N separate splits). Mirrors openNoteInNewSplit's MAX_DEPTH /
    * no-op fallback exactly, falling back to opening each note in the active
    * pane (via openInActivePane, per-leaf deduped) when a new sibling can't
@@ -257,14 +256,14 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
   /**
    * dropTabOnPane — orchestrates a cross-pane tab drag (WS-01/WS-02): moves
-   * (not clones, D-05) the dragged tab out of the source leaf and either
+   * (not clones) the dragged tab out of the source leaf and either
    * appends+activates it in the target leaf (region "center", per-leaf
-   * dedup D-07 via moveTab) or splits the target leaf to host it in a new
+   * dedup via moveTab) or splits the target leaf to host it in a new
    * sibling (edge regions, via splitWithTab). If the source leaf empties as
    * a result and more than one leaf remains, it is collapsed and
-   * activePaneId retargets to a survivor (D-06); the final pane never
-   * collapses (D-10, `_removeLeaf`'s own invariant). Same-pane center drops
-   * are a no-op (D-08). Bails (no `set()`) if source/target is absent, or
+   * activePaneId retargets to a survivor; the final pane never collapses
+   * (`_removeLeaf`'s own invariant). Same-pane center drops are a no-op.
+   * Bails (no `set()`) if source/target is absent, or
    * the drop resolves to no tree change.
    */
   dropTabOnPane: (sourceLeafId, tabId, targetLeafId, region) => {
@@ -274,7 +273,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
     const tab = sourceLeaf.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     if (!_findLeaf(tree, targetLeafId)) return;
-    if (region === "center" && sourceLeafId === targetLeafId) return; // D-08
+    if (region === "center" && sourceLeafId === targetLeafId) return; // same-pane center drop
 
     const idx = sourceLeaf.tabs.findIndex((t) => t.id === tabId);
     const nextSourceTabs = sourceLeaf.tabs.filter((t) => t.id !== tabId);
@@ -292,8 +291,8 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
       _leaves(intermediate).length > 1 &&
       sourceLeafId !== targetLeafId
     ) {
-      // D-06: source emptied by the move — collapse + rebalance. Skipped
-      // when source === target (CR-02): an edge-region drop of a leaf's
+      // Source emptied by the move — collapse + rebalance. Skipped
+      // when source === target: an edge-region drop of a leaf's
       // only tab onto its OWN pane must still find that leaf when
       // splitWithTab runs below — collapsing it here (as "the emptied
       // source") would delete the very leaf we're about to split, so
@@ -332,7 +331,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
   /**
    * dropTabAtIndex — the positional counterpart to dropTabOnPane's "center"
-   * branch (P26 Obsidian-parity foreign-strip drop, WS-01/WS-02 sibling):
+   * branch (Obsidian-parity foreign-strip drop, WS-01/WS-02 sibling):
    * removes the dragged tab from the source leaf (retargeting its active tab
    * and collapsing it if it empties and more than one leaf remains), then
    * inserts it at `insertIndex` in the target leaf via moveTabToIndex
@@ -371,9 +370,9 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
   },
 
   /**
-   * setPaneRatio — writes a split node's ratio by a/b path (D-13). The
+   * setPaneRatio — writes a split node's ratio by a/b path. The
    * caller (divider drag handler) owns pixel-to-ratio conversion and
-   * clamping (D-14) — this action just applies the value and bails when
+   * clamping — this action just applies the value and bails when
    * unchanged. No new persistence code: ratio rides the existing debounced
    * per-vault subscribe (snapshotOf serializes the whole tree).
    */
@@ -425,7 +424,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 }));
 
 /**
- * isValidNode — recursive shape validator for a persisted PaneNode (T-25-V5).
+ * isValidNode — recursive shape validator for a persisted PaneNode.
  * Enforces `t` in {split, leaf}, Array.isArray(tabs) + string ids for leaves,
  * dir/ratio typing for splits, and a depth limit (32) to guard against a
  * maliciously or corruptly deep payload causing a stack overflow.
@@ -445,7 +444,7 @@ function isValidNode(node: unknown, depth: number): node is PaneNode {
           t !== null &&
           typeof (t as Record<string, unknown>).id === "string" &&
           typeof (t as Record<string, unknown>).noteId === "string" &&
-          // T-30-03: reject a malformed persisted `pinned` (anything but
+          // Reject a malformed persisted `pinned` (anything but
           // boolean-or-undefined) rather than silently coercing it.
           ((t as Record<string, unknown>).pinned === undefined ||
             typeof (t as Record<string, unknown>).pinned === "boolean"),
@@ -457,7 +456,7 @@ function isValidNode(node: unknown, depth: number): node is PaneNode {
   if (n.t === "split") {
     return (
       (n.dir === "row" || n.dir === "col") &&
-      // WR-03 (26-REVIEW.md): a bare `typeof n.ratio === "number"` check let
+      // A bare `typeof n.ratio === "number"` check would let
       // a corrupted/hand-edited payload's out-of-range ratio (e.g. -4, 99)
       // through verbatim — SplitRenderer applies it straight to `flex`,
       // producing a degenerate split that only the divider-drag clamp
@@ -477,7 +476,7 @@ function isValidNode(node: unknown, depth: number): node is PaneNode {
 
 /**
  * pruneLayoutForMissingNotes — walk every leaf, dropping tabs whose noteId is
- * absent from the freshly-fetched tree (D-13), mirroring
+ * absent from the freshly-fetched tree, mirroring
  * pruneTabsForMissingNotes. Tabs whose noteId is in deletedTabIds are kept
  * (session-deleted notes stay open read-only). Retargets each leaf's active
  * tab when dropped, and collapses a leaf that empties as a direct result of

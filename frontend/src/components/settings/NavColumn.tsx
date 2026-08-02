@@ -1,7 +1,7 @@
 /**
- * NavColumn — the 216px fixed left nav (D-19 locked geometry). Renders
- * `SECTIONS` (never a hardcoded list — Phase 35 adds Templates and Phase 36
- * adds Server back by editing the manifest alone).
+ * NavColumn — the 216px fixed left nav (locked geometry). Renders
+ * `SECTIONS` (never a hardcoded list — Templates and Server come back by
+ * editing the manifest alone).
  */
 import { SECTIONS, type SectionId } from "./sections";
 
@@ -67,8 +67,8 @@ export function NavColumn({ activeSection, onSelect, vaultName, appVersion }: Na
                 alignItems: "center",
                 // Inert with a single child (the leading label group). Kept
                 // for the trailing slot ADR-002 v2 emptied when the Server
-                // restart dot was removed 2026-07-26, and that Phase 36's
-                // restart signal will refill. Delete both if it does not.
+                // restart dot was removed 2026-07-26, and that a future
+                // restart signal would refill. Delete both if none lands.
                 justifyContent: "space-between",
                 gap: 8,
                 padding: "8px 16px",

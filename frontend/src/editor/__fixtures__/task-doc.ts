@@ -1,7 +1,7 @@
 /**
  * task-doc.ts — fixture strings for taskCheckboxPlugin tests.
  *
- * GFM TaskList parse-probe verified node positions (see 12-RESEARCH.md Open Unknown 1):
+ * GFM TaskList parse-probe verified node positions:
  *   - TaskMarker covers exactly 3 chars: "[ ]" or "[x]" or "[X]"
  *   - Space after marker is at TaskMarker.to
  *   - Task text starts at TaskMarker.to + 1

@@ -12,7 +12,7 @@ function fetchAdminStatus() {
 
 // reindex:complete is a real WS event and useMigrationStatus already exposes
 // a post-reindex refresh() — declaring the event is more honest than
-// claiming this data never changes (D-15 as amended).
+// claiming this data never changes.
 export const adminStatusResource = createResource("adminStatus", fetchAdminStatus, {
   mode: "cached",
   invalidatedBy: ["reindex:complete"],

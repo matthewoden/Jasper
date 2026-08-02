@@ -5,12 +5,8 @@
  * ("row" → horizontal, "col" → vertical), sized by `ratio`, with a divider
  * between them. The divider keeps a 1px visual line but carries an
  * interactive ~8px invisible grab zone: pointer-drag resizes the split live
- * (WS-05, D-12/D-13/D-14, Phase 26). `{t:"leaf"}` nodes render one
- * `LeafPane`, marked active by comparing its id against `activePaneId`.
- *
- * This component is intentionally standalone in Phase 25 — wiring it into
- * `App.tsx` (replacing the current singleton TabStrip + stacked-EditorPane
- * composition) is Plan 07's job.
+ * (WS-05). `{t:"leaf"}` nodes render one `LeafPane`, marked active by
+ * comparing its id against `activePaneId`.
  */
 import { useRef, useState } from "react";
 
@@ -27,7 +23,7 @@ export interface PaneTreeProps {
   onCloseToRight: (leafId: string, tabId: string) => void;
   onCloseAll: (leafId: string) => void;
   onOpenRight: (leafId: string, tabId: string) => void;
-  /** Pin/unpin a tab (D-14). Threaded to the tab-menu invocation site; ignored until Plan 07 renders the menu item. */
+  /** Pin/unpin a tab. Threaded to the tab-menu invocation site. */
   onTogglePin: (leafId: string, tabId: string) => void;
   onNewTab: (leafId: string) => void;
   autosaveMs?: number;
@@ -38,7 +34,7 @@ export interface PaneTreeProps {
 
 type NodeRenderProps = Omit<PaneTreeProps, "style">;
 
-/** Minimum pane size (px) a divider drag will clamp the ratio to (D-14). */
+/** Minimum pane size (px) a divider drag will clamp the ratio to. */
 const MIN_PANE_PX = 160;
 
 interface DividerDragState {
@@ -48,7 +44,7 @@ interface DividerDragState {
 
 /**
  * PaneDivider — the interactive divider between a split's two children
- * (D-12/D-13/D-14). Keeps the 1px visual seam intact but overlays an
+ * Keeps the 1px visual seam intact but overlays an
  * invisible ~8px hit zone (centered on the line) with the correct resize
  * cursor. Pointer-drag mirrors TabStrip's ref-based lifecycle, but tracks
  * via WINDOW-level move/up (not container-level) — a fast drag routinely
@@ -56,7 +52,7 @@ interface DividerDragState {
  * matching the project's DnD convention. Live ratio writes flow straight
  * into usePaneStore's
  * setPaneRatio; persistence rides the existing debounced per-vault
- * subscribe (D-13) — no new persistence code here.
+ * subscribe — no new persistence code here.
  */
 function PaneDivider({
   isRow,
@@ -66,7 +62,7 @@ function PaneDivider({
 }: {
   isRow: boolean;
   path: ("a" | "b")[];
-  /** The split node's current ratio (0-1) — surfaced as aria-valuenow (WR-01). */
+  /** The split node's current ratio (0-1) — surfaced as aria-valuenow. */
   ratio: number;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -110,7 +106,7 @@ function PaneDivider({
       path,
       containerRect: container.getBoundingClientRect(),
     };
-    // WR-02 (26-REVIEW.md): mirrors TabStrip's tab-drag pattern
+    // Mirrors TabStrip's tab-drag pattern
     // (TabStrip.tsx:468,634) — a divider drag has no threshold step (it goes
     // straight to dragging), so clear any accumulated text selection right
     // here instead, before the drag can fight the browser's native
@@ -121,7 +117,7 @@ function PaneDivider({
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerUp);
     // A drag that ends outside the window (e.g. alt-tab mid-drag) must never
-    // strand the listeners or leave the tint applied (T-26-03-Strand).
+    // strand the listeners or leave the tint applied.
     window.addEventListener("blur", handlePointerUp);
   }
 
@@ -139,9 +135,9 @@ function PaneDivider({
       }}
     >
       {/*
-       * WR-01 (26-REVIEW.md): expose the divider to assistive tech as a
-       * separator with its current split proportion. Deliberately NOT
-       * `tabIndex`/`onKeyDown` — D-15 locks resize to pointer-drag only, and
+       * Expose the divider to assistive tech as a separator with its current
+       * split proportion. Deliberately NOT
+       * `tabIndex`/`onKeyDown` — resize is pointer-drag only, and
        * WAI-ARIA's "focusable separator" pattern requires arrow-key support,
        * so making this focusable without it would be a worse a11y experience
        * (a dead tab stop) than leaving it out of the tab order entirely.
@@ -177,7 +173,7 @@ function PaneDivider({
  * stable per-node identity across re-renders (a plain function cannot hold a
  * ref). Renders exactly the same DOM shape the original inline `<div>`
  * produced; wrapping it in a component does not add a key anywhere, so the
- * CR-01 no-remount invariant (25-REVIEW.md) is unaffected — see the header
+ * no-remount invariant is unaffected — see the header
  * comment on the returned `<div>` below.
  */
 function SplitRenderer({
@@ -192,10 +188,10 @@ function SplitRenderer({
   node: SplitNode;
   path: ("a" | "b")[];
   activePaneId: string;
-  /** Whether the layout has more than one leaf (D-27/D-28) — threaded to LeafPane's active-pane inset cue. */
+  /** Whether the layout has more than one leaf — threaded to LeafPane's active-pane inset cue. */
   multi: boolean;
   props: NodeRenderProps;
-  /** The pre-order-first leaf id (D-12) — threaded down so only that leaf hosts PaneCornerReopenButton. */
+  /** The pre-order-first leaf id — threaded down so only that leaf hosts PaneCornerReopenButton. */
   topLeftLeafId: string;
   /** The pre-order-last leaf id (260721-cjt) — threaded down so only that leaf hosts the collapsed right-rail reopen toggle. */
   rightmostLeafId: string;
@@ -213,7 +209,6 @@ function SplitRenderer({
       // transitions leaf<->split — forcing an unmount+remount of this entire
       // subtree (destroying every descendant pane's CM6 view/cursor/undo,
       // including UNRELATED sibling panes) on every split/collapse/resize.
-      // See 25-REVIEW.md CR-01.
       style={{
         display: "flex",
         flexDirection: isRow ? "row" : "column",
@@ -315,8 +310,8 @@ function renderNode(
 export function PaneTree({ style, ...rest }: PaneTreeProps) {
   const tree = usePaneStore((s) => s.tree);
   const activePaneId = usePaneStore((s) => s.activePaneId);
-  // D-12: the pre-order-first leaf is "top-left" — reuse usePaneStore's own
-  // leaf ordering (_leaves) rather than inventing a geometry calc (Pitfall 3).
+  // The pre-order-first leaf is "top-left" — reuse usePaneStore's own
+  // leaf ordering (_leaves) rather than inventing a geometry calc.
   const leaves = _leaves(tree);
   const topLeftLeafId = leaves[0]?.id ?? "";
   // 260721-cjt: the pre-order-last leaf is "rightmost" — same approximation
@@ -324,7 +319,7 @@ export function PaneTree({ style, ...rest }: PaneTreeProps) {
   // multiple panels"); guarantees exactly one leaf hosts the collapsed
   // right-rail reopen toggle.
   const rightmostLeafId = leaves[leaves.length - 1]?.id ?? "";
-  // D-27/D-28: whether the layout has more than one leaf — gates LeafPane's
+  // Whether the layout has more than one leaf — gates LeafPane's
   // active-pane inset accent cue off single-pane layouts (nothing to
   // disambiguate with only one pane).
   const multi = leaves.length > 1;
