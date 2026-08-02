@@ -37,6 +37,7 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 ├── flaky-tests/                 ← three known instances, two are production defects
 ├── v1.4-properties-templates-settings/   ← six remaining phases of the current milestone
 ├── bookmarks-sorting-and-menus/ ← specified, ready to build
+├── planning-id-sweep/           ← ~2,270 dead planning-ID citations in source, measured
 └── backlog/                     ← unbuilt ideas with no committed home yet
 ```
 
