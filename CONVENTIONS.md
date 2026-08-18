@@ -180,10 +180,18 @@ Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process and planning d
 
 - **Comment *why*, never *what*.** The code already says what it does. A comment restating it (`// loop over notes`) is noise that drifts out of sync. Delete on sight.
 - **Only non-obvious decisions earn a comment** — a surprising constraint, an upstream-bug workaround, a deliberate deviation, an ordering that matters subtly. If a competent reader wouldn't ask "why is this like this?", no comment.
-- **No planning-artifact references in code.** Strip phase numbers, plan IDs, decision IDs, review IDs, and "see SUMMARY.md" from comments. They rot the moment the artifact is archived and mean nothing to someone reading the code cold. **Keep the reason if it's still load-bearing; drop the citation.** Done right: `# --vault requires an absolute path, hence $PWD` states the live constraint and names no plan.
+- **No planning-artifact references in code.** Strip phase numbers, plan IDs, decision IDs, review IDs, and "see SUMMARY.md" from comments. They rot the moment the artifact is archived and mean nothing to someone reading the code cold. **Keep the reason if it's still load-bearing; drop the citation.** Done right: `# --vault requires an absolute path, hence $PWD` states the live constraint and names no plan. **Requirement IDs count too** once they are out of their defining spec — a `TAGS-01` in a test name or a comment is a citation, and [Ticket identity](#ticket-identity) permits those only *inside* the document that is their legend.
 - **Thin everywhere.** Prefer a clear name or a small refactor over a comment. When one is warranted, one line beats a paragraph.
 - **A stale comment is a bug** — worse than none. Fix or delete it the moment you notice, same as a flaky test.
 - **Functional/directive comments are exempt.** Anything the toolchain reads — `//go:generate`, `//go:embed`, build tags, `// nolint`, `// eslint-disable*`, `// @ts-expect-error`, codegen banners — is code, not prose. Leave it.
+
+### Sweeping comments in bulk
+
+- **End a `//` block at the last consecutive line matching `^\s*//`** — never at the next blank line. Scanning to the blank line silently eats the declaration below it. It broke three E2E files in one sweep (`FIND_KEY`, a `const pageA/pageB` pair, two `await` lines) and `tsc` caught none of them, because the result stayed syntactically valid.
+- **A green typecheck is not proof on a comment edit.** Only running the affected suite is. On the frontend there is a sharper instrument: a comments-only change must leave `make build`'s bundle hashes **byte-identical**, which settles "did I change behavior?" without anyone reading the diff. Note the current hashes before starting.
+- **Don't mix a rename into a comments-only pass.** Renaming forfeits the bundle-hash gate and needs its own diff.
+- **Prefer the ADR pointer to the paragraph.** Where a block explains a decision, that decision is usually already in `docs/adr/`; a one-line pointer beats it and cannot rot the same way. Where a long block holds one load-bearing sentence, keep that sentence alone.
+- **Enumerations are always *what*.** Numbered pipelines, "Parameters:" lists, error-mapping tables, boot-step lists, and test-header `S1 … S17` scenario lists all restate the code beneath them. They go, and nothing is lost — the test names are the index.
 
 ## Issue capture
 

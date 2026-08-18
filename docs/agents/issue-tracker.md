@@ -34,10 +34,10 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 ```
 .scratch/
 ├── audit-findings/              ← the non-security audit remainder, triaged
-├── flaky-tests/                 ← three known instances, two are production defects
+├── flaky-tests/                 ← five known instances, two are production defects
 ├── v1.4-properties-templates-settings/   ← six remaining phases of the current milestone
 ├── bookmarks-sorting-and-menus/ ← specified, ready to build
-├── planning-id-sweep/           ← ~2,270 dead planning-ID citations in source, measured
+├── planning-id-sweep/           ← dead ID citations in source; 01–05 shipped, 06–07 open
 └── backlog/                     ← unbuilt ideas with no committed home yet
 ```
 

@@ -9,7 +9,7 @@ The workspace is a tree of split panes, and several panes can show the same note
 1. **Divergent state.** If each pane owns its own content, save timer, and WebSocket reconciliation, the panes can disagree about what the note says.
 2. **Undo ownership.** CodeMirror's undo history lives on a view. If the pane that owns it closes, the history goes with it.
 
-An empirical spike settled the second problem before any dependent code was written: **`Compartment.reconfigure` loses undo history**, so promoting another view by reconfiguring it was rejected on evidence rather than argued about.
+An empirical spike settled the second problem before any dependent code was written: **`Compartment.reconfigure` loses undo history** — the swapped-in `history()` brings a fresh private StateField that has never seen the earlier edits — so promoting another view by reconfiguring it was rejected on evidence rather than argued about. The spike is checked in as `frontend/src/lib/sharedDocRegistry.spike.test.ts` and earns its place by pinning that upstream behavior; if CodeMirror ever changes it, this decision is worth revisiting.
 
 ## Decision
 
