@@ -55,6 +55,9 @@ func (s *Server) PutVaultWorkspace(
 	if req.Body.RightPanel != nil && !workspace.IsValidRightPanel(string(*req.Body.RightPanel)) {
 		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid rightPanel value")), nil
 	}
+	if req.Body.BookmarksSort != nil && !workspace.IsValidBookmarksSort(string(*req.Body.BookmarksSort)) {
+		return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid bookmarksSort value")), nil
+	}
 
 	var doc workspace.Workspace
 	if req.Body.NotesSort != nil {
@@ -92,7 +95,20 @@ func (s *Server) PutVaultWorkspace(
 		doc = updated
 	}
 
-	if req.Body.NotesSort == nil && req.Body.SearchSort == nil && req.Body.RightPanel == nil {
+	if req.Body.BookmarksSort != nil {
+		updated, err := s.workspace.SetBookmarksSort(ctx, string(*req.Body.BookmarksSort))
+		if err != nil {
+			s.log.Error("PutVaultWorkspace: domain error", "field", "bookmarksSort", "err", err)
+			if errors.Is(err, workspace.ErrInvalidSort) {
+				return PutVaultWorkspace400JSONResponse(newError("invalid_request", "invalid bookmarksSort value")), nil
+			}
+			return nil, errors.New("could not update workspace preferences")
+		}
+		doc = updated
+	}
+
+	if req.Body.NotesSort == nil && req.Body.SearchSort == nil && req.Body.RightPanel == nil &&
+		req.Body.BookmarksSort == nil {
 		loaded, err := workspace.Load(s.dataDir, s.log)
 		if err != nil {
 			s.log.Error("PutVaultWorkspace: domain error", "err", err)
@@ -117,6 +133,10 @@ func toWireWorkspace(doc workspace.Workspace) Workspace {
 	if doc.RightPanel != "" {
 		v := WorkspaceRightPanel(doc.RightPanel)
 		wire.RightPanel = &v
+	}
+	if doc.BookmarksSort != "" {
+		v := WorkspaceBookmarksSort(doc.BookmarksSort)
+		wire.BookmarksSort = &v
 	}
 	return wire
 }

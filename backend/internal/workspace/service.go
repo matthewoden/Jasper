@@ -127,3 +127,30 @@ func (s *Service) SetSearchSort(ctx context.Context, value string) (Workspace, e
 
 	return doc, nil
 }
+
+// SetBookmarksSort loads the existing doc, sets ONLY BookmarksSort, saves,
+// and broadcasts. Every sibling field is left untouched. Rejects a value
+// outside the closed enum set with ErrInvalidSort WITHOUT touching disk.
+func (s *Service) SetBookmarksSort(ctx context.Context, value string) (Workspace, error) {
+	if !validBookmarksSort[value] {
+		return Workspace{}, fmt.Errorf("workspace.SetBookmarksSort(%q): %w", value, ErrInvalidSort)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.log)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("workspace.SetBookmarksSort: %w", err)
+	}
+
+	doc.BookmarksSort = value
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Workspace{}, fmt.Errorf("workspace.SetBookmarksSort: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventWorkspaceChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return doc, nil
+}

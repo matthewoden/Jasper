@@ -64,6 +64,14 @@ export const SEARCH_SORT_DEFAULT: SearchSortOrder = "relevance";
 export type RightPanelTab = "outline" | "backlinks" | "tags";
 export const RIGHT_PANEL_DEFAULT: RightPanelTab = "outline";
 
+/**
+ * Bookmarks-panel sort order. "manual" is the default because it IS the
+ * panel's pre-existing behavior — drag-assigned Bookmark.order — and it is
+ * the only order in which drag-to-reorder stays live.
+ */
+export type BookmarksSortOrder = NotesSortOrder | "manual";
+export const BOOKMARKS_SORT_DEFAULT: BookmarksSortOrder = "manual";
+
 
 const EDITOR_MIN = 320;
 
@@ -216,6 +224,10 @@ export interface TreeStore {
    */
   rightPanel: RightPanelTab;
   setRightPanel: (v: RightPanelTab) => void;
+
+  /** Bookmarks-panel sort order (BOOK-*). Backend-persisted via workspace.json. */
+  bookmarksSort: BookmarksSortOrder;
+  setBookmarksSort: (v: BookmarksSortOrder) => void;
 }
 
 
@@ -394,6 +406,9 @@ export const useTreeStore = create<TreeStore>((set) => ({
 
   rightPanel: RIGHT_PANEL_DEFAULT,
   setRightPanel: (v) => set({ rightPanel: v }),
+
+  bookmarksSort: BOOKMARKS_SORT_DEFAULT,
+  setBookmarksSort: (v) => set({ bookmarksSort: v }),
 }));
 
 /**

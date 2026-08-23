@@ -14,9 +14,10 @@ import (
 
 // Workspace is the on-disk document shape for workspace.json.
 type Workspace struct {
-	NotesSort  string `json:"notesSort"`
-	SearchSort string `json:"searchSort"`
-	RightPanel string `json:"rightPanel"`
+	NotesSort     string `json:"notesSort"`
+	SearchSort    string `json:"searchSort"`
+	RightPanel    string `json:"rightPanel"`
+	BookmarksSort string `json:"bookmarksSort"`
 }
 
 // ErrInvalidSort is returned by Service setters when the requested value
@@ -27,6 +28,20 @@ var ErrInvalidSort = errors.New("workspace: invalid sort value")
 // string is allowed and means "default".
 var validNotesSort = map[string]bool{
 	"":              true,
+	"name-asc":      true,
+	"name-desc":     true,
+	"modified-desc": true,
+	"modified-asc":  true,
+	"created-desc":  true,
+	"created-asc":   true,
+}
+
+// validBookmarksSort is the closed enum of accepted bookmarksSort values.
+// It is validNotesSort plus "manual", which keeps the drag-assigned
+// Bookmark.Order. Empty string is allowed and means "default".
+var validBookmarksSort = map[string]bool{
+	"":              true,
+	"manual":        true,
 	"name-asc":      true,
 	"name-desc":     true,
 	"modified-desc": true,
@@ -67,6 +82,10 @@ func IsValidSearchSort(v string) bool { return validSearchSort[v] }
 // IsValidRightPanel reports whether v is inside the closed rightPanel
 // enum. See IsValidNotesSort for why this is exported.
 func IsValidRightPanel(v string) bool { return validRightPanel[v] }
+
+// IsValidBookmarksSort reports whether v is inside the closed bookmarksSort
+// enum. See IsValidNotesSort for why this is exported.
+func IsValidBookmarksSort(v string) bool { return validBookmarksSort[v] }
 
 // workspacePath returns <dataDir>/.jasper/workspace.json — the on-disk
 // location of the per-vault workspace-preferences file. Mirrors
