@@ -191,6 +191,7 @@ func (s *Server) CreateBookmarkFolder(
 }
 
 const duplicateFolderNameMessage = "a folder with this name already exists"
+
 // RenameBookmarkFolder implements PUT /api/v1/bookmark-folders/{id}.
 //
 //nolint:revive // generated interface name
