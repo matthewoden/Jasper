@@ -837,7 +837,14 @@ export interface paths {
          */
         put: operations["renameBookmarkFolder"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete a bookmark folder, keeping the bookmarks inside it (BOOK-03)
+         * @description Removes the grouping label only. Every bookmark filed under it is
+         *     reparented to the top level (folder_id null) and the top-level
+         *     scope renumbered contiguously — deleting a folder never deletes a
+         *     bookmark. Broadcasts `bookmark:changed` on success.
+         */
+        delete: operations["deleteBookmarkFolder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3971,6 +3978,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+            /** @description Unknown bookmark folder id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteBookmarkFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bookmark folder deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unknown bookmark folder id */
             404: {

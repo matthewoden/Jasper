@@ -220,6 +220,25 @@ func (s *Server) RenameBookmarkFolder(
 	return RenameBookmarkFolder200JSONResponse(wireFolder), nil
 }
 
+// DeleteBookmarkFolder implements DELETE /api/v1/bookmark-folders/{id}.
+//
+//nolint:revive // generated interface name
+func (s *Server) DeleteBookmarkFolder(
+	ctx context.Context,
+	req DeleteBookmarkFolderRequestObject,
+) (DeleteBookmarkFolderResponseObject, error) {
+	defer s.trackWrite()()
+	id := openapi_types.UUID(req.Id).String()
+	if err := s.bookmarks.DeleteFolder(ctx, id); err != nil {
+		s.log.Error("DeleteBookmarkFolder: domain error", "id", id, "err", err)
+		if errors.Is(err, bookmarks.ErrFolderNotFound) {
+			return DeleteBookmarkFolder404JSONResponse(newError("not_found", "bookmark folder not found")), nil
+		}
+		return nil, errors.New("could not delete bookmark folder")
+	}
+	return DeleteBookmarkFolder204Response{}, nil
+}
+
 // toWireDocument converts a bookmarks.Bookmarks document to its wire shape.
 // Rows that fail to parse as UUIDs (should never happen — IDs are always
 // server-generated via uuid.NewString()) are logged and skipped rather than

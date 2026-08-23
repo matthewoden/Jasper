@@ -1524,6 +1524,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    delete:
+      tags: [bookmarks]
+      operationId: deleteBookmarkFolder
+      summary: Delete a bookmark folder, keeping the bookmarks inside it (BOOK-03)
+      description: |
+        Removes the grouping label only. Every bookmark filed under it is
+        reparented to the top level (folder_id null) and the top-level
+        scope renumbered contiguously — deleting a folder never deletes a
+        bookmark. Broadcasts `bookmark:changed` on success.
+      responses:
+        "204":
+          description: Bookmark folder deleted
+        "404":
+          description: Unknown bookmark folder id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /setup/status:
     get:
       tags: [setup]
