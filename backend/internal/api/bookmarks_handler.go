@@ -187,6 +187,39 @@ func (s *Server) CreateBookmarkFolder(
 	return CreateBookmarkFolder201JSONResponse(wireFolder), nil
 }
 
+// RenameBookmarkFolder implements PUT /api/v1/bookmark-folders/{id}.
+//
+//nolint:revive // generated interface name
+func (s *Server) RenameBookmarkFolder(
+	ctx context.Context,
+	req RenameBookmarkFolderRequestObject,
+) (RenameBookmarkFolderResponseObject, error) {
+	defer s.trackWrite()()
+	if req.Body == nil {
+		return RenameBookmarkFolder400JSONResponse(newError("invalid_request", "request body required")), nil
+	}
+
+	id := openapi_types.UUID(req.Id).String()
+	f, err := s.bookmarks.RenameFolder(ctx, id, req.Body.Name)
+	if err != nil {
+		s.log.Error("RenameBookmarkFolder: domain error", "id", id, "err", err)
+		switch {
+		case errors.Is(err, bookmarks.ErrFolderNotFound):
+			return RenameBookmarkFolder404JSONResponse(newError("not_found", "bookmark folder not found")), nil
+		case errors.Is(err, bookmarks.ErrInvalidName):
+			return RenameBookmarkFolder400JSONResponse(newError("invalid_request", "name must not be empty")), nil
+		}
+		return nil, errors.New("could not rename bookmark folder")
+	}
+
+	wireFolder, err := toWireFolder(f)
+	if err != nil {
+		s.log.Error("RenameBookmarkFolder: could not encode response", "err", err)
+		return nil, errors.New("could not rename bookmark folder")
+	}
+	return RenameBookmarkFolder200JSONResponse(wireFolder), nil
+}
+
 // toWireDocument converts a bookmarks.Bookmarks document to its wire shape.
 // Rows that fail to parse as UUIDs (should never happen — IDs are always
 // server-generated via uuid.NewString()) are logged and skipped rather than

@@ -816,6 +816,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bookmark-folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a bookmark folder (BOOK-03)
+         * @description Sets the folder's display name. name is trimmed server-side;
+         *     empty/whitespace-only names are rejected with 400 and an unknown
+         *     folder id with 404. Bookmark membership is keyed by folder id, so
+         *     a rename never disturbs it. Broadcasts `bookmark:changed` on
+         *     success.
+         */
+        put: operations["renameBookmarkFolder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/setup/status": {
         parameters: {
             query?: never;
@@ -2011,6 +2038,10 @@ export interface components {
             /** @description Display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
             name: string;
         };
+        BookmarkFolderRenameRequest: {
+            /** @description New display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
+            name: string;
+        };
         SetupStatus: {
             /** @description True when the first-run wizard has not yet been completed. */
             first_run: boolean;
@@ -2192,6 +2223,8 @@ export interface components {
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
+        /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
+        BookmarkFolderId: string;
         /**
          * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
          *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
@@ -3896,6 +3929,51 @@ export interface operations {
             };
             /** @description Invalid (empty/whitespace) name */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    renameBookmarkFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkFolderRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Bookmark folder renamed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkFolder"];
+                };
+            };
+            /** @description Invalid (empty/whitespace) name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown bookmark folder id */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

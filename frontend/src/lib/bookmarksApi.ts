@@ -80,6 +80,20 @@ export async function postBookmarkFolder(
   return data as BookmarkFolder;
 }
 
+export async function putBookmarkFolder(
+  id: string,
+  name: string,
+): Promise<BookmarkFolder> {
+  const { data, error } = await client.PUT("/bookmark-folders/{id}", {
+    params: { path: { id } },
+    body: { name },
+  });
+  if (error || !data) {
+    throw new Error(unwrapErrorMessage(error, "rename folder failed"));
+  }
+  return data as BookmarkFolder;
+}
+
 /**
  * Sets the explicit display order for EVERY bookmark in one folder scope
  * (folderId null = top-level). orderedIds must be exactly the current

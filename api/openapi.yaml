@@ -1486,6 +1486,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /bookmark-folders/{id}:
+    parameters:
+      - $ref: "#/components/parameters/BookmarkFolderId"
+    put:
+      tags: [bookmarks]
+      operationId: renameBookmarkFolder
+      summary: Rename a bookmark folder (BOOK-03)
+      description: |
+        Sets the folder's display name. name is trimmed server-side;
+        empty/whitespace-only names are rejected with 400 and an unknown
+        folder id with 404. Bookmark membership is keyed by folder id, so
+        a rename never disturbs it. Broadcasts `bookmark:changed` on
+        success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkFolderRenameRequest"
+      responses:
+        "200":
+          description: Bookmark folder renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarkFolder"
+        "400":
+          description: Invalid (empty/whitespace) name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown bookmark folder id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /setup/status:
     get:
       tags: [setup]
@@ -1942,6 +1980,14 @@ components:
       in: path
       required: true
       description: Opaque UUID of the bookmark row (not a note UUID).
+      schema:
+        type: string
+        format: uuid
+    BookmarkFolderId:
+      name: id
+      in: path
+      required: true
+      description: Opaque UUID of the bookmark folder (a virtual grouping label).
       schema:
         type: string
         format: uuid
@@ -3147,6 +3193,14 @@ components:
           type: string
           minLength: 1
           description: Display name. Trimmed server-side; empty/whitespace-only rejected with 400.
+    BookmarkFolderRenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: New display name. Trimmed server-side; empty/whitespace-only rejected with 400.
     SetupStatus:
       type: object
       required: [first_run]
