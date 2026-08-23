@@ -389,10 +389,11 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   );
 
   /** Bookmarks never nest inside a bookmark leaf — only into a bookmark
-   *  folder or the top level. */
+   *  folder or the top level. A top-level drop resolves against arborist's
+   *  synthetic root, which carries no row data of its own. */
   const disableDrop = useCallback(
     (args: { parentNode: NodeApi<ArboristNode> }): boolean =>
-      args.parentNode.data.data.kind === "bookmark",
+      args.parentNode.data.data?.kind === "bookmark",
     [],
   );
 
