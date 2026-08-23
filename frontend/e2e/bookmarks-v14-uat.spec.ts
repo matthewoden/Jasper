@@ -390,6 +390,57 @@ test.describe("@bookmarks-v14 @bookmarks-sort JASPER-22: drag-to-reorder is supp
       "drag-bravo",
     ]);
   });
+
+  test("a top-level bookmark reorders under Manual, same as one inside a folder", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const ids = new Map<string, string>();
+    const titleOf = new Map<string, string>();
+    for (const name of ["top-alpha", "top-bravo", "top-charlie"]) {
+      const id = await apiCreateNote(page, jasper.baseURL, name);
+      ids.set(name, id);
+      titleOf.set(id, name);
+      await bookmarkViaStar(page, id);
+    }
+
+    await openSidebarTab(page, "Bookmarks");
+    await expect(bookmarkLabels(page)).toHaveText([
+      "top-alpha",
+      "top-bravo",
+      "top-charlie",
+    ]);
+
+    const doc = await fetchBookmarks(page, jasper.baseURL);
+    const rowSelector = (noteTitle: string): string => {
+      const noteId = ids.get(noteTitle);
+      const found = doc.bookmarks.find((b) => b.note_id === noteId);
+      if (!found) throw new Error(`no bookmark for ${noteTitle}`);
+      return `[data-tree-row-kind="bookmark"][data-tree-row="${found.id}"]`;
+    };
+
+    // The same top-half insertion gesture the in-folder scenario uses, but at
+    // the top level — where the drop resolves against react-arborist's
+    // synthetic root node rather than a folder row.
+    await page.dragAndDrop(rowSelector("top-charlie"), rowSelector("top-alpha"), {
+      sourcePosition: { x: 60, y: 16 },
+      targetPosition: { x: 60, y: 2 },
+    });
+
+    await expect(bookmarkLabels(page)).toHaveText([
+      "top-charlie",
+      "top-alpha",
+      "top-bravo",
+    ]);
+    await expect
+      .poll(async () => serverBookmarkOrder(page, jasper.baseURL, titleOf), {
+        timeout: 10_000,
+      })
+      .toEqual(["top-charlie", "top-alpha", "top-bravo"]);
+  });
 });
 
 // ─── JASPER-23 — a folder created into the EMPTY state must appear ──────────
