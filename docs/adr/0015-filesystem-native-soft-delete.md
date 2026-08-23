@@ -28,3 +28,11 @@ Keeping the delete path filesystem-native also keeps it inspectable: a user who 
 ## Related scope decision
 
 Template files were explicitly **not** given `.trash/`-style exclusion — for the current milestone, template files are ordinary notes and do appear in search, tags, and MCP listings. That was a deliberate owner call, not an oversight.
+
+## Amendment note — MCP makes a delete less visible (2026-08-22)
+
+Recorded during triage of the durability audit, which argued for an in-app trash browser with restore and retention. **The decision above stands** — nothing here reopens it.
+
+What is genuinely new since this ADR was written is that a delete no longer has to come from the user. A confused MCP client, or a misclick in a tool driving `delete_note`, removes a note without the user watching it happen. Recovery still works — the file is in `.trash/` and moving it back re-adopts it — but it depends on the user knowing `.trash/` exists, and an AI-triggered delete gives them no moment where they would have learned that.
+
+That is a stronger argument than the one this ADR weighed, which assumed a user who had just chosen to delete something. It is grounds to reopen if it bites in practice. It is not, on its own, grounds to build the trash browser this ADR declined.
