@@ -210,3 +210,81 @@ func TestService_SetSearchSort_InvalidValue_RejectsWithoutPersisting(t *testing.
 		t.Fatalf("SetSearchSort() with invalid value must NOT persist a file; stat err = %v", statErr)
 	}
 }
+
+func TestService_SetBookmarksSort_PersistsAndBroadcastsWithoutTouchingSiblings(t *testing.T) {
+	dir := t.TempDir()
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, bc)
+
+	if _, err := svc.SetNotesSort(context.Background(), "modified-asc"); err != nil {
+		t.Fatalf("SetNotesSort() error = %v", err)
+	}
+	bc.calls = nil
+
+	got, err := svc.SetBookmarksSort(context.Background(), "created-desc")
+	if err != nil {
+		t.Fatalf("SetBookmarksSort() error = %v", err)
+	}
+	if got.BookmarksSort != "created-desc" {
+		t.Fatalf("SetBookmarksSort() = %+v, want BookmarksSort = created-desc", got)
+	}
+	if got.NotesSort != "modified-asc" {
+		t.Fatalf("SetBookmarksSort() = %+v, want NotesSort left untouched at modified-asc", got)
+	}
+	if len(bc.calls) != 1 || bc.calls[0] != EventWorkspaceChanged {
+		t.Fatalf("SetBookmarksSort() broadcast calls = %v, want exactly one %s", bc.calls, EventWorkspaceChanged)
+	}
+
+	doc, err := Load(dir, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if doc.BookmarksSort != "created-desc" || doc.NotesSort != "modified-asc" {
+		t.Fatalf("Load() = %+v, want persisted {modified-asc, created-desc}", doc)
+	}
+}
+
+func TestService_SetBookmarksSort_AcceptsManual(t *testing.T) {
+	dir := t.TempDir()
+	svc := newTestService(t, dir, &fakeBroadcaster{})
+
+	got, err := svc.SetBookmarksSort(context.Background(), "manual")
+	if err != nil {
+		t.Fatalf("SetBookmarksSort(manual) error = %v, want nil", err)
+	}
+	if got.BookmarksSort != "manual" {
+		t.Fatalf("SetBookmarksSort(manual) = %+v, want manual", got)
+	}
+}
+
+func TestService_SetBookmarksSort_InvalidValue_RejectsWithoutPersisting(t *testing.T) {
+	dir := t.TempDir()
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, bc)
+
+	_, err := svc.SetBookmarksSort(context.Background(), "bogus-sort")
+	if !errors.Is(err, ErrInvalidSort) {
+		t.Fatalf("SetBookmarksSort() error = %v, want ErrInvalidSort", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("SetBookmarksSort() broadcast calls = %v, want none on rejection", bc.calls)
+	}
+	if _, statErr := os.Stat(workspacePath(dir)); !os.IsNotExist(statErr) {
+		t.Fatalf("SetBookmarksSort() with invalid value must NOT persist a file; stat err = %v", statErr)
+	}
+}
+
+func TestIsValidBookmarksSort(t *testing.T) {
+	valid := []string{"", "manual", "name-asc", "name-desc", "modified-desc", "modified-asc", "created-desc", "created-asc"}
+	for _, v := range valid {
+		if !IsValidBookmarksSort(v) {
+			t.Fatalf("IsValidBookmarksSort(%q) = false, want true", v)
+		}
+	}
+	// "relevance" is a searchSort value and must not leak into this enum.
+	for _, v := range []string{"relevance", "bogus"} {
+		if IsValidBookmarksSort(v) {
+			t.Fatalf("IsValidBookmarksSort(%q) = true, want false", v)
+		}
+	}
+}

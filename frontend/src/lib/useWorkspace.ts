@@ -18,6 +18,7 @@ import {
   type NotesSortOrder,
   type SearchSortOrder,
   type RightPanelTab,
+  type BookmarksSortOrder,
 } from "./useTreeStore";
 import { workspaceResource, putWorkspace } from "./workspaceApi";
 import { publish, useResource } from "./resources";
@@ -29,9 +30,11 @@ export interface UseWorkspaceResult {
   notesSort: NotesSortOrder;
   searchSort: SearchSortOrder;
   rightPanel: RightPanelTab;
+  bookmarksSort: BookmarksSortOrder;
   setNotesSort: (value: NotesSortOrder) => Promise<void>;
   setSearchSort: (value: SearchSortOrder) => Promise<void>;
   setRightPanel: (value: RightPanelTab) => Promise<void>;
+  setBookmarksSort: (value: BookmarksSortOrder) => Promise<void>;
 }
 
 export function useWorkspace(): UseWorkspaceResult {
@@ -42,6 +45,8 @@ export function useWorkspace(): UseWorkspaceResult {
   const setSearchSortSlice = useTreeStore((s) => s.setSearchSort);
   const rightPanel = useTreeStore((s) => s.rightPanel);
   const setRightPanelSlice = useTreeStore((s) => s.setRightPanel);
+  const bookmarksSort = useTreeStore((s) => s.bookmarksSort);
+  const setBookmarksSortSlice = useTreeStore((s) => s.setBookmarksSort);
   const { toast } = useToast();
 
   // Projects the shared cache snapshot INTO the existing UI slices — no
@@ -63,7 +68,16 @@ export function useWorkspace(): UseWorkspaceResult {
     if (doc.rightPanel) {
       setRightPanelSlice(doc.rightPanel as RightPanelTab);
     }
-  }, [snapshot.data, setNotesSortSlice, setSearchSortSlice, setRightPanelSlice]);
+    if (doc.bookmarksSort) {
+      setBookmarksSortSlice(doc.bookmarksSort as BookmarksSortOrder);
+    }
+  }, [
+    snapshot.data,
+    setNotesSortSlice,
+    setSearchSortSlice,
+    setRightPanelSlice,
+    setBookmarksSortSlice,
+  ]);
 
   const setNotesSort = useCallback(
     async (value: NotesSortOrder) => {
@@ -122,13 +136,34 @@ export function useWorkspace(): UseWorkspaceResult {
     [setRightPanelSlice, toast],
   );
 
+  const setBookmarksSort = useCallback(
+    async (value: BookmarksSortOrder) => {
+      const previous = useTreeStore.getState().bookmarksSort;
+      setBookmarksSortSlice(value);
+      try {
+        await putWorkspace({ bookmarksSort: value });
+        workspaceResource.patch((cur) => ({ ...cur, bookmarksSort: value }));
+      } catch (e) {
+        setBookmarksSortSlice(previous);
+        toast({
+          title: "Couldn't save sort order. Try again.",
+          description: String(e instanceof Error ? e.message : e),
+          variant: "error",
+        });
+      }
+    },
+    [setBookmarksSortSlice, toast],
+  );
+
   return {
     notesSort,
     searchSort,
     rightPanel,
+    bookmarksSort,
     setNotesSort,
     setSearchSort,
     setRightPanel,
+    setBookmarksSort,
   };
 }
 

@@ -1995,6 +1995,13 @@ export interface components {
             searchSort?: "" | "relevance" | "modified" | "created";
             /** @enum {string} */
             rightPanel?: "" | "outline" | "backlinks" | "tags";
+            /**
+             * @description Bookmarks-panel sort order. "manual" is the default and preserves
+             *     drag-to-reorder via each Bookmark's order field; every other value
+             *     derives from the bookmarked note's own metadata.
+             * @enum {string}
+             */
+            bookmarksSort?: "" | "manual" | "name-asc" | "name-desc" | "modified-desc" | "modified-asc" | "created-desc" | "created-asc";
         };
         BookmarkCreateRequest: {
             /**

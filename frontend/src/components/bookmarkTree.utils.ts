@@ -5,12 +5,18 @@
  *
  * Two-level shape (bookmarks have no nesting, BOOK-03): each
  * BookmarkFolder becomes a `bookmark-folder` ArboristNode containing its
- * member bookmarks (sorted by `order`) as `bookmark` leaf children;
- * top-level (folder_id === null) bookmarks are leaves at the root.
+ * member bookmarks as `bookmark` leaf children; top-level
+ * (folder_id === null) bookmarks are leaves at the root. Member order comes
+ * from the active BookmarksSortOrder — the drag-assigned `order` field under
+ * "manual", the target note's own metadata otherwise.
  */
 import type { ArboristNode } from "./fileTree.utils";
 import type { BookmarkMenuDescriptor } from "./TreeRow";
-import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
+import type {
+  Bookmark,
+  BookmarkFolder,
+  BookmarksSortOrder,
+} from "../lib/useTreeStore";
 import type { TreeNode as WireTreeNode } from "../lib/treeApi";
 
 /**
@@ -31,6 +37,86 @@ export function findNoteTitle(
     }
   }
   return null;
+}
+
+/** The bookmarked note's own metadata — what every non-manual order sorts on. */
+export interface BookmarkNoteMeta {
+  title: string;
+  updated_at?: string;
+  created?: string;
+}
+
+/**
+ * Indexes the Notes wire tree by note id in ONE walk. The bookmarks list
+ * carries no note metadata, and the panel already holds the tree for title
+ * resolution, so the sort joins against this map rather than fetching
+ * per-bookmark.
+ */
+export function buildNoteMetaMap(
+  nodes: ReadonlyArray<WireTreeNode>,
+): Map<string, BookmarkNoteMeta> {
+  const map = new Map<string, BookmarkNoteMeta>();
+  const visit = (node: WireTreeNode) => {
+    if (node.kind === "note") {
+      map.set(node.id, {
+        title: node.title,
+        updated_at: node.updated_at,
+        created: node.created,
+      });
+    } else if (node.kind === "folder" && Array.isArray(node.children)) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  for (const node of nodes) visit(node);
+  return map;
+}
+
+function timestampOf(
+  meta: BookmarkNoteMeta | undefined,
+  field: "updated_at" | "created",
+): number {
+  const value = meta?.[field];
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Comparator for one bookmark scope. Manual reads the drag-assigned
+ * `order`; every other branch reads the target note's metadata and
+ * tie-breaks on title so an absent timestamp still orders deterministically
+ * (mirrors fileTree.utils.comparatorFor).
+ */
+export function bookmarkComparator(
+  order: BookmarksSortOrder,
+  resolveTitle: (noteId: string) => string,
+  resolveMeta: (noteId: string) => BookmarkNoteMeta | undefined,
+): (a: Bookmark, b: Bookmark) => number {
+  const byTitle = (a: Bookmark, b: Bookmark) =>
+    resolveTitle(a.note_id).localeCompare(resolveTitle(b.note_id));
+  const byTime = (field: "updated_at" | "created", desc: boolean) =>
+    (a: Bookmark, b: Bookmark) => {
+      const ta = timestampOf(resolveMeta(a.note_id), field);
+      const tb = timestampOf(resolveMeta(b.note_id), field);
+      return (desc ? tb - ta : ta - tb) || byTitle(a, b);
+    };
+
+  switch (order) {
+    case "name-asc":
+      return byTitle;
+    case "name-desc":
+      return (a, b) => byTitle(b, a);
+    case "modified-desc":
+      return byTime("updated_at", true);
+    case "modified-asc":
+      return byTime("updated_at", false);
+    case "created-desc":
+      return byTime("created", true);
+    case "created-asc":
+      return byTime("created", false);
+    default:
+      return byOrder;
+  }
 }
 
 function bookmarkNode(
@@ -65,8 +151,17 @@ export function adaptBookmarks(
   bookmarks: readonly Bookmark[],
   resolveTitle: (noteId: string) => string,
   noteExists: (noteId: string) => boolean,
+  options?: {
+    order?: BookmarksSortOrder;
+    resolveMeta?: (noteId: string) => BookmarkNoteMeta | undefined;
+  },
 ): ArboristNode[] {
   const visible = bookmarks.filter((b) => noteExists(b.note_id));
+  const compare = bookmarkComparator(
+    options?.order ?? "manual",
+    resolveTitle,
+    options?.resolveMeta ?? (() => undefined),
+  );
 
   const folderNodes: ArboristNode[] = folders.map((folder) => ({
     id: "bmfolder:" + folder.id,
@@ -75,14 +170,14 @@ export function adaptBookmarks(
     children: visible
       .filter((b) => b.folder_id === folder.id)
       .slice()
-      .sort(byOrder)
+      .sort(compare)
       .map((b) => bookmarkNode(b, resolveTitle)),
   }));
 
   const topLevel = visible
     .filter((b) => b.folder_id === null)
     .slice()
-    .sort(byOrder)
+    .sort(compare)
     .map((b) => bookmarkNode(b, resolveTitle));
 
   return [...folderNodes, ...topLevel];

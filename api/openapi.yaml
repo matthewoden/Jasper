@@ -3146,6 +3146,21 @@ components:
             - "outline"
             - "backlinks"
             - "tags"
+        bookmarksSort:
+          description: |
+            Bookmarks-panel sort order. "manual" is the default and preserves
+            drag-to-reorder via each Bookmark's order field; every other value
+            derives from the bookmarked note's own metadata.
+          type: string
+          enum:
+            - ""
+            - "manual"
+            - "name-asc"
+            - "name-desc"
+            - "modified-desc"
+            - "modified-asc"
+            - "created-desc"
+            - "created-asc"
     BookmarkCreateRequest:
       type: object
       required: [note_id]

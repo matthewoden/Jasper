@@ -14,15 +14,19 @@ import type { NodeApi, TreeApi } from "react-arborist";
 import { useBookmarks } from "../lib/useBookmarks";
 import { useFileTree } from "../lib/useFileTree";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useTreeStore } from "../lib/useTreeStore";
+import { useWorkspace } from "../lib/useWorkspace";
 import { TreeView } from "./TreeView";
 import { TreeRow } from "./TreeRow";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { BookmarksErrorState } from "./BookmarksErrorState";
 import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
+import { BookmarksSortMenu } from "./BookmarksSortMenu";
 import { Tooltip } from "./Tooltip";
 import {
   adaptBookmarks,
   buildBookmarkMenu,
+  buildNoteMetaMap,
   computeBookmarkMoveDispatch,
   findNoteTitle,
 } from "./bookmarkTree.utils";
@@ -38,6 +42,7 @@ const toolbarRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
+  gap: 8,
   height: 40,
   padding: "0 8px",
   borderBottom: "1px solid var(--color-border)",
@@ -108,6 +113,9 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     reorder,
   } = useBookmarks();
   const { tree } = useFileTree();
+  const bookmarksSort = useTreeStore((s) => s.bookmarksSort);
+  const { setBookmarksSort } = useWorkspace();
+  const manualOrder = bookmarksSort === "manual";
   const [creatingFolder, setCreatingFolder] = useState(false);
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
 
@@ -123,9 +131,29 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     [tree],
   );
 
+  const noteMeta = useMemo(
+    () => (tree ? buildNoteMetaMap(tree.root) : new Map()),
+    [tree],
+  );
+  const resolveMeta = useCallback(
+    (noteId: string) => noteMeta.get(noteId),
+    [noteMeta],
+  );
+
   const data = useMemo(
-    () => adaptBookmarks(bookmarkFolders, bookmarks, resolveTitle, noteExists),
-    [bookmarkFolders, bookmarks, resolveTitle, noteExists],
+    () =>
+      adaptBookmarks(bookmarkFolders, bookmarks, resolveTitle, noteExists, {
+        order: bookmarksSort,
+        resolveMeta,
+      }),
+    [
+      bookmarkFolders,
+      bookmarks,
+      resolveTitle,
+      noteExists,
+      bookmarksSort,
+      resolveMeta,
+    ],
   );
 
   // Bookmark folders start EXPANDED by default (pre-existing UX). TreeView's
@@ -214,6 +242,10 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     [],
   );
 
+  /** A sorted view would ignore any Order a drop wrote, so the affordance is
+   *  withdrawn entirely outside Manual rather than accepted and discarded. */
+  const disableDrag = useCallback(() => !manualOrder, [manualOrder]);
+
   /**
    * onRootDrop — drag-to-root. Fires when a bookmark is dropped in the
    * tree's empty area (react-arborist's
@@ -245,6 +277,10 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   const header = (
     <div style={toolbarRowStyle}>
       <NewBookmarkFolderButton onClick={() => setCreatingFolder(true)} />
+      <BookmarksSortMenu
+        value={bookmarksSort}
+        onSelect={(order) => void setBookmarksSort(order)}
+      />
     </div>
   );
 
@@ -284,9 +320,10 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         treeRef={treeRef}
         initialOpenState={initialOpenState}
         openByDefault
-        onMove={handleMove}
+        onMove={manualOrder ? handleMove : undefined}
         disableDrop={disableDrop}
-        onRootDrop={handleRootDrop}
+        disableDrag={disableDrag}
+        onRootDrop={manualOrder ? handleRootDrop : undefined}
         renderRow={({ node, style, dragHandle }) => (
           <TreeRow
             node={node}
