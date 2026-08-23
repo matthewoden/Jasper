@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -26,6 +27,9 @@ var (
 	ErrFolderNotFound = errors.New("bookmarks: folder not found")
 	// ErrInvalidName is returned by CreateFolder for an empty/whitespace name.
 	ErrInvalidName = errors.New("bookmarks: invalid name")
+	// ErrDuplicateFolderName is returned by CreateFolder/RenameFolder when
+	// another folder already carries an equivalent name.
+	ErrDuplicateFolderName = errors.New("bookmarks: duplicate folder name")
 )
 
 // Service is the bookmarks domain service. Every mutation follows a
@@ -191,9 +195,10 @@ func (s *Service) MoveToFolder(ctx context.Context, id string, folderID *string)
 }
 
 // CreateFolder appends a new Folder and persists it. name is trimmed;
-// empty/whitespace-only names return ErrInvalidName WITHOUT persisting.
-// No filesystem-legal-character validation is applied — these are
-// virtual labels, not filesystem folders.
+// empty/whitespace-only names return ErrInvalidName and a name equivalent
+// to an existing folder's returns ErrDuplicateFolderName, neither
+// persisting. No filesystem-legal-character validation is applied — these
+// are virtual labels, not filesystem folders.
 func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
@@ -208,6 +213,10 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 		return Folder{}, fmt.Errorf("bookmarks.CreateFolder: %w", err)
 	}
 
+	if folderNameTaken(doc.Folders, trimmed, "") {
+		return Folder{}, fmt.Errorf("bookmarks.CreateFolder(%q): %w", trimmed, ErrDuplicateFolderName)
+	}
+
 	f := Folder{ID: uuid.NewString(), Name: trimmed}
 	doc.Folders = append(doc.Folders, f)
 
@@ -218,6 +227,44 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
 
 	return f, nil
+}
+
+// RenameFolder replaces the folder's Name and persists. name is trimmed;
+// empty/whitespace-only returns ErrInvalidName, an unknown id returns
+// ErrFolderNotFound, and a name equivalent to ANOTHER folder's returns
+// ErrDuplicateFolderName. None of the three persists a change.
+func (s *Service) RenameFolder(ctx context.Context, id string, name string) (Folder, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%s): %w", id, ErrInvalidName)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder: %w", err)
+	}
+
+	idx := indexOfFolder(doc.Folders, id)
+	if idx == -1 {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%s): %w", id, ErrFolderNotFound)
+	}
+
+	if folderNameTaken(doc.Folders, trimmed, id) {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%q): %w", trimmed, ErrDuplicateFolderName)
+	}
+
+	doc.Folders[idx].Name = trimmed
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return doc.Folders[idx], nil
 }
 
 // Reorder assigns Order = index for each id in orderedIDs, scoped to
@@ -285,8 +332,36 @@ func indexOfBookmark(bookmarks []Bookmark, id string) int {
 }
 
 func folderExists(folders []Folder, id string) bool {
-	for _, f := range folders {
+	return indexOfFolder(folders, id) != -1
+}
+
+func indexOfFolder(folders []Folder, id string) int {
+	for i, f := range folders {
 		if f.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// foldFolderName reduces a folder label to its comparison form, borrowing
+// fsstore.Canonicalize's NFC-then-lowercase rule so two spellings a user
+// cannot tell apart are one name here too. Folder labels are virtual, so
+// none of Canonicalize's path rules apply.
+func foldFolderName(name string) string {
+	return strings.ToLower(norm.NFC.String(strings.TrimSpace(name)))
+}
+
+// folderNameTaken reports whether any folder other than exceptID already
+// carries an equivalent name. exceptID excludes the folder being renamed,
+// so recasing its own name is not a self-collision.
+func folderNameTaken(folders []Folder, name string, exceptID string) bool {
+	folded := foldFolderName(name)
+	for _, f := range folders {
+		if f.ID == exceptID {
+			continue
+		}
+		if foldFolderName(f.Name) == folded {
 			return true
 		}
 	}

@@ -807,9 +807,39 @@ export interface paths {
          *     trimmed server-side; empty/whitespace-only names are rejected
          *     with 400. Bookmark folders are virtual labels, not filesystem
          *     folders — no filesystem-legal-character validation applies.
+         *     A name that matches an existing folder's, compared case-
+         *     insensitively after NFC normalization, is rejected with 409.
          *     Broadcasts `bookmark:changed` on success.
          */
         post: operations["createBookmarkFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bookmark-folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder. */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rename a bookmark folder (BOOK-03)
+         * @description Replaces the folder's display name. name is trimmed server-side;
+         *     empty/whitespace-only names are rejected with 400. A name that
+         *     matches ANOTHER folder's, compared case-insensitively after NFC
+         *     normalization, is rejected with 409 — a folder is never its own
+         *     duplicate, so recasing a folder's own name is allowed.
+         *     Broadcasts `bookmark:changed` on success.
+         */
+        put: operations["renameBookmarkFolder"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2011,6 +2041,10 @@ export interface components {
             /** @description Display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
             name: string;
         };
+        BookmarkFolderRenameRequest: {
+            /** @description New display name. Trimmed server-side; empty/whitespace-only rejected with 400. */
+            name: string;
+        };
         SetupStatus: {
             /** @description True when the first-run wizard has not yet been completed. */
             first_run: boolean;
@@ -2192,6 +2226,8 @@ export interface components {
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
+        /** @description Opaque UUID of the bookmark folder. */
+        BookmarkFolderId: string;
         /**
          * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
          *     pattern ^[a-z0-9_-]+$). URL-encoded when the tag contains hyphens or underscores.
@@ -3896,6 +3932,69 @@ export interface operations {
             };
             /** @description Invalid (empty/whitespace) name */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A folder with this name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    renameBookmarkFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder. */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookmarkFolderRenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Bookmark folder renamed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookmarkFolder"];
+                };
+            };
+            /** @description Invalid (empty/whitespace) name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown bookmark folder id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A folder with this name already exists */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

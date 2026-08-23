@@ -68,14 +68,48 @@ export async function postBookmarkMove(
   return data;
 }
 
+/**
+ * A folder-name clash gets its own type so the inline create/rename input can
+ * keep the typed text and show the message next to the field, rather than
+ * treating it like any other failed write.
+ */
+export class BookmarkFolderNameConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BookmarkFolderNameConflictError";
+  }
+}
+
 export async function postBookmarkFolder(
   name: string,
 ): Promise<BookmarkFolder> {
-  const { data, error } = await client.POST("/bookmark-folders", {
+  const { data, error, response } = await client.POST("/bookmark-folders", {
     body: { name },
   });
   if (error || !data) {
-    throw new Error(unwrapErrorMessage(error, "create folder failed"));
+    const message = unwrapErrorMessage(error, "create folder failed");
+    if (response?.status === 409) {
+      throw new BookmarkFolderNameConflictError(message);
+    }
+    throw new Error(message);
+  }
+  return data as BookmarkFolder;
+}
+
+export async function putBookmarkFolder(
+  id: string,
+  name: string,
+): Promise<BookmarkFolder> {
+  const { data, error, response } = await client.PUT("/bookmark-folders/{id}", {
+    params: { path: { id } },
+    body: { name },
+  });
+  if (error || !data) {
+    const message = unwrapErrorMessage(error, "rename folder failed");
+    if (response?.status === 409) {
+      throw new BookmarkFolderNameConflictError(message);
+    }
+    throw new Error(message);
   }
   return data as BookmarkFolder;
 }

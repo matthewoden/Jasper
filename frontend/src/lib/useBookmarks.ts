@@ -14,6 +14,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useToast } from "../components/toast.utils";
 import type { Bookmark, BookmarkFolder } from "./useTreeStore";
 import {
+  BookmarkFolderNameConflictError,
   bookmarksResource,
   postBookmark,
   deleteBookmark,
@@ -184,12 +185,17 @@ export function useBookmarks(): UseBookmarksResult {
     [toast],
   );
 
+  // A name clash is rethrown rather than toasted: the inline input renders it
+  // beside the field and keeps the typed text so the user can correct it.
   const createFolder = useCallback(
     async (name: string) => {
       try {
         await postBookmarkFolder(name);
         await bookmarksResource.invalidate();
       } catch (e) {
+        if (e instanceof BookmarkFolderNameConflictError) {
+          throw e;
+        }
         toast({
           title: "Couldn't create folder",
           description: String(e instanceof Error ? e.message : e),

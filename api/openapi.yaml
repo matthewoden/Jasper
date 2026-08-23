@@ -1466,6 +1466,8 @@ paths:
         trimmed server-side; empty/whitespace-only names are rejected
         with 400. Bookmark folders are virtual labels, not filesystem
         folders — no filesystem-legal-character validation applies.
+        A name that matches an existing folder's, compared case-
+        insensitively after NFC normalization, is rejected with 409.
         Broadcasts `bookmark:changed` on success.
       requestBody:
         required: true
@@ -1482,6 +1484,57 @@ paths:
                 $ref: "#/components/schemas/BookmarkFolder"
         "400":
           description: Invalid (empty/whitespace) name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A folder with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /bookmark-folders/{id}:
+    parameters:
+      - $ref: "#/components/parameters/BookmarkFolderId"
+    put:
+      tags: [bookmarks]
+      operationId: renameBookmarkFolder
+      summary: Rename a bookmark folder (BOOK-03)
+      description: |
+        Replaces the folder's display name. name is trimmed server-side;
+        empty/whitespace-only names are rejected with 400. A name that
+        matches ANOTHER folder's, compared case-insensitively after NFC
+        normalization, is rejected with 409 — a folder is never its own
+        duplicate, so recasing a folder's own name is allowed.
+        Broadcasts `bookmark:changed` on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkFolderRenameRequest"
+      responses:
+        "200":
+          description: Bookmark folder renamed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarkFolder"
+        "400":
+          description: Invalid (empty/whitespace) name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown bookmark folder id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A folder with this name already exists
           content:
             application/json:
               schema:
@@ -1942,6 +1995,14 @@ components:
       in: path
       required: true
       description: Opaque UUID of the bookmark row (not a note UUID).
+      schema:
+        type: string
+        format: uuid
+    BookmarkFolderId:
+      name: id
+      in: path
+      required: true
+      description: Opaque UUID of the bookmark folder.
       schema:
         type: string
         format: uuid
@@ -3147,6 +3208,14 @@ components:
           type: string
           minLength: 1
           description: Display name. Trimmed server-side; empty/whitespace-only rejected with 400.
+    BookmarkFolderRenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: New display name. Trimmed server-side; empty/whitespace-only rejected with 400.
     SetupStatus:
       type: object
       required: [first_run]
