@@ -799,3 +799,179 @@ func TestService_Reorder_UnknownFolderID_ReturnsErrFolderNotFound(t *testing.T) 
 		t.Fatalf("Reorder() error = %v, want ErrFolderNotFound", err)
 	}
 }
+
+func TestService_CreateFolder_DuplicateName_ReturnsErrDuplicateAndDoesNotPersist(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	if _, err := svc.CreateFolder(context.Background(), "Work"); err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	_, err := svc.CreateFolder(context.Background(), "Work")
+	if !errors.Is(err, ErrDuplicateFolderName) {
+		t.Fatalf("CreateFolder() error = %v, want ErrDuplicateFolderName", err)
+	}
+	if len(bc.calls) != 1 {
+		t.Fatalf("broadcast calls = %v, want only the first create's", bc.calls)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Folders) != 1 {
+		t.Fatalf("Load() folders = %+v, want the rejection to persist nothing", doc.Folders)
+	}
+}
+
+// Comparison folds case and normalizes to NFC, matching fsstore.Canonicalize
+// — so "work", surrounding whitespace, and an NFD-composed spelling are all
+// the same name.
+func TestService_CreateFolder_EquivalentName_ReturnsErrDuplicate(t *testing.T) {
+	nfc := "Caf\u00e9"
+	nfd := "Cafe\u0301"
+
+	for _, tc := range []struct{ first, second string }{
+		{"Work", "work"},
+		{"Work", "WORK"},
+		{"Work", "  Work  "},
+		{nfc, nfd},
+		{nfd, nfc},
+		{nfc, "caf\u00e9"},
+	} {
+		dir := t.TempDir()
+		registry := newTestRegistry(nil)
+		svc := newTestService(t, dir, registry, &fakeBroadcaster{})
+
+		if _, err := svc.CreateFolder(context.Background(), tc.first); err != nil {
+			t.Fatalf("CreateFolder(%q) error = %v", tc.first, err)
+		}
+		_, err := svc.CreateFolder(context.Background(), tc.second)
+		if !errors.Is(err, ErrDuplicateFolderName) {
+			t.Fatalf("CreateFolder(%q) after %q: error = %v, want ErrDuplicateFolderName", tc.second, tc.first, err)
+		}
+	}
+}
+
+func TestService_RenameFolder_SetsNameAndBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	created, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	renamed, err := svc.RenameFolder(context.Background(), created.ID, "  Personal  ")
+	if err != nil {
+		t.Fatalf("RenameFolder() error = %v", err)
+	}
+	if renamed.ID != created.ID || renamed.Name != "Personal" {
+		t.Fatalf("RenameFolder() = %+v, want same ID with trimmed Name=Personal", renamed)
+	}
+	if len(bc.calls) != 2 || bc.calls[1] != EventBookmarkChanged {
+		t.Fatalf("broadcast calls = %v, want a second %s", bc.calls, EventBookmarkChanged)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(doc.Folders) != 1 || doc.Folders[0].Name != "Personal" {
+		t.Fatalf("Load() folders = %+v, want the rename persisted", doc.Folders)
+	}
+}
+
+func TestService_RenameFolder_DuplicateName_ReturnsErrDuplicateNoWrite(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	if _, err := svc.CreateFolder(context.Background(), "Work"); err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+	personal, err := svc.CreateFolder(context.Background(), "Personal")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	if _, err := svc.RenameFolder(context.Background(), personal.ID, "WORK"); !errors.Is(err, ErrDuplicateFolderName) {
+		t.Fatalf("RenameFolder() error = %v, want ErrDuplicateFolderName", err)
+	}
+	if len(bc.calls) != 2 {
+		t.Fatalf("broadcast calls = %v, want none on rejection", bc.calls)
+	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	for _, f := range doc.Folders {
+		if f.ID == personal.ID && f.Name != "Personal" {
+			t.Fatalf("Load() folder = %+v, want the rejected rename to persist nothing", f)
+		}
+	}
+}
+
+// A folder is not its own duplicate — a pure case change of its current name
+// must be accepted, not rejected against itself.
+func TestService_RenameFolder_OwnName_Succeeds(t *testing.T) {
+	for _, name := range []string{"Work", "WORK", "work"} {
+		dir := t.TempDir()
+		registry := newTestRegistry(nil)
+		svc := newTestService(t, dir, registry, &fakeBroadcaster{})
+
+		created, err := svc.CreateFolder(context.Background(), "Work")
+		if err != nil {
+			t.Fatalf("CreateFolder() error = %v", err)
+		}
+		got, err := svc.RenameFolder(context.Background(), created.ID, name)
+		if err != nil {
+			t.Fatalf("RenameFolder(%q) error = %v, want success", name, err)
+		}
+		if got.Name != name {
+			t.Fatalf("RenameFolder(%q) name = %q, want %q", name, got.Name, name)
+		}
+	}
+}
+
+func TestService_RenameFolder_UnknownID_ReturnsErrFolderNotFound(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	if _, err := svc.RenameFolder(context.Background(), uuid.NewString(), "Work"); !errors.Is(err, ErrFolderNotFound) {
+		t.Fatalf("RenameFolder() error = %v, want ErrFolderNotFound", err)
+	}
+	if len(bc.calls) != 0 {
+		t.Fatalf("broadcast calls = %v, want none on rejection", bc.calls)
+	}
+}
+
+func TestService_RenameFolder_EmptyName_ReturnsErrInvalidName(t *testing.T) {
+	dir := t.TempDir()
+	registry := newTestRegistry(nil)
+	bc := &fakeBroadcaster{}
+	svc := newTestService(t, dir, registry, bc)
+
+	created, err := svc.CreateFolder(context.Background(), "Work")
+	if err != nil {
+		t.Fatalf("CreateFolder() error = %v", err)
+	}
+
+	for _, name := range []string{"", "   ", "\t\n"} {
+		if _, err := svc.RenameFolder(context.Background(), created.ID, name); !errors.Is(err, ErrInvalidName) {
+			t.Fatalf("RenameFolder(%q) error = %v, want ErrInvalidName", name, err)
+		}
+	}
+	if len(bc.calls) != 1 {
+		t.Fatalf("broadcast calls = %v, want none beyond the create", bc.calls)
+	}
+}

@@ -6,7 +6,9 @@
  * replaces a Heading-weight row, not a Body-weight tree row) — but does NOT
  * import validateRename (`renameInput.utils.ts`), which enforces filesystem-
  * legal-character + on-disk sibling-collision rules that don't apply to a
- * virtual bookmark-folder label. Validation here is local: trim + non-empty.
+ * virtual bookmark-folder label. Validation here is local: trim + non-empty,
+ * plus whatever the server refuses — a rejected onCommit renders inline and
+ * the field stays open with the typed text.
  */
 import {
   type ChangeEvent,
@@ -79,7 +81,14 @@ export function NewBookmarkFolderInput({
       return;
     }
     committedOrCancelled.current = true;
-    await onCommit(value.trim());
+    try {
+      await onCommit(value.trim());
+    } catch (e) {
+      // A refused commit (a duplicate folder name) must leave the field
+      // mounted, focused and still holding what the user typed.
+      committedOrCancelled.current = false;
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, [value, onCommit]);
 
   const cancel = useCallback(() => {

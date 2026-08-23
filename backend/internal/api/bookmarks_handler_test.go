@@ -423,3 +423,109 @@ func http200Get(t *testing.T, ts *httptest.Server, path string) (*http.Response,
 	}
 	return resp, body
 }
+
+// TestCreateBookmarkFolder_DuplicateName_409 — a case-variant name collides
+// with an existing folder and is refused without a second folder appearing.
+func TestCreateBookmarkFolder_DuplicateName_409(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	mustCreateBookmarkFolder(t, ts, "Work")
+
+	resp, body := mustPostJSON(t, ts, "/api/v1/bookmark-folders", `{"name":"WORK"}`)
+	if resp.StatusCode != 409 {
+		t.Fatalf("status: got %d, want 409; body=%s", resp.StatusCode, body)
+	}
+	var got Error
+	_ = json.Unmarshal(body, &got)
+	if got.Code != "conflict" {
+		t.Errorf("Code: got %q, want %q", got.Code, "conflict")
+	}
+
+	_, listBody := http200Get(t, ts, "/api/v1/bookmarks")
+	var doc BookmarksDocument
+	if err := json.Unmarshal(listBody, &doc); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, listBody)
+	}
+	if len(doc.Folders) != 1 {
+		t.Fatalf("folders = %+v, want the rejected create to persist nothing", doc.Folders)
+	}
+}
+
+func TestRenameBookmarkFolder_HappyPath_200(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	id := mustCreateBookmarkFolder(t, ts, "Work")
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"Personal"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	var got BookmarkFolder
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if got.Id.String() != id || got.Name != "Personal" {
+		t.Errorf("got %+v, want id=%s name=Personal", got, id)
+	}
+}
+
+func TestRenameBookmarkFolder_DuplicateName_409(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	mustCreateBookmarkFolder(t, ts, "Work")
+	id := mustCreateBookmarkFolder(t, ts, "Personal")
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"work"}`)
+	if resp.StatusCode != 409 {
+		t.Fatalf("status: got %d, want 409; body=%s", resp.StatusCode, body)
+	}
+	var got Error
+	_ = json.Unmarshal(body, &got)
+	if got.Code != "conflict" {
+		t.Errorf("Code: got %q, want %q", got.Code, "conflict")
+	}
+}
+
+// Renaming a folder to a case variant of its own name is not a duplicate.
+func TestRenameBookmarkFolder_OwnName_200(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	id := mustCreateBookmarkFolder(t, ts, "Work")
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"WORK"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
+	}
+}
+
+func TestRenameBookmarkFolder_UnknownID_404(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+uuid.NewString(), `{"name":"Work"}`)
+	if resp.StatusCode != 404 {
+		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
+	}
+}
+
+func TestRenameBookmarkFolder_EmptyName_400(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	id := mustCreateBookmarkFolder(t, ts, "Work")
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"   "}`)
+	if resp.StatusCode != 400 {
+		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
+	}
+}

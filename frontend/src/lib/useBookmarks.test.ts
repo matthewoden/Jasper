@@ -23,7 +23,9 @@ const reorderBookmarksMock = vi.fn();
 
 vi.mock("./bookmarksApi", async () => {
   const { createResource } = await import("./resources/createResource");
+  class BookmarkFolderNameConflictError extends Error {}
   return {
+    BookmarkFolderNameConflictError,
     bookmarksResource: createResource(
       "bookmarks",
       () => getBookmarksMock(),
@@ -44,7 +46,10 @@ vi.mock("../components/toast.utils", () => ({
   ToastProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
-import { bookmarksResource } from "./bookmarksApi";
+import {
+  bookmarksResource,
+  BookmarkFolderNameConflictError,
+} from "./bookmarksApi";
 import { useBookmarks, __testing__ } from "./useBookmarks";
 
 const bookmarkA = {
@@ -461,5 +466,38 @@ describe("useBookmarks", () => {
     });
 
     expect(getBookmarksMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("createFolder rethrows a name conflict so the inline input can keep the typed text", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    postBookmarkFolderMock.mockRejectedValueOnce(
+      new BookmarkFolderNameConflictError("a folder with this name already exists"),
+    );
+
+    await expect(result.current.createFolder("work")).rejects.toBeInstanceOf(
+      BookmarkFolderNameConflictError,
+    );
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("createFolder still swallows a non-conflict failure into a toast", async () => {
+    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [] });
+    const { result } = renderHook(() => useBookmarks(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    postBookmarkFolderMock.mockRejectedValueOnce(new Error("backend went away"));
+    await act(async () => {
+      await result.current.createFolder("Work");
+    });
+
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't create folder",
+        variant: "error",
+      }),
+    );
   });
 });
