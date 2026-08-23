@@ -345,19 +345,18 @@ test.describe("@phase27 BOOK-03: bookmark folder organization", () => {
     await expect(bookmarkFolderRow).toBeVisible({ timeout: 5_000 });
     await expect(bookmarkFolderRow).toHaveAttribute("aria-expanded", "true");
 
-    // Move the bookmark into the folder via its "…" menu. TreeRow's shared
-    // kebab trigger is aria-label="Row menu" (BookmarksPanel.test.tsx
-    // openRowMenu()) — the old bespoke BookmarkRow's "Bookmark options"
-    // label was removed along with the rest of that component in 260719-jv1.
-    // The kebab is CSS hover-revealed (invisible group-hover:visible, mirrors
-    // phase14-uat.spec.ts's kebab pattern) — hover the row first so Playwright's
-    // actionability check sees it visible before clicking.
+    // The kebab is CSS hover-revealed, so hover the row first or Playwright's
+    // actionability check never sees it.
     await rowA.hover();
-    const rowAKebab = rowA.getByRole("button", { name: "Row menu" });
+    const rowAKebab = rowA.getByRole("button", { name: "Bookmark options" });
     await expect(rowAKebab).toBeVisible({ timeout: 5_000 });
     await rowAKebab.click();
-    await expect(page.getByRole("menuitem", { name: "Remove" })).toBeVisible();
-    await page.getByRole("menuitem", { name: "Move to folder" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "Remove bookmark" }),
+    ).toBeVisible();
+    await page
+      .getByRole("menuitem", { name: "Move to bookmark folder" })
+      .click();
     await expect(page.getByRole("menuitem", { name: "Work" })).toBeVisible({
       timeout: 5_000,
     });
