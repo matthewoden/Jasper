@@ -379,10 +379,9 @@ func folderExists(folders []Folder, id string) bool {
 	return indexOfFolder(folders, id) != -1
 }
 
-// foldFolderName reduces a folder label to its comparison form, borrowing
-// fsstore.Canonicalize's NFC-then-lowercase rule so two spellings a user
-// cannot tell apart are one name here too. Folder labels are virtual, so
-// none of Canonicalize's path rules apply.
+// foldFolderName reduces a folder label to its comparison form. It borrows
+// only the NFC-then-lowercase rule from ADR-0026; folder labels are virtual,
+// so none of the path rules there apply.
 func foldFolderName(name string) string {
 	return strings.ToLower(norm.NFC.String(strings.TrimSpace(name)))
 }

@@ -185,6 +185,10 @@ export function adaptBookmarks(
 
 /**
  * Builds the BookmarkMenuDescriptor TreeRow needs to render the
+ * ORPHANED 2026-08-22: BookmarksPanel now routes through TreeRow's
+ * rowMenuOverride; the only remaining callers are this file's own tests.
+ * Kept pending JASPER-37.
+ *
  * Remove / Move-to-folder / New-folder kebab menu for `kind: "bookmark"`
  * rows — keeps the folder-list-shaping (id+name only) out of
  * BookmarksPanel.tsx itself.

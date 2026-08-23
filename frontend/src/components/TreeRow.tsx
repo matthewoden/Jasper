@@ -103,6 +103,9 @@ export type TreeRowData =
  * Remove / Move-to-folder / New-folder menu (TreeRowMenu's "bookmark"
  * branch) without importing bookmarks-specific hooks itself. Only
  * meaningful for `kind: "bookmark"` rows.
+ *
+ * ORPHANED 2026-08-22: no caller passes `bookmarkMenu` any more — the
+ * bookmarks panel supplies rowMenuOverride instead. Kept pending JASPER-37.
  */
 export interface BookmarkMenuDescriptor {
   onRemove: (noteId: string) => void;

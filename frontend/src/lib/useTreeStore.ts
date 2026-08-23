@@ -225,7 +225,7 @@ export interface TreeStore {
   rightPanel: RightPanelTab;
   setRightPanel: (v: RightPanelTab) => void;
 
-  /** Bookmarks-panel sort order (BOOK-*). Backend-persisted via workspace.json. */
+  /** Bookmarks-panel sort order. Backend-persisted via workspace.json. */
   bookmarksSort: BookmarksSortOrder;
   setBookmarksSort: (v: BookmarksSortOrder) => void;
 }
