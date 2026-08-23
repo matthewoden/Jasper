@@ -2,10 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import {
   adaptBookmarks,
   buildBookmarkMenu,
+  buildNoteMetaMap,
   computeBookmarkMoveDispatch,
   findNoteTitle,
 } from "./bookmarkTree.utils";
-import type { Bookmark, BookmarkFolder } from "../lib/useTreeStore";
+import type { BookmarkNoteMeta } from "./bookmarkTree.utils";
+import type {
+  Bookmark,
+  BookmarkFolder,
+  BookmarksSortOrder,
+} from "../lib/useTreeStore";
 import type { TreeNode } from "../lib/treeApi";
 
 describe("findNoteTitle", () => {
@@ -158,5 +164,165 @@ describe("computeBookmarkMoveDispatch", () => {
       folderId: null,
       orderedIds: ["bm-b", "bm-a"],
     });
+  });
+});
+
+describe("buildNoteMetaMap", () => {
+  const tree: TreeNode[] = [
+    {
+      kind: "folder",
+      path: "a",
+      name: "a",
+      children: [
+        {
+          kind: "note",
+          id: "n1",
+          path: "a/n1.md",
+          title: "First",
+          updated_at: "2026-01-02T00:00:00Z",
+          created: "2026-01-01T00:00:00Z",
+        },
+      ],
+    },
+    {
+      kind: "note",
+      id: "n2",
+      path: "n2.md",
+      title: "Second",
+      updated_at: "2026-01-03T00:00:00Z",
+    },
+  ] as unknown as TreeNode[];
+
+  it("indexes every note by id, nested included", () => {
+    const map = buildNoteMetaMap(tree);
+    expect(map.get("n1")).toEqual({
+      title: "First",
+      updated_at: "2026-01-02T00:00:00Z",
+      created: "2026-01-01T00:00:00Z",
+    });
+    expect(map.get("n2")?.title).toBe("Second");
+    expect(map.has("missing")).toBe(false);
+  });
+});
+
+describe("adaptBookmarks — sort orders", () => {
+  const noteExists = () => true;
+
+  // order fields deliberately run counter to every derived order so a
+  // passing assertion can only come from the requested comparator.
+  const bookmarks: Bookmark[] = [
+    { id: "bm-c", note_id: "note-c", folder_id: null, order: 0 },
+    { id: "bm-a", note_id: "note-a", folder_id: null, order: 1 },
+    { id: "bm-b", note_id: "note-b", folder_id: null, order: 2 },
+  ];
+
+  const meta: Record<string, BookmarkNoteMeta> = {
+    "note-a": {
+      title: "Apple",
+      updated_at: "2026-01-01T00:00:00Z",
+      created: "2026-03-01T00:00:00Z",
+    },
+    "note-b": {
+      title: "Banana",
+      updated_at: "2026-01-03T00:00:00Z",
+      created: "2026-03-02T00:00:00Z",
+    },
+    "note-c": {
+      title: "Cherry",
+      updated_at: "2026-01-02T00:00:00Z",
+      created: "2026-03-03T00:00:00Z",
+    },
+  };
+
+  const resolveTitle = (noteId: string) => meta[noteId].title;
+  const resolveMeta = (noteId: string) => meta[noteId];
+
+  function idsFor(order: BookmarksSortOrder): string[] {
+    return adaptBookmarks([], bookmarks, resolveTitle, noteExists, {
+      order,
+      resolveMeta,
+    }).map((n) => n.id);
+  }
+
+  it("manual keeps the persisted Order field", () => {
+    expect(idsFor("manual")).toEqual([
+      "bookmark:bm-c",
+      "bookmark:bm-a",
+      "bookmark:bm-b",
+    ]);
+  });
+
+  it("defaults to manual when no order is supplied", () => {
+    const nodes = adaptBookmarks([], bookmarks, resolveTitle, noteExists);
+    expect(nodes.map((n) => n.id)).toEqual([
+      "bookmark:bm-c",
+      "bookmark:bm-a",
+      "bookmark:bm-b",
+    ]);
+  });
+
+  it("sorts by target-note title", () => {
+    expect(idsFor("name-asc")).toEqual([
+      "bookmark:bm-a",
+      "bookmark:bm-b",
+      "bookmark:bm-c",
+    ]);
+    expect(idsFor("name-desc")).toEqual([
+      "bookmark:bm-c",
+      "bookmark:bm-b",
+      "bookmark:bm-a",
+    ]);
+  });
+
+  it("sorts by target-note updated_at", () => {
+    expect(idsFor("modified-asc")).toEqual([
+      "bookmark:bm-a",
+      "bookmark:bm-c",
+      "bookmark:bm-b",
+    ]);
+    expect(idsFor("modified-desc")).toEqual([
+      "bookmark:bm-b",
+      "bookmark:bm-c",
+      "bookmark:bm-a",
+    ]);
+  });
+
+  it("sorts by target-note created", () => {
+    expect(idsFor("created-asc")).toEqual([
+      "bookmark:bm-a",
+      "bookmark:bm-b",
+      "bookmark:bm-c",
+    ]);
+    expect(idsFor("created-desc")).toEqual([
+      "bookmark:bm-c",
+      "bookmark:bm-b",
+      "bookmark:bm-a",
+    ]);
+  });
+
+  it("tie-breaks on title when the timestamp is missing on both sides", () => {
+    const bare: Bookmark[] = [
+      { id: "bm-b", note_id: "note-b", folder_id: null, order: 0 },
+      { id: "bm-a", note_id: "note-a", folder_id: null, order: 1 },
+    ];
+    const nodes = adaptBookmarks([], bare, resolveTitle, noteExists, {
+      order: "created-desc",
+      resolveMeta: () => undefined,
+    });
+    expect(nodes.map((n) => n.id)).toEqual(["bookmark:bm-a", "bookmark:bm-b"]);
+  });
+
+  it("applies the same order inside a folder's children", () => {
+    const folders: BookmarkFolder[] = [{ id: "f-1", name: "Work" }];
+    const filed: Bookmark[] = bookmarks.map((b) => ({ ...b, folder_id: "f-1" }));
+    const nodes = adaptBookmarks(folders, filed, resolveTitle, noteExists, {
+      order: "name-asc",
+      resolveMeta,
+    });
+    expect(nodes[0].children?.map((n) => n.id)).toEqual([
+      "bookmark:bm-a",
+      "bookmark:bm-b",
+      "bookmark:bm-c",
+    ]);
   });
 });

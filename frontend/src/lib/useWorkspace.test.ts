@@ -39,6 +39,7 @@ import {
   NOTES_SORT_DEFAULT,
   SEARCH_SORT_DEFAULT,
   RIGHT_PANEL_DEFAULT,
+  BOOKMARKS_SORT_DEFAULT,
 } from "./useTreeStore";
 import { workspaceResource } from "./workspaceApi";
 import { useWorkspace } from "./useWorkspace";
@@ -144,5 +145,80 @@ describe("useWorkspace — rightPanel", () => {
     });
 
     expect(workspaceResource.peek().data?.notesSort).toBe("modified-desc");
+  });
+});
+
+describe("useWorkspace — bookmarksSort", () => {
+  beforeEach(() => {
+    getWorkspaceMock.mockReset();
+    putWorkspaceMock.mockReset();
+    toastSpy.mockReset();
+    workspaceResource.clear();
+    useTreeStore.setState({
+      notesSort: NOTES_SORT_DEFAULT,
+      searchSort: SEARCH_SORT_DEFAULT,
+      rightPanel: RIGHT_PANEL_DEFAULT,
+      bookmarksSort: BOOKMARKS_SORT_DEFAULT,
+    });
+  });
+
+  it("B1: defaults to manual", () => {
+    expect(BOOKMARKS_SORT_DEFAULT).toBe("manual");
+    expect(useTreeStore.getState().bookmarksSort).toBe("manual");
+  });
+
+  it("B2: setBookmarksSort optimistically updates the slice and PUTs exactly once", async () => {
+    getWorkspaceMock.mockResolvedValue({});
+    putWorkspaceMock.mockResolvedValue({ bookmarksSort: "name-asc" });
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.setBookmarksSort("name-asc");
+    });
+
+    expect(useTreeStore.getState().bookmarksSort).toBe("name-asc");
+    expect(putWorkspaceMock).toHaveBeenCalledTimes(1);
+    expect(putWorkspaceMock).toHaveBeenCalledWith({ bookmarksSort: "name-asc" });
+  });
+
+  it("B3: setBookmarksSort reverts the slice and toasts on failure", async () => {
+    getWorkspaceMock.mockResolvedValue({});
+    putWorkspaceMock.mockRejectedValue(new Error("network down"));
+
+    const { result } = renderHook(() => useWorkspace(), { wrapper });
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.setBookmarksSort("created-desc");
+    });
+
+    expect(useTreeStore.getState().bookmarksSort).toBe(BOOKMARKS_SORT_DEFAULT);
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't save sort order. Try again.",
+        variant: "error",
+      }),
+    );
+  });
+
+  it("B4: mount hydrates bookmarksSort from the shared workspace cache", async () => {
+    getWorkspaceMock.mockResolvedValue({ bookmarksSort: "modified-desc" });
+
+    renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => {
+      expect(useTreeStore.getState().bookmarksSort).toBe("modified-desc");
+    });
+  });
+
+  it("B5: mount falls back to manual when bookmarksSort is empty/absent", async () => {
+    getWorkspaceMock.mockResolvedValue({ bookmarksSort: "" });
+
+    renderHook(() => useWorkspace(), { wrapper });
+
+    await waitFor(() => expect(getWorkspaceMock).toHaveBeenCalledTimes(1));
+    expect(useTreeStore.getState().bookmarksSort).toBe(BOOKMARKS_SORT_DEFAULT);
   });
 });
