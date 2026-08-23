@@ -265,7 +265,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     );
   }
 
-  if (bookmarks.length === 0) {
+  if (bookmarks.length === 0 && bookmarkFolders.length === 0) {
     return (
       <div style={panelColumnStyle}>
         {header}
