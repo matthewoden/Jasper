@@ -220,6 +220,40 @@ func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error)
 	return f, nil
 }
 
+// RenameFolder sets the folder's Name and persists. name is trimmed;
+// empty/whitespace-only names return ErrInvalidName and an unknown id
+// returns ErrFolderNotFound, neither persisting a change. Bookmark
+// membership is keyed by folder id, so a rename never disturbs it.
+func (s *Service) RenameFolder(ctx context.Context, id string, name string) (Folder, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%s): %w", id, ErrInvalidName)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder: %w", err)
+	}
+
+	idx := indexOfFolder(doc.Folders, id)
+	if idx == -1 {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%s): %w", id, ErrFolderNotFound)
+	}
+
+	doc.Folders[idx].Name = trimmed
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return Folder{}, fmt.Errorf("bookmarks.RenameFolder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return doc.Folders[idx], nil
+}
+
 // Reorder assigns Order = index for each id in orderedIDs, scoped to
 // folderID (nil = top-level), and persists. orderedIDs must be EXACTLY
 // the current membership of that folder scope — a missing id, an extra
@@ -278,6 +312,15 @@ func (s *Service) Reorder(ctx context.Context, folderID *string, orderedIDs []st
 func indexOfBookmark(bookmarks []Bookmark, id string) int {
 	for i, bm := range bookmarks {
 		if bm.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func indexOfFolder(folders []Folder, id string) int {
+	for i, f := range folders {
+		if f.ID == id {
 			return i
 		}
 	}
