@@ -115,6 +115,19 @@ export async function putBookmarkFolder(
 }
 
 /**
+ * Deletes the grouping label only — the server reparents every bookmark
+ * inside it to the top level rather than deleting them.
+ */
+export async function deleteBookmarkFolder(id: string): Promise<void> {
+  const { error } = await client.DELETE("/bookmark-folders/{id}", {
+    params: { path: { id } },
+  });
+  if (error) {
+    throw new Error(unwrapErrorMessage(error, "delete folder failed"));
+  }
+}
+
+/**
  * Sets the explicit display order for EVERY bookmark in one folder scope
  * (folderId null = top-level). orderedIds must be exactly the current
  * membership of that scope — the backend rejects a mismatch with 404

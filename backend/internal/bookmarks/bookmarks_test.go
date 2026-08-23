@@ -974,4 +974,12 @@ func TestService_RenameFolder_EmptyName_ReturnsErrInvalidName(t *testing.T) {
 	if len(bc.calls) != 1 {
 		t.Fatalf("broadcast calls = %v, want none beyond the create", bc.calls)
 	}
+
+	doc, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if doc.Folders[0].Name != "Work" {
+		t.Fatalf("Load() folders = %+v, want the original name untouched", doc.Folders)
+	}
 }

@@ -16,7 +16,8 @@ export type DeleteTarget =
       subfolderCount: number;
     }
   | { kind: "multi"; count: number }
-  | { kind: "file"; name: string; path: string };
+  | { kind: "file"; name: string; path: string }
+  | { kind: "bookmark-folder"; name: string; bookmarkCount: number };
 
 export interface DeleteCopy {
   title: string;
@@ -57,6 +58,18 @@ export function buildDeleteCopy(target: DeleteTarget): DeleteCopy {
         title: "Delete this file?",
         body: `"${target.name}" will be deleted immediately. This cannot be undone.`,
         confirmLabel: "Delete file",
+      };
+    // A bookmark folder is a grouping label, not a container: nothing is
+    // trashed and no note is touched, so this variant must not borrow the
+    // "everything inside it" Trash promise above.
+    case "bookmark-folder":
+      return {
+        title: "Delete bookmark folder?",
+        body:
+          target.bookmarkCount === 0
+            ? `"${target.name}" will be removed. No notes are deleted.`
+            : `"${target.name}" will be removed and the ${target.bookmarkCount === 1 ? "bookmark" : `${target.bookmarkCount} bookmarks`} inside will move to the top level. No notes are deleted.`,
+        confirmLabel: "Delete folder",
       };
   }
 }

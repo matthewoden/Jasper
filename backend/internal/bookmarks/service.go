@@ -255,7 +255,6 @@ func (s *Service) RenameFolder(ctx context.Context, id string, name string) (Fol
 	if folderNameTaken(doc.Folders, trimmed, id) {
 		return Folder{}, fmt.Errorf("bookmarks.RenameFolder(%q): %w", trimmed, ErrDuplicateFolderName)
 	}
-
 	doc.Folders[idx].Name = trimmed
 
 	if err := Save(s.dataDir, doc); err != nil {
@@ -265,6 +264,42 @@ func (s *Service) RenameFolder(ctx context.Context, id string, name string) (Fol
 	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
 
 	return doc.Folders[idx], nil
+}
+
+// DeleteFolder drops the folder and REPARENTS its bookmarks to top level
+// rather than deleting them — a grouping label is not a container, so
+// discarding it must never discard the notes filed under it. The
+// top-level scope is renumbered so the arrivals get contiguous Order
+// values instead of the ones they carried inside the folder.
+func (s *Service) DeleteFolder(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, err := Load(s.dataDir, s.registry, s.log)
+	if err != nil {
+		return fmt.Errorf("bookmarks.DeleteFolder: %w", err)
+	}
+
+	idx := indexOfFolder(doc.Folders, id)
+	if idx == -1 {
+		return fmt.Errorf("bookmarks.DeleteFolder(%s): %w", id, ErrFolderNotFound)
+	}
+
+	doc.Folders = append(doc.Folders[:idx], doc.Folders[idx+1:]...)
+	for i := range doc.Bookmarks {
+		if doc.Bookmarks[i].FolderID != nil && *doc.Bookmarks[i].FolderID == id {
+			doc.Bookmarks[i].FolderID = nil
+		}
+	}
+	renumberFolder(doc.Bookmarks, nil)
+
+	if err := Save(s.dataDir, doc); err != nil {
+		return fmt.Errorf("bookmarks.DeleteFolder: %w", err)
+	}
+
+	s.broadcaster.Broadcast(EventBookmarkChanged, map[string]any{}, notes.SessionIDFromContext(ctx))
+
+	return nil
 }
 
 // Reorder assigns Order = index for each id in orderedIDs, scoped to
@@ -331,10 +366,6 @@ func indexOfBookmark(bookmarks []Bookmark, id string) int {
 	return -1
 }
 
-func folderExists(folders []Folder, id string) bool {
-	return indexOfFolder(folders, id) != -1
-}
-
 func indexOfFolder(folders []Folder, id string) int {
 	for i, f := range folders {
 		if f.ID == id {
@@ -342,6 +373,10 @@ func indexOfFolder(folders []Folder, id string) int {
 		}
 	}
 	return -1
+}
+
+func folderExists(folders []Folder, id string) bool {
+	return indexOfFolder(folders, id) != -1
 }
 
 // foldFolderName reduces a folder label to its comparison form, borrowing

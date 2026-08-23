@@ -1503,11 +1503,12 @@ paths:
       summary: Rename a bookmark folder (BOOK-03)
       description: |
         Replaces the folder's display name. name is trimmed server-side;
-        empty/whitespace-only names are rejected with 400. A name that
-        matches ANOTHER folder's, compared case-insensitively after NFC
-        normalization, is rejected with 409 — a folder is never its own
-        duplicate, so recasing a folder's own name is allowed.
-        Broadcasts `bookmark:changed` on success.
+        empty/whitespace-only names are rejected with 400 and an unknown
+        folder id with 404. A name that matches ANOTHER folder's, compared
+        case-insensitively after NFC normalization, is rejected with 409 —
+        a folder is never its own duplicate, so recasing a folder's own
+        name is allowed. Bookmark membership is keyed by folder id, so a
+        rename never disturbs it. Broadcasts `bookmark:changed` on success.
       requestBody:
         required: true
         content:
@@ -1535,6 +1536,24 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: A folder with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [bookmarks]
+      operationId: deleteBookmarkFolder
+      summary: Delete a bookmark folder, keeping the bookmarks inside it (BOOK-03)
+      description: |
+        Removes the grouping label only. Every bookmark filed under it is
+        reparented to the top level (folder_id null) and the top-level
+        scope renumbered contiguously — deleting a folder never deletes a
+        bookmark. Broadcasts `bookmark:changed` on success.
+      responses:
+        "204":
+          description: Bookmark folder deleted
+        "404":
+          description: Unknown bookmark folder id
           content:
             application/json:
               schema:
@@ -2002,7 +2021,7 @@ components:
       name: id
       in: path
       required: true
-      description: Opaque UUID of the bookmark folder.
+      description: Opaque UUID of the bookmark folder (a virtual grouping label).
       schema:
         type: string
         format: uuid

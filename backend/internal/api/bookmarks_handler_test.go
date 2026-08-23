@@ -455,10 +455,13 @@ func TestCreateBookmarkFolder_DuplicateName_409(t *testing.T) {
 
 func TestRenameBookmarkFolder_HappyPath_200(t *testing.T) {
 	t.Parallel()
-	ts, _ := setupBookmarksTestServer(t)
+	ts, bc := setupBookmarksTestServer(t)
 	defer ts.Close()
 
 	id := mustCreateBookmarkFolder(t, ts, "Work")
+	bc.mu.Lock()
+	before := len(bc.events)
+	bc.mu.Unlock()
 
 	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"Personal"}`)
 	if resp.StatusCode != 200 {
@@ -469,7 +472,99 @@ func TestRenameBookmarkFolder_HappyPath_200(t *testing.T) {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
 	if got.Id.String() != id || got.Name != "Personal" {
-		t.Errorf("got %+v, want id=%s name=Personal", got, id)
+		t.Errorf("body: got %+v, want id %s name Personal", got, id)
+	}
+
+	bc.mu.Lock()
+	after := len(bc.events)
+	bc.mu.Unlock()
+	if after <= before {
+		t.Errorf("expected a broadcast event on rename")
+	}
+}
+
+func TestRenameBookmarkFolder_EmptyName_400(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	id := mustCreateBookmarkFolder(t, ts, "Work")
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"   "}`)
+	if resp.StatusCode != 400 {
+		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
+	}
+}
+
+func TestRenameBookmarkFolder_UnknownId_404(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+uuid.NewString(), `{"name":"Personal"}`)
+	if resp.StatusCode != 404 {
+		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
+	}
+}
+
+// A folder delete must keep the bookmarks it contained, moved to top level.
+func TestDeleteBookmarkFolder_KeepsBookmarksAtTopLevel_204(t *testing.T) {
+	t.Parallel()
+	ts, bc := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	noteID := mustCreateNote(t, ts, "Alpha")
+	folderID := mustCreateBookmarkFolder(t, ts, "Work")
+	resp, body := mustPostJSON(t, ts, "/api/v1/bookmarks",
+		`{"note_id":"`+noteID+`","folder_id":"`+folderID+`"}`)
+	if resp.StatusCode != 201 {
+		t.Fatalf("create bookmark: %d; body=%s", resp.StatusCode, body)
+	}
+	bc.mu.Lock()
+	before := len(bc.events)
+	bc.mu.Unlock()
+
+	resp, body = mustDelete(t, ts, "/api/v1/bookmark-folders/"+folderID)
+	if resp.StatusCode != 204 {
+		t.Fatalf("status: got %d, want 204; body=%s", resp.StatusCode, body)
+	}
+
+	bc.mu.Lock()
+	after := len(bc.events)
+	bc.mu.Unlock()
+	if after <= before {
+		t.Errorf("expected a broadcast event on folder delete")
+	}
+
+	resp, body = http200Get(t, ts, "/api/v1/bookmarks")
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET /bookmarks: %d; body=%s", resp.StatusCode, body)
+	}
+	var doc BookmarksDocument
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("unmarshal: %v; body=%s", err, body)
+	}
+	if len(doc.Folders) != 0 {
+		t.Errorf("folders: got %+v, want empty", doc.Folders)
+	}
+	if len(doc.Bookmarks) != 1 {
+		t.Fatalf("bookmarks: got %+v, want the bookmark kept", doc.Bookmarks)
+	}
+	if doc.Bookmarks[0].FolderId != nil {
+		t.Errorf("folder_id: got %v, want null (top level)", *doc.Bookmarks[0].FolderId)
+	}
+	if doc.Bookmarks[0].Order != 0 {
+		t.Errorf("order: got %d, want 0", doc.Bookmarks[0].Order)
+	}
+}
+
+func TestDeleteBookmarkFolder_UnknownId_404(t *testing.T) {
+	t.Parallel()
+	ts, _ := setupBookmarksTestServer(t)
+	defer ts.Close()
+
+	resp, body := mustDelete(t, ts, "/api/v1/bookmark-folders/"+uuid.NewString())
+	if resp.StatusCode != 404 {
+		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
 	}
 }
 
@@ -503,29 +598,5 @@ func TestRenameBookmarkFolder_OwnName_200(t *testing.T) {
 	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"WORK"}`)
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
-	}
-}
-
-func TestRenameBookmarkFolder_UnknownID_404(t *testing.T) {
-	t.Parallel()
-	ts, _ := setupBookmarksTestServer(t)
-	defer ts.Close()
-
-	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+uuid.NewString(), `{"name":"Work"}`)
-	if resp.StatusCode != 404 {
-		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
-	}
-}
-
-func TestRenameBookmarkFolder_EmptyName_400(t *testing.T) {
-	t.Parallel()
-	ts, _ := setupBookmarksTestServer(t)
-	defer ts.Close()
-
-	id := mustCreateBookmarkFolder(t, ts, "Work")
-
-	resp, body := mustPutJSON(t, ts, "/api/v1/bookmark-folders/"+id, `{"name":"   "}`)
-	if resp.StatusCode != 400 {
-		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
 	}
 }

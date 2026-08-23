@@ -516,7 +516,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         await deleteFile(deleteTarget.path);
         await refresh();
         broadcastRefresh();
-      } else {
+      } else if (deleteTarget.kind === "folder") {
         await muts.deleteFolder(deleteTarget.path, true);
       }
       setDeleteTarget(null);

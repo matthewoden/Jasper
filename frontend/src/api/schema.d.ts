@@ -823,7 +823,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Opaque UUID of the bookmark folder. */
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
                 id: components["parameters"]["BookmarkFolderId"];
             };
             cookie?: never;
@@ -832,15 +832,23 @@ export interface paths {
         /**
          * Rename a bookmark folder (BOOK-03)
          * @description Replaces the folder's display name. name is trimmed server-side;
-         *     empty/whitespace-only names are rejected with 400. A name that
-         *     matches ANOTHER folder's, compared case-insensitively after NFC
-         *     normalization, is rejected with 409 — a folder is never its own
-         *     duplicate, so recasing a folder's own name is allowed.
-         *     Broadcasts `bookmark:changed` on success.
+         *     empty/whitespace-only names are rejected with 400 and an unknown
+         *     folder id with 404. A name that matches ANOTHER folder's, compared
+         *     case-insensitively after NFC normalization, is rejected with 409 —
+         *     a folder is never its own duplicate, so recasing a folder's own
+         *     name is allowed. Bookmark membership is keyed by folder id, so a
+         *     rename never disturbs it. Broadcasts `bookmark:changed` on success.
          */
         put: operations["renameBookmarkFolder"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete a bookmark folder, keeping the bookmarks inside it (BOOK-03)
+         * @description Removes the grouping label only. Every bookmark filed under it is
+         *     reparented to the top level (folder_id null) and the top-level
+         *     scope renumbered contiguously — deleting a folder never deletes a
+         *     bookmark. Broadcasts `bookmark:changed` on success.
+         */
+        delete: operations["deleteBookmarkFolder"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2233,7 +2241,7 @@ export interface components {
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
-        /** @description Opaque UUID of the bookmark folder. */
+        /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
         BookmarkFolderId: string;
         /**
          * @description Normalized tag name (lowercase letters, digits, hyphens, underscores only;
@@ -3962,7 +3970,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Opaque UUID of the bookmark folder. */
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
                 id: components["parameters"]["BookmarkFolderId"];
             };
             cookie?: never;
@@ -4002,6 +4010,36 @@ export interface operations {
             };
             /** @description A folder with this name already exists */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteBookmarkFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque UUID of the bookmark folder (a virtual grouping label). */
+                id: components["parameters"]["BookmarkFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bookmark folder deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown bookmark folder id */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -14,25 +14,58 @@ import type { NodeApi, TreeApi } from "react-arborist";
 import { useBookmarks } from "../lib/useBookmarks";
 import { useFileTree } from "../lib/useFileTree";
 import { usePaneStore } from "../lib/usePaneStore";
+import { useReveal } from "../lib/useReveal";
+import { useTreeMutations } from "../lib/useTreeMutations";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useWorkspace } from "../lib/useWorkspace";
+import { requestFind } from "../lib/findRequest";
+import { revealInNavigation } from "../lib/revealInNavigation";
+import type { TreeNode as WireTreeNode } from "../lib/treeApi";
 import { TreeView } from "./TreeView";
-import { TreeRow } from "./TreeRow";
+import { TreeRow, type TreeRowData } from "./TreeRow";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { BookmarksErrorState } from "./BookmarksErrorState";
 import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
 import { BookmarksSortMenu } from "./BookmarksSortMenu";
+import { BookmarkFolderRenameInput } from "./BookmarkFolderRenameInput";
+import {
+  BookmarkOptionsMenu,
+  BookmarkRowContextMenu,
+  type BookmarkMenuActions,
+} from "./BookmarkOptionsMenu";
+import {
+  BookmarkFolderContextMenu,
+  BookmarkFolderOptionsMenu,
+  type BookmarkFolderMenuActions,
+} from "./BookmarkFolderOptionsMenu";
+import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { MoveToFolderModal } from "./MoveToFolderModal";
+import { useToast } from "./toast.utils";
 import { Tooltip } from "./Tooltip";
 import {
   adaptBookmarks,
-  buildBookmarkMenu,
   buildNoteMetaMap,
   computeBookmarkMoveDispatch,
   findNoteTitle,
 } from "./bookmarkTree.utils";
-import type { ArboristNode } from "./fileTree.utils";
+import { basename, type ArboristNode } from "./fileTree.utils";
 import { FolderPlus } from "lucide-react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+/** Live note path by UUID — a bookmark only ever stores note_id. */
+function findNotePath(
+  nodes: ReadonlyArray<WireTreeNode>,
+  id: string,
+): string | null {
+  for (const node of nodes) {
+    if (node.kind === "note" && node.id === id) return node.path;
+    if (node.kind === "folder" && Array.isArray(node.children)) {
+      const found = findNotePath(node.children, id);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
 
 export interface BookmarksPanelProps {
   onSelectNote?: (id: string) => void;
@@ -110,13 +143,32 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     toggleBookmark,
     moveToFolder,
     createFolder,
+    renameFolder,
+    deleteFolder,
     reorder,
   } = useBookmarks();
   const { tree } = useFileTree();
   const bookmarksSort = useTreeStore((s) => s.bookmarksSort);
   const { setBookmarksSort } = useWorkspace();
   const manualOrder = bookmarksSort === "manual";
+  const { reveal } = useReveal();
+  const { deleteNote } = useTreeMutations();
+  const { toast } = useToast();
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{
+    noteId: string;
+    notePath: string;
+  } | null>(null);
+  const [deleteNoteTarget, setDeleteNoteTarget] = useState<{
+    noteId: string;
+    name: string;
+  } | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{
+    id: string;
+    name: string;
+    bookmarkCount: number;
+  } | null>(null);
   const treeRef = useRef<TreeApi<ArboristNode> | null>(null);
 
   const resolveTitle = useCallback(
@@ -172,16 +224,118 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     usePaneStore.getState().openInActivePane(noteId);
   }, []);
 
-  const bookmarkMenu = useMemo(
-    () =>
-      buildBookmarkMenu(bookmarkFolders, {
-        onRemove: (noteId) => void toggleBookmark(noteId),
-        onMoveToFolder: (bookmarkId, folderId) =>
-          void moveToFolder(bookmarkId, folderId),
-        onNewFolder: () => setCreatingFolder(true),
-      }),
-    [bookmarkFolders, toggleBookmark, moveToFolder],
+  const resolvePath = useCallback(
+    (noteId: string): string => (tree && findNotePath(tree.root, noteId)) ?? "",
+    [tree],
   );
+
+  const folderOptions = useMemo(
+    () => bookmarkFolders.map((f) => ({ id: f.id, name: f.name })),
+    [bookmarkFolders],
+  );
+
+  /**
+   * Find/Replace and the splits act on the bookmarked note, so both first open
+   * it in the active pane — the sidebar has no editor of its own to target.
+   */
+  const bookmarkMenuActions = useCallback(
+    (bookmarkId: string, noteId: string, title: string): BookmarkMenuActions => ({
+      noteId,
+      folders: folderOptions,
+      onRequestRename: () => {
+        revealInNavigation(noteId);
+        useTreeStore.getState().startRename("note", noteId);
+      },
+      onMove: () => setMoveTarget({ noteId, notePath: resolvePath(noteId) }),
+      onSplit: (dir) => usePaneStore.getState().openNoteInNewSplit(noteId, dir),
+      onDelete: () =>
+        setDeleteNoteTarget({
+          noteId,
+          name: basename(resolvePath(noteId)) || title,
+        }),
+      onRemoveBookmark: () => void toggleBookmark(noteId),
+      onMoveToBookmarkFolder: (folderId) =>
+        void moveToFolder(bookmarkId, folderId),
+      onNewBookmarkFolder: () => setCreatingFolder(true),
+      onOpenFind: () => {
+        usePaneStore.getState().openInActivePane(noteId);
+        requestFind("find");
+      },
+      onOpenFindReplace: () => {
+        usePaneStore.getState().openInActivePane(noteId);
+        requestFind("replace");
+      },
+      onRevealInFileManager: () => {
+        void reveal(resolvePath(noteId));
+      },
+    }),
+    [folderOptions, moveToFolder, resolvePath, reveal, toggleBookmark],
+  );
+
+  const folderMenuActions = useCallback(
+    (folderId: string, name: string): BookmarkFolderMenuActions => ({
+      onRename: () => setRenamingFolderId(folderId),
+      onDelete: () =>
+        setDeleteFolderTarget({
+          id: folderId,
+          name,
+          bookmarkCount: bookmarks.filter((b) => b.folder_id === folderId)
+            .length,
+        }),
+    }),
+    [bookmarks],
+  );
+
+  const rowMenuOverrideFor = useCallback(
+    (
+      data: TreeRowData,
+    ): { trigger: ReactNode; wrapRow?: (row: ReactNode) => ReactNode } | undefined => {
+      if (data.kind === "bookmark") {
+        const actions = bookmarkMenuActions(
+          data.bookmarkId,
+          data.noteId,
+          data.title,
+        );
+        return {
+          trigger: <BookmarkOptionsMenu {...actions} />,
+          wrapRow: (row) => (
+            <BookmarkRowContextMenu {...actions}>{row}</BookmarkRowContextMenu>
+          ),
+        };
+      }
+      if (data.kind === "bookmark-folder") {
+        const actions = folderMenuActions(data.folderId, data.name);
+        return {
+          trigger: <BookmarkFolderOptionsMenu {...actions} />,
+          wrapRow: (row) => (
+            <BookmarkFolderContextMenu {...actions}>{row}</BookmarkFolderContextMenu>
+          ),
+        };
+      }
+      return undefined;
+    },
+    [bookmarkMenuActions, folderMenuActions],
+  );
+
+  const handleDeleteNoteConfirm = useCallback(async () => {
+    if (deleteNoteTarget === null) return;
+    try {
+      await deleteNote(deleteNoteTarget.noteId);
+    } catch {
+      toast({ title: "Couldn't delete note. Try again.", variant: "error" });
+    } finally {
+      setDeleteNoteTarget(null);
+    }
+  }, [deleteNote, deleteNoteTarget, toast]);
+
+  const handleDeleteFolderConfirm = useCallback(async () => {
+    if (deleteFolderTarget === null) return;
+    try {
+      await deleteFolder(deleteFolderTarget.id);
+    } finally {
+      setDeleteFolderTarget(null);
+    }
+  }, [deleteFolder, deleteFolderTarget]);
 
   const handleCreateFolder = useCallback(
     async (name: string) => {
@@ -324,17 +478,75 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         disableDrop={disableDrop}
         disableDrag={disableDrag}
         onRootDrop={manualOrder ? handleRootDrop : undefined}
-        renderRow={({ node, style, dragHandle }) => (
-          <TreeRow
-            node={node}
-            style={style}
-            dragHandle={dragHandle}
-            onSelectNote={noopSelectNote}
-            onActivate={handleActivate}
-            bookmarkMenu={bookmarkMenu}
-          />
-        )}
+        renderRow={({ node, style, dragHandle }) => {
+          const rowData = node.data;
+          if (
+            rowData.kind === "bookmark-folder" &&
+            renamingFolderId === rowData.folderId
+          ) {
+            return (
+              <div style={style}>
+                <BookmarkFolderRenameInput
+                  initialValue={rowData.name}
+                  onCommit={async (name) => {
+                    setRenamingFolderId(null);
+                    await renameFolder(rowData.folderId, name);
+                  }}
+                  onCancel={() => setRenamingFolderId(null)}
+                />
+              </div>
+            );
+          }
+          return (
+            <TreeRow
+              node={node}
+              style={style}
+              dragHandle={dragHandle}
+              onSelectNote={noopSelectNote}
+              onActivate={handleActivate}
+              rowMenuOverride={rowMenuOverrideFor(rowData)}
+            />
+          );
+        }}
       />
+      {moveTarget !== null && (
+        <MoveToFolderModal
+          noteId={moveTarget.noteId}
+          notePath={moveTarget.notePath}
+          open
+          onOpenChange={(next) => {
+            if (!next) setMoveTarget(null);
+          }}
+        />
+      )}
+      {deleteNoteTarget !== null && (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setDeleteNoteTarget(null);
+          }}
+          target={{
+            kind: "note",
+            name: deleteNoteTarget.name,
+            id: deleteNoteTarget.noteId,
+          }}
+          onConfirm={handleDeleteNoteConfirm}
+        />
+      )}
+      {deleteFolderTarget !== null && (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setDeleteFolderTarget(null);
+          }}
+          target={{
+            kind: "bookmark-folder",
+            name: deleteFolderTarget.name,
+            bookmarkCount: deleteFolderTarget.bookmarkCount,
+          }}
+          onConfirm={handleDeleteFolderConfirm}
+        />
+      )}
     </div>
   );
 }

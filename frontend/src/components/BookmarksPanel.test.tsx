@@ -21,6 +21,8 @@ const postBookmarkMock = vi.fn();
 const deleteBookmarkMock = vi.fn();
 const postBookmarkMoveMock = vi.fn();
 const postBookmarkFolderMock = vi.fn();
+const putBookmarkFolderMock = vi.fn();
+const deleteBookmarkFolderMock = vi.fn();
 const reorderBookmarksMock = vi.fn();
 
 vi.mock("../lib/bookmarksApi", async () => {
@@ -36,6 +38,9 @@ vi.mock("../lib/bookmarksApi", async () => {
     postBookmarkMove: (...args: unknown[]) => postBookmarkMoveMock(...args),
     postBookmarkFolder: (...args: unknown[]) =>
       postBookmarkFolderMock(...args),
+    putBookmarkFolder: (...args: unknown[]) => putBookmarkFolderMock(...args),
+    deleteBookmarkFolder: (...args: unknown[]) =>
+      deleteBookmarkFolderMock(...args),
     reorderBookmarks: (...args: unknown[]) => reorderBookmarksMock(...args),
   };
 });
@@ -106,6 +111,8 @@ describe("BookmarksPanel", () => {
     deleteBookmarkMock.mockReset();
     postBookmarkMoveMock.mockReset();
     postBookmarkFolderMock.mockReset();
+    putBookmarkFolderMock.mockReset();
+    deleteBookmarkFolderMock.mockReset();
     reorderBookmarksMock.mockReset();
     toastSpy.mockReset();
     // Per-entry reset (not the global registry reset): the eventBus
@@ -196,10 +203,8 @@ describe("BookmarksPanel", () => {
   // --- "…" menu (Remove / Move to folder), inline new-folder input ---
 
   function openRowMenu(bookmarkId: string) {
-    // TreeRow's kebab is aria-label="Row menu" (shared with Notes), not the
-    // bespoke BookmarkRow's "Bookmark options".
     const trigger = bookmarkRow(bookmarkId).querySelector(
-      "button[aria-label='Row menu']",
+      "button[aria-label='Bookmark options']",
     ) as HTMLElement;
     fireEvent.pointerDown(trigger, { button: 0 });
     fireEvent.click(trigger);
@@ -211,8 +216,8 @@ describe("BookmarksPanel", () => {
     await renderPanel(<BookmarksPanel />);
 
     openRowMenu("bm-1");
-    const removeItem = await screen.findByText("Remove");
-    expect(screen.getByText("Move to folder")).toBeDefined();
+    const removeItem = await screen.findByText("Remove bookmark");
+    expect(screen.getByText("Move to bookmark folder")).toBeDefined();
 
     deleteBookmarkMock.mockResolvedValueOnce(undefined);
     fireEvent.click(removeItem);
@@ -227,7 +232,7 @@ describe("BookmarksPanel", () => {
     await renderPanel(<BookmarksPanel />);
 
     openRowMenu("bm-1");
-    const subTrigger = await screen.findByText("Move to folder");
+    const subTrigger = await screen.findByText("Move to bookmark folder");
     fireEvent.pointerDown(subTrigger, { button: 0 });
     fireEvent.click(subTrigger);
 
