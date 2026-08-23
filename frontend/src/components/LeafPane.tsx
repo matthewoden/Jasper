@@ -17,6 +17,7 @@ import { SearchQuery } from "@codemirror/search";
 import { EditorPane, type EditorPaneHandlers } from "./EditorPane";
 import { TabStrip } from "./TabStrip";
 import { FindReplaceBar, type FindToggleKind, type MatchCount } from "./FindReplaceBar";
+import { onFindRequest } from "../lib/findRequest";
 import { usePaneStore } from "../lib/usePaneStore";
 import { usePaneDragStore } from "../lib/usePaneDragStore";
 import type { LeafNode } from "../lib/paneTree";
@@ -234,6 +235,15 @@ export function LeafPane({
   const handleOpenFindReplace = useCallback(() => {
     setFindBar((s) => ({ ...s, open: true, mode: "replace" }));
   }, []);
+
+  // Only the active leaf answers an out-of-pane Find request; every other
+  // leaf would open a bar the user never asked for.
+  useEffect(() => {
+    if (!isActive) return undefined;
+    return onFindRequest((mode) => {
+      setFindBar((s) => ({ ...s, open: true, mode }));
+    });
+  }, [isActive]);
 
   const handleQueryChange = useCallback(
     (query: string) => {

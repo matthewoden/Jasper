@@ -19,6 +19,8 @@ import {
   deleteBookmark,
   postBookmarkMove,
   postBookmarkFolder,
+  putBookmarkFolder,
+  deleteBookmarkFolder,
   reorderBookmarks,
   type BookmarksDocument,
 } from "./bookmarksApi";
@@ -38,6 +40,8 @@ export interface UseBookmarksResult {
   toggleBookmark: (noteId: string) => Promise<void>;
   moveToFolder: (id: string, folderId: string | null) => Promise<void>;
   createFolder: (name: string) => Promise<void>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  deleteFolder: (id: string) => Promise<void>;
   reorder: (folderId: string | null, orderedIds: string[]) => Promise<void>;
   isBookmarked: (noteId: string) => boolean;
 }
@@ -200,6 +204,41 @@ export function useBookmarks(): UseBookmarksResult {
     [toast],
   );
 
+  const renameFolder = useCallback(
+    async (id: string, name: string) => {
+      try {
+        await putBookmarkFolder(id, name);
+        await bookmarksResource.invalidate();
+      } catch (e) {
+        toast({
+          title: "Couldn't rename folder",
+          description: String(e instanceof Error ? e.message : e),
+          variant: "error",
+        });
+      }
+    },
+    [toast],
+  );
+
+  // No optimistic reparenting: the server decides the surviving bookmarks'
+  // new Order, and guessing it here would flash a different row order than
+  // the refetch lands on.
+  const deleteFolder = useCallback(
+    async (id: string) => {
+      try {
+        await deleteBookmarkFolder(id);
+        await bookmarksResource.invalidate();
+      } catch (e) {
+        toast({
+          title: "Couldn't delete folder",
+          description: String(e instanceof Error ? e.message : e),
+          variant: "error",
+        });
+      }
+    },
+    [toast],
+  );
+
   /**
    * reorder — optimistically reassigns Order = index (within orderedIds)
    * for exactly the bookmarks named in orderedIds, leaving every bookmark
@@ -246,6 +285,8 @@ export function useBookmarks(): UseBookmarksResult {
     toggleBookmark,
     moveToFolder,
     createFolder,
+    renameFolder,
+    deleteFolder,
     reorder,
     isBookmarked,
   };

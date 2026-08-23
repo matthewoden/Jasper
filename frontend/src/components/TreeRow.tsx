@@ -12,7 +12,7 @@
  * XSS: this file MUST NOT use React's inner-HTML escape hatch. A vitest case
  * enforces it.
  */
-import { useCallback, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useCallback, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import type { NodeApi } from "react-arborist";
 import {
   CalendarDays,
@@ -157,6 +157,17 @@ export interface TreeRowProps {
    */
   isNoteBookmarked?: (noteId: string) => boolean;
   onToggleNoteBookmark?: (noteId: string) => void;
+
+  /**
+   * Replaces this row's built-in kebab and right-click menus wholesale.
+   * `trigger` renders in the kebab slot; `wrapRow` receives the row element
+   * and returns it inside the caller's own context-menu trigger. Used by the
+   * bookmarks panel, whose rows need a different item set than TreeRowMenu's.
+   */
+  rowMenuOverride?: {
+    trigger: ReactNode;
+    wrapRow?: (row: ReactNode) => ReactNode;
+  };
 }
 
 const muted: CSSProperties = { color: "var(--color-muted)", flexShrink: 0 };
@@ -202,6 +213,7 @@ export function TreeRow({
   onBulkDelete,
   isNoteBookmarked,
   onToggleNoteBookmark,
+  rowMenuOverride,
 }: TreeRowProps) {
   const activeNoteId = useTreeStore((s) => s.activeNoteId);
   const pendingRename = useTreeStore((s) => s.pendingRename);
@@ -711,7 +723,12 @@ export function TreeRow({
       {/* data-ai-level drives the violet tint on granted folders via theme.css */}
       {/* Kebab — wraps TreeRowDropdownMenu; hidden until row hover or focus-within.
           Omitted entirely for bookmark-folder rows (menuRowKind === null). */}
-      {menuRowKind !== null && (
+      {rowMenuOverride !== undefined && (
+        <span className="invisible group-hover:visible group-focus-within:visible">
+          {rowMenuOverride.trigger}
+        </span>
+      )}
+      {rowMenuOverride === undefined && menuRowKind !== null && (
         <TreeRowDropdownMenu
           rowKind={menuRowKind}
           noteId={data.kind === "note" ? data.id : undefined}
@@ -777,6 +794,10 @@ export function TreeRow({
       )}
     </div>
   );
+
+  if (rowMenuOverride !== undefined) {
+    return rowMenuOverride.wrapRow ? rowMenuOverride.wrapRow(rowContent) : rowContent;
+  }
 
   if (menuRowKind === null) {
     // bookmark-folder rows: no context menu either (matches the

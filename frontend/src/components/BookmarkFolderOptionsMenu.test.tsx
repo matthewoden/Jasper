@@ -39,7 +39,7 @@ describe("BookmarkFolderOptionsMenu", () => {
       </TooltipProvider>,
     );
     expect(
-      screen.getByRole("button", { name: "Bookmark folder options" }),
+      screen.getByLabelText("Bookmark folder options"),
     ).toBeTruthy();
   });
 
@@ -73,7 +73,7 @@ describe("BookmarkFolderOptionsMenu", () => {
         <BookmarkFolderOptionsMenu onRename={vi.fn()} onDelete={vi.fn()} />
       </TooltipProvider>,
     );
-    screen.getByRole("button", { name: "Bookmark folder options" }).focus();
+    screen.getByLabelText("Bookmark folder options").focus();
     await userEvent.keyboard("{Enter}");
     expect(screen.getByRole("menuitem", { name: "Rename folder" })).toBeTruthy();
   });

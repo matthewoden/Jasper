@@ -72,7 +72,7 @@ describe("BookmarkOptionsMenu", () => {
 
   it("labels the trigger for assistive tech", () => {
     renderMenu();
-    expect(screen.getByRole("button", { name: "Bookmark options" })).toBeTruthy();
+    expect(screen.getByLabelText("Bookmark options")).toBeTruthy();
   });
 
   it.each([
@@ -141,7 +141,7 @@ describe("BookmarkOptionsMenu", () => {
         <BookmarkOptionsMenu noteId="note-1" folders={[]} {...handlers} />
       </TooltipProvider>,
     );
-    const trigger = screen.getByRole("button", { name: "Bookmark options" });
+    const trigger = screen.getByLabelText("Bookmark options");
     trigger.focus();
     await userEvent.keyboard("{Enter}");
     expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
