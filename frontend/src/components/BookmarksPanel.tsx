@@ -489,8 +489,8 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
                 <BookmarkFolderRenameInput
                   initialValue={rowData.name}
                   onCommit={async (name) => {
-                    setRenamingFolderId(null);
                     await renameFolder(rowData.folderId, name);
+                    setRenamingFolderId(null);
                   }}
                   onCancel={() => setRenamingFolderId(null)}
                 />

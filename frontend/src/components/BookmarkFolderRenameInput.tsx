@@ -74,7 +74,14 @@ export function BookmarkFolderRenameInput({
       onCancel();
       return;
     }
-    await onCommit(trimmed);
+    try {
+      await onCommit(trimmed);
+    } catch (e) {
+      // A refused rename (a duplicate folder name) must leave the field
+      // mounted and still holding what the user typed.
+      settled.current = false;
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, [value, initialValue, onCommit, onCancel]);
 
   const cancel = useCallback(() => {

@@ -216,6 +216,9 @@ export function useBookmarks(): UseBookmarksResult {
         await putBookmarkFolder(id, name);
         await bookmarksResource.invalidate();
       } catch (e) {
+        if (e instanceof BookmarkFolderNameConflictError) {
+          throw e;
+        }
         toast({
           title: "Couldn't rename folder",
           description: String(e instanceof Error ? e.message : e),
