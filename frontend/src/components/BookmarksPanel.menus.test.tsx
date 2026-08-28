@@ -8,7 +8,10 @@ import type { ReactElement } from "react";
 
 import { BookmarksPanel } from "./BookmarksPanel";
 import { TooltipProvider } from "./Tooltip";
-import { bookmarksResource } from "../lib/bookmarksApi";
+import {
+  bookmarksResource,
+  BookmarkFolderNameConflictError,
+} from "../lib/bookmarksApi";
 import type { Tree } from "../lib/treeApi";
 
 const getBookmarksMock = vi.fn();
@@ -20,7 +23,9 @@ const deleteBookmarkFolderMock = vi.fn();
 
 vi.mock("../lib/bookmarksApi", async () => {
   const { createResource } = await import("../lib/resources/createResource");
+  class BookmarkFolderNameConflictError extends Error {}
   return {
+    BookmarkFolderNameConflictError,
     bookmarksResource: createResource("bookmarks", () => getBookmarksMock(), {
       mode: "cached",
       invalidatedBy: ["bookmark:changed"],
@@ -42,6 +47,9 @@ vi.mock("../components/toast.utils", () => ({
 
 const deleteNoteMock = vi.hoisted(() => vi.fn());
 vi.mock("../lib/useTreeMutations", () => ({
+  // RenameInput narrows on TreeMutationError, so the mock has to carry it or
+  // the instanceof throws before any error can reach the field.
+  TreeMutationError: class TreeMutationError extends Error {},
   useTreeMutations: () => ({
     deleteNote: deleteNoteMock,
     deleteFolder: vi.fn(),
@@ -217,6 +225,62 @@ describe("BookmarksPanel row menus", () => {
     });
   });
 
+  // JASPER-24, locked: a refused name shows inline, and the field stays open
+  // holding what was typed. Client-side first — the sibling list is right
+  // there — with the server's 409 as the backstop for anything it missed.
+  it("refuses a duplicate folder name inline without calling the server", async () => {
+    getBookmarksMock.mockResolvedValue({
+      folders: [folder1, { id: "f-2", name: "Personal" }],
+      bookmarks: [bookmarkInFolder],
+    });
+    await renderPanel(<BookmarksPanel />);
+
+    openMenu(rowFor("bookmark-folder", "f-1"), "Bookmark folder options");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename folder" }));
+    const input = (await screen.findByLabelText(
+      "Bookmark folder name",
+    )) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "personal" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(input.value).toBe("personal");
+    expect(document.contains(input)).toBe(true);
+    expect(putBookmarkFolderMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a server 409 inline and keeps the typed text", async () => {
+    getBookmarksMock.mockResolvedValue({
+      folders: [folder1],
+      bookmarks: [bookmarkInFolder],
+    });
+    await renderPanel(<BookmarksPanel />);
+
+    openMenu(rowFor("bookmark-folder", "f-1"), "Bookmark folder options");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename folder" }));
+    const input = (await screen.findByLabelText(
+      "Bookmark folder name",
+    )) as HTMLInputElement;
+
+    // Nothing local to catch this — the clash arrived after the panel loaded.
+    putBookmarkFolderMock.mockRejectedValueOnce(
+      new BookmarkFolderNameConflictError(
+        "a folder with this name already exists",
+      ),
+    );
+    fireEvent.change(input, { target: { value: "Archive" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain(
+        "a folder with this name already exists",
+      );
+    });
+    expect(input.value).toBe("Archive");
+    expect(document.contains(input)).toBe(true);
+  });
+
   it("deletes a bookmark folder but keeps the bookmarks that were inside it", async () => {
     getBookmarksMock.mockResolvedValue({
       folders: [folder1],
@@ -244,6 +308,8 @@ describe("BookmarksPanel row menus", () => {
     await waitFor(() => {
       expect(rowFor("bookmark", "bm-2")).not.toBeNull();
     });
-    expect(rowFor("bookmark-folder", "f-1")).toBeNull();
+    await waitFor(() => {
+      expect(rowFor("bookmark-folder", "f-1")).toBeNull();
+    });
   });
 });

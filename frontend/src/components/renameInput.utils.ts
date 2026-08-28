@@ -13,12 +13,19 @@ export interface ValidateResult {
   error?: string;
 }
 
+export interface ValidateRenameOptions {
+  /** Bookmark folders are virtual labels rather than paths, so the
+   *  filesystem-legal-character rule must not apply to them. */
+  allowAnyCharacters?: boolean;
+}
+
 export function validateRename(
   value: string,
   siblingNames: string[],
+  opts: ValidateRenameOptions = {},
 ): ValidateResult {
   if (value === "") return { valid: false, error: "Name cannot be empty." };
-  if (ILLEGAL_CHAR_REGEX.test(value))
+  if (!opts.allowAnyCharacters && ILLEGAL_CHAR_REGEX.test(value))
     return {
       valid: false,
       error: "Use letters, numbers, dashes, and underscores only.",

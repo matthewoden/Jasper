@@ -40,7 +40,7 @@ export interface UseBookmarksResult {
   refresh: () => Promise<void>;
   toggleBookmark: (noteId: string) => Promise<void>;
   moveToFolder: (id: string, folderId: string | null) => Promise<void>;
-  createFolder: (name: string) => Promise<void>;
+  createFolder: (name: string) => Promise<BookmarkFolder | undefined>;
   renameFolder: (id: string, name: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   reorder: (folderId: string | null, orderedIds: string[]) => Promise<void>;
@@ -194,8 +194,9 @@ export function useBookmarks(): UseBookmarksResult {
   const createFolder = useCallback(
     async (name: string) => {
       try {
-        await postBookmarkFolder(name);
+        const created = await postBookmarkFolder(name);
         await bookmarksResource.invalidate();
+        return created;
       } catch (e) {
         if (e instanceof BookmarkFolderNameConflictError) {
           throw e;

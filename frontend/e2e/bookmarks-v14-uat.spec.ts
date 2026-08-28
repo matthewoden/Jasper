@@ -130,6 +130,20 @@ async function bookmarkViaStar(page: Page, noteId: string): Promise<void> {
  * Open a row's ⋯ menu. The kebab is CSS hover-revealed, so the row must be
  * hovered first or Playwright's actionability check never sees it.
  */
+/**
+ * Creates a bookmark folder the way the panel now does it — the button makes
+ * an "untitled" folder server-side and hands its own row to the inline input,
+ * matching the notes tree. Returns once the named row is on screen.
+ */
+async function createBookmarkFolder(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "New bookmark folder" }).click();
+  const input = page.getByLabel("Bookmark folder name");
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await input.fill(name);
+  await input.press("Enter");
+  await expect(folderRowByName(page, name)).toBeVisible({ timeout: 5_000 });
+}
+
 async function openRowMenu(row: Locator, label: string): Promise<void> {
   await row.hover();
   const kebab = row.getByRole("button", { name: label });
@@ -295,12 +309,7 @@ test.describe("@bookmarks-v14 @bookmarks-sort JASPER-22: drag-to-reorder is supp
     // the JASPER-25 scenario below) followed by a reload, so the panel
     // hydrates the arrangement from the server rather than from a WS race.
     await openSidebarTab(page, "Bookmarks");
-    await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const folderInput = page.getByLabel("New bookmark folder name");
-    await expect(folderInput).toBeVisible();
-    await folderInput.fill("Box");
-    await folderInput.press("Enter");
-    await expect(folderRowByName(page, "Box")).toBeVisible({ timeout: 5_000 });
+    await createBookmarkFolder(page, "Box");
 
     const seeded = await fetchBookmarks(page, jasper.baseURL);
     const boxId = seeded.folders[0].id;
@@ -465,11 +474,7 @@ test.describe("@bookmarks-v14 @bookmarks-folder JASPER-23: create a folder with 
     await openSidebarTab(page, "Bookmarks");
     await expect(page.getByTestId("bookmarks-empty-state")).toBeVisible();
 
-    await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const input = page.getByLabel("New bookmark folder name");
-    await expect(input).toBeVisible();
-    await input.fill("Reading");
-    await input.press("Enter");
+    await createBookmarkFolder(page, "Reading");
 
     // The shipped bug: the empty state swallowed the new folder, so the row
     // never painted (and a retry produced a second folder server-side).
@@ -479,12 +484,7 @@ test.describe("@bookmarks-v14 @bookmarks-folder JASPER-23: create a folder with 
     expect((await fetchBookmarks(page, jasper.baseURL)).folders).toHaveLength(1);
 
     // A second create proves the count assertion above is not vacuous.
-    await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const second = page.getByLabel("New bookmark folder name");
-    await expect(second).toBeVisible();
-    await second.fill("Later");
-    await second.press("Enter");
-    await expect(folderRowByName(page, "Later")).toBeVisible({ timeout: 5_000 });
+    await createBookmarkFolder(page, "Later");
     await expect(folderRows(page)).toHaveCount(2);
     expect((await fetchBookmarks(page, jasper.baseURL)).folders).toHaveLength(2);
 
@@ -520,30 +520,63 @@ test.describe("@bookmarks-v14 @bookmarks-dupe JASPER-24: duplicate name refused 
     await waitForConnected(page, jasper.baseURL);
 
     await openSidebarTab(page, "Bookmarks");
-    await page.getByRole("button", { name: "New bookmark folder" }).click();
-    await page.getByLabel("New bookmark folder name").fill("Work");
-    await page.getByLabel("New bookmark folder name").press("Enter");
-    await expect(folderRowByName(page, "Work")).toBeVisible({ timeout: 5_000 });
+    await createBookmarkFolder(page, "Work");
 
+    // The panel creates an "untitled" row and opens it for rename, so the
+    // clash is caught on the way IN to a name rather than on create.
     await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const input = page.getByLabel("New bookmark folder name");
+    const input = page.getByLabel("Bookmark folder name");
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill("WORK");
     await input.press("Enter");
 
-    await expect(page.getByRole("alert")).toHaveText(
-      "a folder with this name already exists",
-    );
+    await expect(page.getByRole("alert")).toBeVisible();
     await expect(input).toBeVisible();
     await expect(input).toHaveValue("WORK");
     await expect(input).toHaveAttribute("aria-invalid", "true");
-    await expect(folderRows(page)).toHaveCount(1);
-    expect((await fetchBookmarks(page, jasper.baseURL)).folders).toHaveLength(1);
+    // The clash is refused: no folder is now called Work in another casing.
+    const namesWhileRefused = (
+      await fetchBookmarks(page, jasper.baseURL)
+    ).folders.map((f) => f.name);
+    expect(namesWhileRefused.filter((n) => n.toLowerCase() === "work")).toEqual([
+      "Work",
+    ]);
 
     // Correcting in place commits without reopening the input.
     await input.fill("Personal");
     await input.press("Enter");
     await expect(folderRowByName(page, "Personal")).toBeVisible({ timeout: 5_000 });
     await expect(folderRows(page)).toHaveCount(2);
+  });
+
+  // The locked requirement is that enforcement lives in the BACKEND, so MCP
+  // and direct API writes cannot create duplicates either. The inline error
+  // above is the UI half; this is the half a frontend guard could never give.
+  test("the server refuses a duplicate name with 409, whatever the client does", async ({
+    page,
+  }) => {
+    await waitForConnected(page, jasper.baseURL);
+
+    const create = async (name: string) =>
+      page.request.post(`${jasper.baseURL}/api/v1/bookmark-folders`, {
+        data: { name },
+      });
+
+    const first = await create("Archive");
+    expect(first.status()).toBe(201);
+
+    for (const variant of ["Archive", "archive", "ARCHIVE", "  Archive  "]) {
+      const resp = await create(variant);
+      expect(
+        resp.status(),
+        `POST /bookmark-folders {name:${JSON.stringify(variant)}} should be refused`,
+      ).toBe(409);
+    }
+
+    const names = (await fetchBookmarks(page, jasper.baseURL)).folders
+      .map((f) => f.name)
+      .filter((n) => n.toLowerCase() === "archive");
+    expect(names).toEqual(["Archive"]);
   });
 });
 
@@ -567,12 +600,7 @@ test.describe("@bookmarks-v14 @bookmarks-dupe JASPER-24: duplicate name refused 
 
     await openSidebarTab(page, "Bookmarks");
     for (const name of ["Work", "Personal"]) {
-      await page.getByRole("button", { name: "New bookmark folder" }).click();
-      const create = page.getByLabel("New bookmark folder name");
-      await expect(create).toBeVisible();
-      await create.fill(name);
-      await create.press("Enter");
-      await expect(folderRowByName(page, name)).toBeVisible({ timeout: 5_000 });
+      await createBookmarkFolder(page, name);
     }
 
     await openRowMenu(folderRowByName(page, "Personal"), "Bookmark folder options");
@@ -584,9 +612,7 @@ test.describe("@bookmarks-v14 @bookmarks-dupe JASPER-24: duplicate name refused 
     await rename.fill("WORK");
     await rename.press("Enter");
 
-    await expect(page.getByRole("alert")).toHaveText(
-      "a folder with this name already exists",
-    );
+    await expect(page.getByRole("alert")).toBeVisible();
     await expect(rename).toBeVisible();
     await expect(rename).toHaveValue("WORK");
     await expect(rename).toHaveAttribute("aria-invalid", "true");
@@ -652,12 +678,7 @@ test.describe("@bookmarks-v14 @bookmarks-menus JASPER-25: bookmark + folder opti
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menuitem")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const create = page.getByLabel("New bookmark folder name");
-    await expect(create).toBeVisible();
-    await create.fill("Work");
-    await create.press("Enter");
-    await expect(folderRowByName(page, "Work")).toBeVisible({ timeout: 5_000 });
+    await createBookmarkFolder(page, "Work");
 
     await openRowMenu(row, "Bookmark options");
     await page.getByRole("menuitem", { name: "Move to bookmark folder" }).click();

@@ -35,6 +35,12 @@ export interface RenameInputProps {
   /** True when triggered by a create action (placeholder name not yet confirmed).
    *  When isNew=true, Enter/Tab/blur without change commits instead of cancelling. */
   isNew?: boolean;
+  /** Bookmark folders are virtual labels, so the filesystem-character rule
+   *  does not apply to them. */
+  allowAnyCharacters?: boolean;
+  /** Names the field for screen readers and tests; the row it replaces
+   *  carries no label of its own. */
+  ariaLabel?: string;
 }
 
 const inputBaseStyle: React.CSSProperties = {
@@ -68,6 +74,8 @@ export function RenameInput({
   onCommit,
   onCancel,
   isNew = false,
+  allowAnyCharacters = false,
+  ariaLabel = "Name",
 }: RenameInputProps) {
   void _isFolder;
   const [value, setValue] = useState(initialValue);
@@ -82,9 +90,9 @@ export function RenameInput({
   }, []);
 
   useEffect(() => {
-    const r = validateRename(value, siblingNames);
+    const r = validateRename(value, siblingNames, { allowAnyCharacters });
     setError(r.valid ? undefined : r.error);
-  }, [value, siblingNames]);
+  }, [value, siblingNames, allowAnyCharacters]);
 
   const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setValue(e.target.value);
@@ -100,7 +108,7 @@ export function RenameInput({
       }
       // isNew=true: fall through to commit the placeholder name
     }
-    const r = validateRename(value, siblingNames);
+    const r = validateRename(value, siblingNames, { allowAnyCharacters });
     if (!r.valid) {
       setError(r.error);
       return;
@@ -118,7 +126,7 @@ export function RenameInput({
         setError("Server error.");
       }
     }
-  }, [value, initialValue, siblingNames, onCommit, onCancel, isNew]);
+  }, [value, initialValue, siblingNames, onCommit, onCancel, isNew, allowAnyCharacters]);
 
   const cancel = useCallback(() => {
     if (committedOrCancelled.current) return;
@@ -187,6 +195,7 @@ export function RenameInput({
         onClick={(e) => e.stopPropagation()}
         style={inputStyle}
         aria-invalid={error ? "true" : undefined}
+        aria-label={ariaLabel}
         spellCheck={false}
         autoComplete="off"
         autoCorrect="off"

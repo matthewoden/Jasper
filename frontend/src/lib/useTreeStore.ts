@@ -75,7 +75,7 @@ export const BOOKMARKS_SORT_DEFAULT: BookmarksSortOrder = "manual";
 
 const EDITOR_MIN = 320;
 
-export type RenameKind = "note" | "folder" | "file";
+export type RenameKind = "note" | "folder" | "file" | "bookmark-folder";
 
 export type PendingRename = {
   kind: RenameKind;

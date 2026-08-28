@@ -123,6 +123,9 @@ export interface TreeRowProps {
   onRequestNewNote?: (parentPath: string) => void;
   onRequestNewFolder?: (parentPath: string) => void;
   siblingNames?: string[];
+  /** Deletes a bookmark folder abandoned mid-create. Bookmark folders are not
+   *  filesystem nodes, so TreeRow's own mutations cannot clean one up. */
+  onDiscardNewBookmarkFolder?: (folderId: string) => Promise<void>;
   commitRename?: (target: TreeRowData, newValue: string) => Promise<void>;
   /**
    * react-arborist drag source registration ref. Attached to the row container
@@ -205,6 +208,7 @@ export function TreeRow({
   onRequestNewNote,
   onRequestNewFolder,
   siblingNames = [],
+  onDiscardNewBookmarkFolder,
   commitRename,
   dragHandle,
   onActivate,
@@ -320,9 +324,8 @@ export function TreeRow({
       }
     : undefined;
 
-  // Rename never applies to bookmark / bookmark-folder rows — pendingRename.kind
-  // is typed RenameKind ("note" | "folder" | "file"), so the equality check
-  // below already narrows data.kind away from the bookmark kinds entirely.
+  // A bookmark LEAF never renames — only notes, folders, files and
+  // bookmark-folder rows do. Bookmark folders are keyed by their opaque id.
   const isRenamingThis =
     pendingRename != null &&
     pendingRename.kind === data.kind &&
@@ -331,7 +334,9 @@ export function TreeRow({
         ? data.path
         : data.kind === "note"
           ? data.id
-          : data.path);
+          : data.kind === "bookmark-folder"
+            ? data.folderId
+            : data.path);
 
   const handleCancelRename = useCallback(async () => {
     const pr = useTreeStore.getState().pendingRename;
@@ -341,9 +346,9 @@ export function TreeRow({
           await muts.deleteNote(data.id);
         } else if (data.kind === "folder" || data.kind === "file") {
           await muts.deleteFolder(data.path, true);
+        } else if (data.kind === "bookmark-folder") {
+          await onDiscardNewBookmarkFolder?.(data.folderId);
         }
-        // bookmark / bookmark-folder rows never enter the ephemeral
-        // (isNew) rename flow — nothing to clean up on cancel.
       } catch (err) {
         console.warn(
           "TreeRow: failed to delete ephemeral node on cancel; tree may show stale row until next refresh",
@@ -352,7 +357,7 @@ export function TreeRow({
       }
     }
     useTreeStore.getState().endRename();
-  }, [data, muts]);
+  }, [data, muts, onDiscardNewBookmarkFolder]);
 
   const handleClick = (e: React.MouseEvent) => {
     if (isRenamingThis) return;
@@ -543,6 +548,16 @@ export function TreeRow({
       initialValue={renameInitial}
       isFolder={isFolder}
       siblingNames={siblingNames}
+      allowAnyCharacters={data.kind === "bookmark-folder"}
+      ariaLabel={
+        data.kind === "bookmark-folder"
+          ? "Bookmark folder name"
+          : data.kind === "folder"
+            ? "Folder name"
+            : data.kind === "file"
+              ? "File name"
+              : "Note name"
+      }
       isNew={pendingRename?.isNew}
       onCommit={async (v) => {
         if (!commitRename) {

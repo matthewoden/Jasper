@@ -245,33 +245,41 @@ describe("BookmarksPanel", () => {
     });
   });
 
-  it('typing a name + Enter in the inline "New bookmark folder" input calls createFolder(name)', async () => {
+  // The panel creates the folder under a placeholder name and then hands its
+  // own row to the inline input, exactly as the notes tree does — so the
+  // POST carries "untitled", and the typed name arrives as a rename.
+  it("New bookmark folder creates an untitled folder and opens its row for rename", async () => {
     getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "untitled" });
     await renderPanel(<BookmarksPanel />);
 
     fireEvent.click(screen.getByLabelText("New bookmark folder"));
-    const input = screen.getByLabelText("New bookmark folder name");
-    fireEvent.change(input, { target: { value: "Work" } });
-
-    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "Work" });
-    fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(postBookmarkFolderMock).toHaveBeenCalledWith("Work");
+      expect(postBookmarkFolderMock).toHaveBeenCalledWith("untitled");
+    });
+    await waitFor(() => {
+      expect(useTreeStore.getState().pendingRename).toEqual({
+        kind: "bookmark-folder",
+        target: "f-1",
+        isNew: true,
+      });
     });
   });
 
-  it("Esc cancels the inline new-folder input without creating", async () => {
-    getBookmarksMock.mockResolvedValue({ folders: [], bookmarks: [bookmarkA] });
+  it("the placeholder name steps past an existing untitled folder", async () => {
+    getBookmarksMock.mockResolvedValue({
+      folders: [{ id: "f-0", name: "untitled" }],
+      bookmarks: [bookmarkA],
+    });
+    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "untitled 1" });
     await renderPanel(<BookmarksPanel />);
 
     fireEvent.click(screen.getByLabelText("New bookmark folder"));
-    const input = screen.getByLabelText("New bookmark folder name");
-    fireEvent.change(input, { target: { value: "Work" } });
-    fireEvent.keyDown(input, { key: "Escape" });
 
-    expect(screen.queryByTestId("new-bookmark-folder-input")).toBeNull();
-    expect(postBookmarkFolderMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(postBookmarkFolderMock).toHaveBeenCalledWith("untitled 1");
+    });
   });
 
   // --- follow-up item 5: Notes-panel chrome parity ---

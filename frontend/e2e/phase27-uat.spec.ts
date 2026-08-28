@@ -332,10 +332,12 @@ test.describe("@phase27 BOOK-03: bookmark folder organization", () => {
     const rowA = bookmarkRowByTitle(page, "book03-alpha");
     await expect(rowA).toBeVisible();
 
-    // Create a bookmark folder via the panel-level trigger.
+    // Create a bookmark folder via the panel-level trigger. The panel creates
+    // it under a placeholder name and hands its own row to the inline input,
+    // the same shape the notes tree uses.
     await page.getByRole("button", { name: "New bookmark folder" }).click();
-    const folderInput = page.getByLabel("New bookmark folder name");
-    await expect(folderInput).toBeVisible();
+    const folderInput = page.getByLabel("Bookmark folder name");
+    await expect(folderInput).toBeVisible({ timeout: 5_000 });
     await folderInput.fill("Work");
     await folderInput.press("Enter");
 

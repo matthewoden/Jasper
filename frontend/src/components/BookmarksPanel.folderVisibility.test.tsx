@@ -89,22 +89,27 @@ describe("BookmarksPanel — a new folder with no bookmarks yet", () => {
       await Promise.resolve();
     });
 
-    fireEvent.click(screen.getByLabelText("New bookmark folder"));
-    const input = screen.getByLabelText("New bookmark folder name");
-    fireEvent.change(input, { target: { value: "Work" } });
-
-    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "Work" });
+    postBookmarkFolderMock.mockResolvedValueOnce({ id: "f-1", name: "untitled" });
     getBookmarksMock.mockResolvedValue({
-      folders: [{ id: "f-1", name: "Work" }],
+      folders: [{ id: "f-1", name: "untitled" }],
       bookmarks: [],
     });
-    fireEvent.keyDown(input, { key: "Enter" });
 
+    fireEvent.click(screen.getByLabelText("New bookmark folder"));
+
+    // The panel must leave its empty state: before the fix the row was created
+    // on the server and then hidden, which is what drove the second create.
     await waitFor(() => {
-      expect(screen.queryByTestId("new-bookmark-folder-input")).toBeNull();
+      expect(screen.getByTestId("bookmarks-panel")).toBeDefined();
     });
 
+    // One user action, one POST — no double submit lurking behind the symptom.
     expect(postBookmarkFolderMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Work")).toBeDefined();
+    // The row is present and hosting its inline input, seeded with the name
+    // the server created — the folder is on screen, not swallowed.
+    expect(
+      document.querySelectorAll('[data-tree-row-kind="bookmark-folder"]').length,
+    ).toBe(1);
+    expect(screen.queryByTestId("bookmarks-empty-state")).toBeNull();
   });
 });

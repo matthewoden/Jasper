@@ -25,9 +25,8 @@ import { TreeView } from "./TreeView";
 import { TreeRow, type TreeRowData } from "./TreeRow";
 import { BookmarksEmptyState } from "./BookmarksEmptyState";
 import { BookmarksErrorState } from "./BookmarksErrorState";
-import { NewBookmarkFolderInput } from "./NewBookmarkFolderInput";
 import { BookmarksSortMenu } from "./BookmarksSortMenu";
-import { BookmarkFolderRenameInput } from "./BookmarkFolderRenameInput";
+import { nextUntitledName } from "../lib/nextUntitledName";
 import {
   BookmarkOptionsMenu,
   BookmarkRowContextMenu,
@@ -154,8 +153,6 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   const { reveal } = useReveal();
   const { deleteNote } = useTreeMutations();
   const { toast } = useToast();
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<{
     noteId: string;
     notePath: string;
@@ -235,6 +232,51 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   );
 
   /**
+   * Mirrors the notes tree's create-then-rename: the folder is created under a
+   * placeholder name, then its own row hosts the inline input. Abandoning the
+   * input deletes it again (TreeRow's isNew cancel path).
+   */
+  const handleRequestNewFolder = useCallback(async () => {
+    const name = nextUntitledName(
+      bookmarkFolders.map((f) => f.name),
+      "untitled",
+    );
+    try {
+      const created = await createFolder(name);
+      if (created) {
+        useTreeStore.getState().startRename("bookmark-folder", created.id, true);
+      }
+    } catch {
+      // createFolder already toasts anything that is not a name clash, and a
+      // clash cannot happen against a name derived from the current siblings.
+    }
+  }, [bookmarkFolders, createFolder]);
+
+  /** Sibling names for the inline input's client-side duplicate check —
+   *  the row being renamed is excluded so recasing its own name is allowed. */
+  const folderNamesExcept = useCallback(
+    (rowData: TreeRowData): string[] =>
+      bookmarkFolders
+        .filter(
+          (f) =>
+            !(rowData.kind === "bookmark-folder" && f.id === rowData.folderId),
+        )
+        .map((f) => f.name),
+    [bookmarkFolders],
+  );
+
+  // Closes the input only on success — a rejected name (the 409) must leave it
+  // mounted so RenameInput can show why and keep what was typed.
+  const handleCommitFolderRename = useCallback(
+    async (target: TreeRowData, newValue: string) => {
+      if (target.kind !== "bookmark-folder") return;
+      await renameFolder(target.folderId, newValue);
+      useTreeStore.getState().endRename();
+    },
+    [renameFolder],
+  );
+
+  /**
    * Find/Replace and the splits act on the bookmarked note, so both first open
    * it in the active pane — the sidebar has no editor of its own to target.
    */
@@ -256,7 +298,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
       onRemoveBookmark: () => void toggleBookmark(noteId),
       onMoveToBookmarkFolder: (folderId) =>
         void moveToFolder(bookmarkId, folderId),
-      onNewBookmarkFolder: () => setCreatingFolder(true),
+      onNewBookmarkFolder: () => void handleRequestNewFolder(),
       onOpenFind: () => {
         usePaneStore.getState().openInActivePane(noteId);
         requestFind("find");
@@ -269,12 +311,20 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         void reveal(resolvePath(noteId));
       },
     }),
-    [folderOptions, moveToFolder, resolvePath, reveal, toggleBookmark],
+    [
+      folderOptions,
+      handleRequestNewFolder,
+      moveToFolder,
+      resolvePath,
+      reveal,
+      toggleBookmark,
+    ],
   );
 
   const folderMenuActions = useCallback(
     (folderId: string, name: string): BookmarkFolderMenuActions => ({
-      onRename: () => setRenamingFolderId(folderId),
+      onRename: () =>
+        useTreeStore.getState().startRename("bookmark-folder", folderId),
       onDelete: () =>
         setDeleteFolderTarget({
           id: folderId,
@@ -336,14 +386,6 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
       setDeleteFolderTarget(null);
     }
   }, [deleteFolder, deleteFolderTarget]);
-
-  const handleCreateFolder = useCallback(
-    async (name: string) => {
-      await createFolder(name);
-      setCreatingFolder(false);
-    },
-    [createFolder],
-  );
 
   const noopSelectNote = useCallback(() => {
     /* bookmark rows activate via onActivate, never onSelectNote */
@@ -431,7 +473,7 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   // panel-top interface as Notes.
   const header = (
     <div style={toolbarRowStyle}>
-      <NewBookmarkFolderButton onClick={() => setCreatingFolder(true)} />
+      <NewBookmarkFolderButton onClick={() => void handleRequestNewFolder()} />
       <BookmarksSortMenu
         value={bookmarksSort}
         onSelect={(order) => void setBookmarksSort(order)}
@@ -439,18 +481,10 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     </div>
   );
 
-  const newFolderInput = creatingFolder && (
-    <NewBookmarkFolderInput
-      onCommit={handleCreateFolder}
-      onCancel={() => setCreatingFolder(false)}
-    />
-  );
-
   if (error) {
     return (
       <div style={panelColumnStyle}>
         {header}
-        {newFolderInput}
         <BookmarksErrorState onRetry={() => void refresh()} />
       </div>
     );
@@ -460,7 +494,6 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
     return (
       <div style={panelColumnStyle}>
         {header}
-        {newFolderInput}
         <BookmarksEmptyState />
       </div>
     );
@@ -469,7 +502,6 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
   return (
     <div style={panelColumnStyle} data-testid="bookmarks-panel">
       {header}
-      {newFolderInput}
       <TreeView<ArboristNode>
         data={data}
         treeRef={treeRef}
@@ -481,23 +513,6 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
         onRootDrop={manualOrder ? handleRootDrop : undefined}
         renderRow={({ node, style, dragHandle }) => {
           const rowData = node.data;
-          if (
-            rowData.kind === "bookmark-folder" &&
-            renamingFolderId === rowData.folderId
-          ) {
-            return (
-              <div style={style}>
-                <BookmarkFolderRenameInput
-                  initialValue={rowData.name}
-                  onCommit={async (name) => {
-                    await renameFolder(rowData.folderId, name);
-                    setRenamingFolderId(null);
-                  }}
-                  onCancel={() => setRenamingFolderId(null)}
-                />
-              </div>
-            );
-          }
           return (
             <TreeRow
               node={node}
@@ -505,6 +520,9 @@ export function BookmarksPanel({ onSelectNote }: BookmarksPanelProps) {
               dragHandle={dragHandle}
               onSelectNote={noopSelectNote}
               onActivate={handleActivate}
+              siblingNames={folderNamesExcept(rowData)}
+              commitRename={handleCommitFolderRename}
+              onDiscardNewBookmarkFolder={deleteFolder}
               rowMenuOverride={rowMenuOverrideFor(rowData)}
             />
           );
