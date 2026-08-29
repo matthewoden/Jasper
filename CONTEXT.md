@@ -179,9 +179,11 @@ The move response is the subtle one. A rename is an `os.Rename` and leaves mtime
 | **This file** | Vocabulary and invariants |
 | [`docs/adr/`](./docs/adr/) | Decisions and their rationale — the complete record |
 | [`CONVENTIONS.md`](./CONVENTIONS.md) | Process: how we build, test, and verify |
-| [`.scratch/`](./.scratch/) | Live work — in-flight, ready-to-start, and backlog |
+| `tracker` MCP, project `JASPER` | Live work — in-flight, ready-to-start, and backlog. See [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md) |
 | `DESIGN.md` | Pre-implementation architectural reference, still accurate on the locked shape |
 
 Four milestones (v1.0–v1.4) were built under a planning system whose artifacts — roadmaps, phase plans, verification logs, UAT rounds, retrospectives — have been removed after their durable content was mined into the files above. They remain retrievable from git history if you need the execution record behind a decision.
 
-**Don't reconstruct that structure.** New work goes in `.scratch/`; new decisions amend or extend `docs/adr/`.
+A second system followed it: `.scratch/`, one directory of markdown per effort. It was migrated into the `JASPER` tracker project on 2026-08-22 and deleted; it too is in git history.
+
+**Don't reconstruct either structure.** New work goes in the tracker; new decisions amend or extend `docs/adr/`.

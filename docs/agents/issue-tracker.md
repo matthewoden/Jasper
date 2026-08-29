@@ -1,59 +1,87 @@
-# Issue tracker: Local Markdown
+# Issue tracker: the `tracker` MCP server
 
-Issues and specs (you may know a spec as a PRD) for this repo live as markdown files in `.scratch/`.
+Issues and specs (you may know a spec as a PRD) for this repo live in the **tracker MCP
+server**, in the project keyed **`JASPER`**. There is no `.scratch/` directory any more — see
+[Where the history went](#where-the-history-went).
 
-## Conventions
+Reach it with the `mcp__tracker__*` tools: `list_projects`, `list_issues`, `get_issue`,
+`create_issue`, `update_issue`, `bulk_update_issues`, `list_labels`, `delete_issue`.
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+## Shape
+
+Issues form a three-level hierarchy — **feature → story → subtask**:
+
+| Level | What it holds here |
+| --- | --- |
+| **feature** | The spec. Goal, locked decisions, what's out of scope, sequencing across its stories. One feature per effort. |
+| **story** | One implementation ticket: the finding or change, its evidence, and its "Done when". |
+| **subtask** | A step inside a story that someone else might pick up. Most stories need none. |
+
+A feature has no parent; a story's parent is a feature (or nothing); a subtask's parent must
+be a story. A parent is always in the same project.
+
+- **Every issue in this repo goes in `JASPER`.** `TRACK` is the tracker's own project — not ours.
+- **`description` is the ticket.** Markdown, and the same prose that used to live in a
+  `spec.md` or an issue file. Write it for someone reading it cold.
+- **`agent_notes` is a scratchpad**, not a log — what was tried, what to avoid, where the
+  thread was left. It is disposable and has no history: writing replaces it. Anything worth
+  keeping goes in the description instead. Features and stories carry notes; subtasks don't.
+- **Link tickets by identifier** — `JASPER-14`. That is a ticket's name now; see
+  [`CONVENTIONS.md` § Ticket identity](../../CONVENTIONS.md#ticket-identity).
+- **Link repo files by repo-relative path** — `docs/adr/0011-manual-refresh-over-filesystem-watcher.md`.
+  A ticket is not on disk beside them, so relative links (`../../docs/...`) resolve to nothing.
+
+## Two axes: status and label
+
+They are independent, and both matter.
+
+**`status`** is where the work is: `backlog` → `todo` → `in_progress` → `done` (or
+`canceled`, meaning decided against).
+
+**Labels** carry the triage role — who the ticket is waiting on. The five canonical roles and
+their strings are in [`triage-labels.md`](./triage-labels.md). Call `list_labels` before
+labelling so an existing name is reused rather than a near-duplicate invented.
+
+Reading a queue: `list_issues` with `active: true` returns only what is neither done nor
+canceled — add `label: "ready-for-agent"` for the AFK queue, or `project_key: "JASPER"` to
+stay in this repo. A label filter *alone* also returns closed issues whose role was never
+cleared, which read as work waiting that nobody has to do.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+`create_issue` in `JASPER`. Pick the level (feature for a whole effort, story for one ticket),
+set `parent` when it has one, set `status`, and label it with its triage role.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+`get_issue` with the identifier — e.g. `JASPER-14`. It returns the description, the agent
+notes, and the direct children. The user will normally pass the identifier directly.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+Used by `/wayfinder`. The **map** is a feature; each **child ticket** is a story under it.
 
-- **Map**: `.scratch/<effort>/map.md` — the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+- **Map**: the feature's `description` — the Notes / Decisions-so-far / Fog body.
+- **Child ticket**: a story whose body carries the question. Record the ticket type
+  (`research`/`prototype`/`grilling`/`task`) as a `Type:` line at the top of the description.
+- **Blocking**: a `Blocked by: JASPER-NN, JASPER-NN` line near the top of the description. A
+  ticket is unblocked when every issue it lists is `done`.
+- **Frontier**: `list_issues` with the feature as `parent` and `active: true`; take the open,
+  unblocked, unclaimed one — lowest identifier wins.
+- **Claim**: set `status: "in_progress"` before any work.
+- **Resolve**: append the answer under an `## Answer` heading in the description, set
+  `status: "done"`, then append a context pointer (gist + identifier) to the map's
+  Decisions-so-far in the feature's description.
 
-## What's in `.scratch/` today
+`update_issue` **replaces** the description — read it first and send the merged text, or you
+will delete the body you meant to append to.
 
-```
-.scratch/
-├── audit-findings/              ← the non-security audit remainder, triaged
-├── flaky-tests/                 ← five known instances, two are production defects
-├── v1.4-properties-templates-settings/   ← six remaining phases of the current milestone
-├── bookmarks-sorting-and-menus/ ← specified, ready to build
-├── planning-id-sweep/           ← dead ID citations in source; 01–05 shipped, 06–07 open
-└── backlog/                     ← unbuilt ideas with no committed home yet
-```
+## Closing an effort
 
-`backlog/` is the one departure from the one-directory-per-feature rule: single files for work that has been deferred repeatedly and isn't specified enough to warrant a spec plus issues. Promote a file into its own directory when it gets scoped.
-
-## Retiring a finished effort
-
-**Delete the directory once the work ships.** Tickets and specs are a queue, not a
-record — they must never become the source of truth for a decision that was made.
-
-**Move durable content out as you close each ticket, not when the directory dies.**
-Retirement happens once, at the end, across tickets nobody has read recently — the
-worst possible moment to reconstruct why something was decided. By then the
-reasoning is a paragraph in a file you are about to delete, and waving it through
-costs nothing until someone needs it. `CONVENTIONS.md` carries this as a rule; the
-table below is where things go:
+**Move the durable content out as you close each story, not when the effort ends.** A closed
+issue is not deleted, but it is off the board and out of the way — `list_issues` shelves a
+feature whose whole subtree has been closed for more than three days, along with that subtree.
+A decision that lives only there is a decision nobody will find.
 
 | What | Where it goes |
 | --- | --- |
@@ -61,41 +89,47 @@ table below is where things go:
 | A rule about how we work | `CONVENTIONS.md` |
 | A standing fact about the system | `CONTEXT.md` |
 | Why a specific piece of code is shaped that way | a comment on that code |
-| A follow-up that is still open | a ticket in the effort that owns it |
+| A follow-up that is still open | a new story, in the feature that owns it |
 
-Whatever is left — the triage notes, the verification tables, the narrative — has
-served its purpose. It stays in git history, and the commit that shipped the work
-carries the reasoning. This is the same treatment `.planning/` and `review/` got.
+`CONVENTIONS.md` carries this as a rule; the table above is where things go.
 
-The failure mode this avoids: a reader finding a stale ticket and treating it as
-current, or a decision surviving only in a file nobody thinks to read.
+Whatever is left — the triage notes, the verification tables, the narrative — has served its
+purpose. The commit that shipped the work carries the reasoning.
 
-### The retirement pass
+### The closing pass
 
-If extraction happened at close, this is a verification sweep rather than a
-salvage operation. Walk the directory once and confirm:
+If extraction happened per-story, this is a verification sweep rather than a salvage
+operation. Before setting the feature `done`:
 
-- [ ] **Every shipped finding's reasoning has a home outside `.scratch/`** — or is
-      genuinely not durable. A rejected alternative almost always is: it is the
-      thing a future reader will try first.
-- [ ] **No open follow-up is recorded only here.** Move it to the effort that owns
-      it, or promote it to `backlog/`.
-- [ ] **Nothing outside `.scratch/` links into the directory** —
-      `grep -rn "<effort-slug>" --exclude-dir=.scratch --exclude-dir=.git .`
-      should come back empty. A dangling link in an ADR or a code comment is worse
-      than the ticket surviving.
+- [ ] **Every shipped finding's reasoning has a home outside the tracker** — or is genuinely
+      not durable. A rejected alternative almost always is: it is the thing a future reader
+      will try first.
+- [ ] **No open follow-up is recorded only in a closing ticket.** Move it to the feature that
+      owns it, or file it as its own backlog feature.
+- [ ] **Nothing in the repo cites a ticket as authority** —
+      `grep -rn "JASPER-" --exclude-dir=.git .` should turn up nothing load-bearing. An ADR
+      that cites a ticket is a permanent record depending on a disposable one. State the fact
+      in the ADR and let it stand alone: "the shipped teardown order is a known defect" needs
+      no ticket link to be true or actionable.
+- [ ] **Identifier schemes local to the effort have a provenance note** if they appear in
+      commit messages or git history, so old references stay decodable. See
+      [`CONVENTIONS.md` § Ticket identity](../../CONVENTIONS.md#ticket-identity).
 
-      Better still, don't create them: an ADR that cites a ticket path is a
-      permanent record depending on a disposable one. State the fact in the ADR
-      and let it stand alone — "the shipped teardown order is a known defect"
-      needs no ticket link to be true or actionable.
-- [ ] **Identifier schemes local to the effort have a provenance note** if they
-      appear in commit messages or git history, so old references stay decodable.
-      See `CONVENTIONS.md` § Ticket identity.
+A close that turns up several unextracted decisions is a signal the discipline slipped, not a
+reason to keep the feature open.
 
-Then delete it. A retirement that turns up several unextracted decisions is a
-signal the close discipline slipped, not a reason to keep the directory.
+**Prefer `canceled` or archiving to `delete_issue`.** Deleting is irreversible; archiving is
+not, and canceled says *decided against*, which is information.
 
 ## Where the history went
 
-An earlier planning system's artifacts (`.planning/`) were removed once their durable content was mined into `CONTEXT.md`, `docs/adr/`, `CONVENTIONS.md`, and this tracker. They remain in git history. **Don't recreate that structure** — new work goes here.
+Two earlier systems fed this one, and neither should be recreated:
+
+- **`.planning/`** — roadmaps, phase plans, verification logs, UAT rounds, retrospectives.
+  Removed once its durable content was mined into `CONTEXT.md`, `docs/adr/`, `CONVENTIONS.md`.
+- **`.scratch/`** — the markdown tracker that replaced it: one directory per effort, a
+  `spec.md`, and numbered issue files under `issues/`. Migrated into this tracker on
+  2026-08-22 and deleted. Every live effort became a feature with its issues as stories.
+
+Both remain in git history. Old commit messages and comments cite `.scratch/<effort>/NN`
+paths; the migration commit is where those resolve to identifiers.

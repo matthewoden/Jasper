@@ -486,7 +486,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 
 ### Issue tracker
 
-Issues and specs live as markdown files under `.scratch/<feature-slug>/` in this repo. See `docs/agents/issue-tracker.md`.
+Issues and specs live in the `tracker` MCP server, in the `JASPER` project: a feature carries the spec, its stories are the implementation tickets. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

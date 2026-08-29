@@ -195,7 +195,7 @@ Applies to **code comments** (`//`, `#`, `/* */`, JSDoc). Process and planning d
 
 ## Issue capture
 
-Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md) for the layout and [`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md) for the status vocabulary.
+Issues and specs live in the `tracker` MCP server, in the `JASPER` project — see [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md) for the layout and [`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md) for the status vocabulary.
 
 - Capture raw feedback **verbatim** before interpreting it. The interpretation goes in a separate section, so a wrong reading can be caught against the original words.
 - Record decisions as an explicit item → resolution mapping.
@@ -204,10 +204,12 @@ Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-
 
 ## Ticket identity
 
-**A ticket's identity is its path.** `audit-findings/02` — effort directory plus file number — names exactly one file. Write it that way in prose, in cross-references, and when handing work to someone else.
+**A ticket's identity is its tracker identifier.** `JASPER-14` names exactly one issue, and `get_issue` resolves it. Write it that way in prose, in cross-references, and when handing work to someone else.
 
-- **Don't mint categorical prefixes** (`OPS-`, `BE-`, `DUR-`). A category says what a ticket is *about* but not where it lives, so every reference costs a search — and the category is the part a one-line summary would have given you anyway. The path is unambiguous, greppable, and already the file-naming standard in [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md).
-- **Requirement IDs scoped to one spec are different, and fine.** `PROPS-08` is numbering *within* the document that defines `PROPS`, and that document is its own legend. Keep them inside their spec; the moment one appears in a commit message or another effort's ticket, it has escaped.
+*Before 2026-08-22 the identity was a path — `audit-findings/02`, effort directory plus file number — because tickets were markdown files under `.scratch/`. Those paths appear in commit messages and comments from that period; the migration commit is where they resolve.*
+
+- **Don't mint categorical prefixes** (`OPS-`, `BE-`, `DUR-`). A category says what a ticket is *about* but not where it lives, so every reference costs a search — and the category is the part a one-line summary would have given you anyway. The identifier is unambiguous, greppable, and the tracker's own addressing scheme — see [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md).
+- **Requirement IDs scoped to one spec are different, and fine.** `PROPS-08` is numbering *within* the ticket that defines `PROPS` — usually a feature's description — and that ticket is its own legend. Keep them inside it; the moment one appears in a commit message or another effort's ticket, it has escaped.
 - **Name a finding by what it is.** Inside a ticket that groups several, the heading is the name — "Teardown order is wrong; a failed swap bricks the server", not "BE-02". A reader who has never opened the file still knows what you mean.
 - **Commit scopes name the area, not the ticket** — `fix(app-lifecycle)`, not `fix(ops-02)`. The scope survives; the ticket does not. Cite the ticket in the body if it adds anything the body doesn't already say.
 - **When a scheme does get retired, leave a provenance note** in the effort that used it, so the labels still in git history and old commit messages stay decodable. The note is history, not an index — nothing live should need it.
@@ -220,6 +222,6 @@ Issues and specs live as markdown under `.scratch/` — see [`docs/agents/issue-
 
 *Two consecutive milestones closed with traceability tables contradicting what had actually shipped. Reconciling at close works but re-discovers the same drift every time; marking in-band is the durable fix and has held since.*
 
-**Extract a ticket's durable reasoning in the same change too** — an ADR, a `CONTEXT.md` fact, a comment on the code — not when the effort retires. The [retirement rule](./docs/agents/issue-tracker.md#retiring-a-finished-effort) says what goes where; this says *when*.
+**Extract a ticket's durable reasoning in the same change too** — an ADR, a `CONTEXT.md` fact, a comment on the code — not when the effort closes. The [closing rule](./docs/agents/issue-tracker.md#closing-an-effort) says what goes where; this says *when*.
 
-*The per-vault logging fix shipped with its reasoning — including two rejected alternatives that are the first things a reader would reach for — living only in the ticket and a commit message. Tickets are deleted at retirement, and a commit message is findable only by someone who already knows to look, so that reasoning was on track to be destroyed by the very rule meant to preserve it. It became [ADR-0031](./docs/adr/0031-per-vault-logging.md) only because someone asked whether deleting tickets loses information. Retirement is the wrong moment to do this work: it happens once, at the end, across a directory of tickets nobody has read recently — which is precisely when the reasoning is hardest to reconstruct and easiest to wave through.*
+*The per-vault logging fix shipped with its reasoning — including two rejected alternatives that are the first things a reader would reach for — living only in the ticket and a commit message. Closed tickets drop off the board — the tracker shelves a whole closed subtree after three days — and a commit message is findable only by someone who already knows to look, so that reasoning was on track to be lost by the very rule meant to preserve it. It became [ADR-0031](./docs/adr/0031-per-vault-logging.md) only because someone asked whether deleting tickets loses information. Retirement is the wrong moment to do this work: it happens once, at the end, across a directory of tickets nobody has read recently — which is precisely when the reasoning is hardest to reconstruct and easiest to wave through.*
