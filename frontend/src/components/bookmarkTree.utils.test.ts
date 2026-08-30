@@ -1,7 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   adaptBookmarks,
-  buildBookmarkMenu,
   buildNoteMetaMap,
   computeBookmarkMoveDispatch,
   findNoteTitle,
@@ -96,25 +95,6 @@ describe("adaptBookmarks", () => {
     const nodes = adaptBookmarks([], bookmarks, resolveTitle, exists);
 
     expect(nodes.map((n) => n.id)).toEqual(["bookmark:bm-live"]);
-  });
-});
-
-describe("buildBookmarkMenu", () => {
-  it("maps folders to id+name pairs and forwards handlers", () => {
-    const onRemove = vi.fn();
-    const onMoveToFolder = vi.fn();
-    const onNewFolder = vi.fn();
-    const folders: BookmarkFolder[] = [{ id: "f-1", name: "Work" }];
-
-    const menu = buildBookmarkMenu(folders, { onRemove, onMoveToFolder, onNewFolder });
-
-    expect(menu.folders).toEqual([{ id: "f-1", name: "Work" }]);
-    menu.onRemove("note-a");
-    expect(onRemove).toHaveBeenCalledWith("note-a");
-    menu.onMoveToFolder("bm-1", "f-1");
-    expect(onMoveToFolder).toHaveBeenCalledWith("bm-1", "f-1");
-    menu.onNewFolder();
-    expect(onNewFolder).toHaveBeenCalledTimes(1);
   });
 });
 

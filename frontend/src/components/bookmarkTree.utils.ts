@@ -11,7 +11,6 @@
  * "manual", the target note's own metadata otherwise.
  */
 import type { ArboristNode } from "./fileTree.utils";
-import type { BookmarkMenuDescriptor } from "./TreeRow";
 import type {
   Bookmark,
   BookmarkFolder,
@@ -181,32 +180,6 @@ export function adaptBookmarks(
     .map((b) => bookmarkNode(b, resolveTitle));
 
   return [...folderNodes, ...topLevel];
-}
-
-/**
- * Builds the BookmarkMenuDescriptor TreeRow needs to render the
- * ORPHANED 2026-08-22: BookmarksPanel now routes through TreeRow's
- * rowMenuOverride; the only remaining callers are this file's own tests.
- * Kept pending JASPER-37.
- *
- * Remove / Move-to-folder / New-folder kebab menu for `kind: "bookmark"`
- * rows — keeps the folder-list-shaping (id+name only) out of
- * BookmarksPanel.tsx itself.
- */
-export function buildBookmarkMenu(
-  folders: readonly BookmarkFolder[],
-  handlers: {
-    onRemove: (noteId: string) => void;
-    onMoveToFolder: (bookmarkId: string, folderId: string | null) => void;
-    onNewFolder: () => void;
-  },
-): BookmarkMenuDescriptor {
-  return {
-    folders: folders.map((f) => ({ id: f.id, name: f.name })),
-    onRemove: handlers.onRemove,
-    onMoveToFolder: handlers.onMoveToFolder,
-    onNewFolder: handlers.onNewFolder,
-  };
 }
 
 /** Discriminated dispatch decision for a bookmark drag-drop, computed by
