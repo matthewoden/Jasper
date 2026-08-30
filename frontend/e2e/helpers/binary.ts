@@ -138,9 +138,14 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  * without leaking into unrelated tests. Pass undefined to inherit
  * process.env verbatim.
  */
-async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpPort?: number; ownsDataDir: boolean; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
+async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpPort?: number; ownsDataDir: boolean; appHome?: string; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
   const ownsDataDir = opts.ownsDataDir;
+  // Without this the spawned binary falls through to the developer's real
+  // ~/.jasper/app.json and evicts their genuine recent vaults. Allocated per
+  // handle and reused across restart() so vault state survives a restart.
+  const ownsAppHome = opts.appHome === undefined;
+  const appHome = opts.appHome ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-apphome-"));
   const binPath = path.join(repoRoot, "bin", "jasper");
 
   // Bounded spawn-retry. findFreePort() binds :0 then closes the socket before
@@ -167,7 +172,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpP
       ],
       {
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, ...(opts.env ?? {}), JASPER_MCP_PORT: String(mcpPort) },
+        env: { ...process.env, JASPER_APP_HOME: appHome, ...(opts.env ?? {}), JASPER_MCP_PORT: String(mcpPort) },
       },
     );
     proc.stdout?.on("data", (b) => {
@@ -196,12 +201,15 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpP
       if (ownsDataDir) {
         await rm(dataDir, { recursive: true, force: true });
       }
+      if (ownsAppHome) {
+        await rm(appHome, { recursive: true, force: true });
+      }
     };
 
     const restart = async (): Promise<JasperHandle> => {
       await killProcess(proc);
       await new Promise((r) => setTimeout(r, 200));
-      return spawnJasperInternal({ dataDir, port, mcpPort, ownsDataDir, env: opts.env });
+      return spawnJasperInternal({ dataDir, port, mcpPort, ownsDataDir, appHome, env: opts.env });
     };
 
     return { proc, port, mcpPort, dataDir, baseURL, kill, restart };
@@ -209,6 +217,9 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpP
 
   if (ownsDataDir) {
     await rm(dataDir, { recursive: true, force: true });
+  }
+  if (ownsAppHome) {
+    await rm(appHome, { recursive: true, force: true });
   }
   throw lastErr ?? new Error(`jasper did not become ready after ${MAX_ATTEMPTS} attempts`);
 }
