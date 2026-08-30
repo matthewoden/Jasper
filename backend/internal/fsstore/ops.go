@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // maxTrashSuffix is the upper bound on the collision-suffix loop to prevent
@@ -395,29 +397,41 @@ func moveWithinDataDir(dataDir, srcRel, dstRel string) error {
 
 // destTrashName returns the first free filename candidate in <dataDir>/.trash/
 // for an item with the given stem and ext. The first candidate is stem+ext; if
-// it exists the loop produces "stem 1"+ext, "stem 2"+ext, … up to maxTrashSuffix.
+// it is taken the loop produces "stem 1"+ext, "stem 2"+ext, … up to maxTrashSuffix.
 //
-// Existence is checked by resolving Canonicalize(dataDir, ".trash/<candidate>")
-// then os.Stat, so the comparison is NFC+lowercase-aware.
+// Collision is decided by comparing canonical names against the directory's
+// actual entries rather than by stat'ing a lowercased path. A stat answers in
+// the filesystem's own case rules, which makes an existing ".trash/Foo.md"
+// collide with "foo.md" on case-insensitive APFS and not on case-sensitive
+// ext4 — the split DATA-11 exists to close.
 func destTrashName(dataDir, stem, ext string) (string, error) {
+	trashAbs, err := ContainedPath(dataDir, ".trash")
+	if err != nil {
+		return "", fmt.Errorf("destTrashName: resolve .trash: %w", err)
+	}
+	entries, err := os.ReadDir(trashAbs)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("destTrashName: read %q: %w", trashAbs, err)
+	}
+	taken := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		taken[canonicalName(e.Name())] = true
+	}
+
 	for i := 0; i <= maxTrashSuffix; i++ {
-		var candidate string
-		if i == 0 {
-			candidate = stem + ext
-		} else {
+		candidate := stem + ext
+		if i > 0 {
 			candidate = fmt.Sprintf("%s %d%s", stem, i, ext)
 		}
-		rel := filepath.ToSlash(filepath.Join(".trash", candidate))
-		abs, err := Canonicalize(dataDir, rel)
-		if err != nil {
-			return "", fmt.Errorf("destTrashName: canonicalize %q: %w", rel, err)
-		}
-		if _, err := os.Stat(abs); errors.Is(err, fs.ErrNotExist) {
+		if !taken[canonicalName(candidate)] {
 			return candidate, nil
-		} else if err != nil {
-			return "", fmt.Errorf("destTrashName: stat %q: %w", abs, err)
 		}
-		// candidate exists — try next suffix
 	}
 	return "", fmt.Errorf("destTrashName: exceeded %d collision suffixes for %q", maxTrashSuffix, stem+ext)
+}
+
+// canonicalName folds one path element the way Canonicalize folds a whole path,
+// so on-disk names and generated candidates compare in the same space.
+func canonicalName(name string) string {
+	return strings.ToLower(norm.NFC.String(name))
 }

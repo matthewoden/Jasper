@@ -36,6 +36,7 @@ func stubDispatchers(t *testing.T, darwinErr, wslErr error) (*dispatchCall, *dis
 	wslCall := &dispatchCall{}
 	origD := revealDarwinFn
 	origW := revealWSL2Fn
+	origL := revealLinuxFn
 	revealDarwinFn = func(_ context.Context, abs string) error {
 		darwinCall.called = true
 		darwinCall.abs = abs
@@ -46,9 +47,19 @@ func stubDispatchers(t *testing.T, darwinErr, wslErr error) (*dispatchCall, *dis
 		wslCall.abs = abs
 		return wslErr
 	}
+	// A plain Linux runner is not WSL, so the handler takes the revealLinuxFn
+	// branch. Left unstubbed it execs a real file manager, which no CI runner
+	// has — the test then reads that as a 500 from the handler. Recorded as the
+	// wsl call because callers assert on "the non-darwin dispatch fired".
+	revealLinuxFn = func(_ context.Context, abs string) error {
+		wslCall.called = true
+		wslCall.abs = abs
+		return wslErr
+	}
 	return darwinCall, wslCall, func() {
 		revealDarwinFn = origD
 		revealWSL2Fn = origW
+		revealLinuxFn = origL
 	}
 }
 
