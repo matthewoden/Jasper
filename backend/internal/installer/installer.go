@@ -27,8 +27,10 @@ const serviceName = "com.jasper.server"
 //
 // LaunchdConfig and SystemdScript MUST stay set — they override kardianos's
 // default templates, which carry no restart policy. LogDirectory puts the
-// service manager's stdout/stderr beside jasper.log; it catches what the
-// structured logger cannot (panics, pre-boot stderr).
+// service manager's stdout/stderr under the app home; it catches what the
+// structured logger cannot (panics, pre-boot stderr). dataDir here is the app
+// home, so AppLogsDir — vault.LogsDir would yield ~/.jasper/.jasper/logs, a
+// directory nothing creates, and systemd then fails the unit with 209/STDOUT.
 //
 // Program is nil: the install/uninstall subcommands need only the registration
 // surface.
@@ -43,7 +45,7 @@ func New(dataDir string) (service.Service, error) {
 			"RunAtLoad":     true,
 			"LaunchdConfig": launchdPlist,
 			"SystemdScript": systemdUnit,
-			"LogDirectory":  vault.LogsDir(dataDir),
+			"LogDirectory":  vault.AppLogsDir(dataDir),
 		},
 		EnvVars: map[string]string{
 			"JASPER_DATA_DIR": dataDir,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/installer"
+	"github.com/matthewoden/jasper/backend/internal/vault"
 )
 
 var installCmd = &cobra.Command{
@@ -42,6 +43,13 @@ fast and idempotent.`,
 
 func runInstall(_ *cobra.Command, _ []string) error {
 	dataDir := config.DefaultDataDir()
+
+	// systemd's StandardOutput=file: and launchd's Standard*Path open the file
+	// but will not create its parent, and a fresh machine has never written a
+	// log here. Without this the unit dies at 209/STDOUT before ExecStart runs.
+	if err := os.MkdirAll(vault.AppLogsDir(dataDir), 0o755); err != nil {
+		return fmt.Errorf("create service log directory: %w", err)
+	}
 
 	svc, err := installer.New(dataDir)
 	if err != nil {

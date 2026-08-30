@@ -54,6 +54,13 @@ func AppHomePath() (string, error) {
 	return filepath.Join(home, ".jasper"), nil
 }
 
+// AppLogsDir returns <appHome>/logs — where the OS service manager's own
+// stdout/stderr land. App-home semantics: pass the app home, NOT vault.LogsDir,
+// which appends a second ".jasper" to a path that already ends in one.
+func AppLogsDir(appHome string) string {
+	return filepath.Join(appHome, "logs")
+}
+
 // AppJSONPath returns AppHomePath()/app.json.
 func AppJSONPath() (string, error) {
 	home, err := AppHomePath()
