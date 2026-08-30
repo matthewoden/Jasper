@@ -3,8 +3,7 @@
  * (right-click) and DropdownMenu (kebab). The primitives differ, so Item and
  * Separator arrive as props.
  *
- * Item sets are LOCKED per rowKind. Bookmark rows never offer rename, MCP-grant,
- * reveal or delete-note.
+ * Item sets are LOCKED per rowKind.
  *
  * With selectionCount > 1 the body is replaced wholesale by the bulk item set —
  * single-target items are hidden, not disabled. Callers read the live selection
@@ -21,7 +20,7 @@ import {
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
-export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file" | "bookmark";
+export type TreeRowMenuKind = "note" | "folder" | "empty-area" | "file";
 
 export interface TreeRowMenuProps {
   rowKind: TreeRowMenuKind;
@@ -67,19 +66,6 @@ export interface TreeRowMenuProps {
    * Revoke is reachable. Omitted on note/file/empty-area rows.
    */
   inheritedGrant?: InheritedGrant | null;
-
-  /**
-   * Bookmark-row menu data (rowKind === "bookmark" only). folders lists
-   * every bookmark folder for the "Move to folder" submenu; the submenu
-   * always leads with "(No folder)" (top-level) and ends with
-   * "New folder…" below a separator — mirrors the pre-existing bespoke
-   * BookmarkRow menu verbatim, just hosted on the
-   * shared TreeRowMenu chrome now.
-   */
-  bookmarkFolders?: Array<{ id: string; name: string }>;
-  onRemoveBookmark?: () => void;
-  onMoveBookmarkToFolder?: (folderId: string | null) => void;
-  onNewBookmarkFolder?: () => void;
 
   /** note rows only: single right/row split, same target as the
    *  quick-switcher's Cmd+Shift+Enter and the note-options split-right item. */
@@ -218,10 +204,6 @@ function MenuItems({
   onGrant,
   onRevoke,
   inheritedGrant,
-  bookmarkFolders,
-  onRemoveBookmark,
-  onMoveBookmarkToFolder,
-  onNewBookmarkFolder,
   onOpenInSplit,
   isBookmarked,
   onToggleBookmark,
@@ -251,7 +233,6 @@ function MenuItems({
   const Portal = PortalComp as any;
 
   const isFile = rowKind === "file";
-  const isBookmark = rowKind === "bookmark";
 
   const revealLabel = "Show in file manager";
   const revealAria =
@@ -261,7 +242,7 @@ function MenuItems({
         ? "Show folder in file manager"
         : "Show file in file manager";
   const revealItem =
-    rowKind !== "empty-area" && rowKind !== "bookmark" && onReveal ? (
+    rowKind !== "empty-area" && onReveal ? (
       <Item style={itemStyle} aria-label={revealAria} onSelect={() => onReveal()}>
         <FolderOpen size={16} aria-hidden="true" />
         <span>{revealLabel}</span>
@@ -301,45 +282,6 @@ function MenuItems({
         <Item style={destructiveItemStyle} {...bulkItemHandlers(onBulkDelete)}>
           <span>Delete {selectionCount} notes</span>
         </Item>
-      </>
-    );
-  }
-
-  if (isBookmark) {
-    // Bookmark rows: Remove / Move to folder (submenu) ONLY — never rename,
-    // MCP-grant, reveal, or delete-note (locked item set, see file header).
-    const folders = bookmarkFolders ?? [];
-    return (
-      <>
-        <Item style={destructiveItemStyle} onSelect={() => onRemoveBookmark?.()}>
-          <span>Remove</span>
-        </Item>
-        <Sub>
-          <SubTrigger style={itemStyle}>
-            <span>Move to folder</span>
-          </SubTrigger>
-          <Portal>
-            <SubContent style={menuContainerStyle}>
-              <Item style={itemStyle} onSelect={() => onMoveBookmarkToFolder?.(null)}>
-                <span>(No folder)</span>
-              </Item>
-              {folders.length > 0 && <Sep style={separatorStyle} />}
-              {folders.map((f) => (
-                <Item
-                  key={f.id}
-                  style={itemStyle}
-                  onSelect={() => onMoveBookmarkToFolder?.(f.id)}
-                >
-                  <span>{f.name}</span>
-                </Item>
-              ))}
-              <Sep style={separatorStyle} />
-              <Item style={itemStyle} onSelect={() => onNewBookmarkFolder?.()}>
-                <span>New folder…</span>
-              </Item>
-            </SubContent>
-          </Portal>
-        </Sub>
       </>
     );
   }

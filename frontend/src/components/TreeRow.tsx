@@ -98,22 +98,6 @@ export type TreeRowData =
   | BookmarkNodeData
   | BookmarkFolderNodeData;
 
-/**
- * Bookmark-row menu descriptor — injected so TreeRow can render the
- * Remove / Move-to-folder / New-folder menu (TreeRowMenu's "bookmark"
- * branch) without importing bookmarks-specific hooks itself. Only
- * meaningful for `kind: "bookmark"` rows.
- *
- * ORPHANED 2026-08-22: no caller passes `bookmarkMenu` any more — the
- * bookmarks panel supplies rowMenuOverride instead. Kept pending JASPER-37.
- */
-export interface BookmarkMenuDescriptor {
-  onRemove: (noteId: string) => void;
-  onMoveToFolder: (bookmarkId: string, folderId: string | null) => void;
-  folders: Array<{ id: string; name: string }>;
-  onNewFolder: () => void;
-}
-
 export interface TreeRowProps {
   node: NodeApi<TreeRowData>;
   style: CSSProperties;
@@ -139,8 +123,6 @@ export interface TreeRowProps {
    * Only consulted for `kind: "bookmark"` rows.
    */
   onActivate?: (noteId: string) => void;
-  /** Present iff this row (or its caller) is bookmark-capable. */
-  bookmarkMenu?: BookmarkMenuDescriptor;
 
   /**
    * Bulk-selection wiring (CTX-02). FileTree.tsx computes these
@@ -212,7 +194,6 @@ export function TreeRow({
   commitRename,
   dragHandle,
   onActivate,
-  bookmarkMenu,
   getSelectionCount,
   onBulkOpenTabs,
   onBulkOpenInSplit,
@@ -585,29 +566,15 @@ export function TreeRow({
       ? data.path
       : undefined;
 
-  // Menu rowKind mapping. bookmark-folder rows get NO menu at all (kebab or
-  // context) — mirrors the pre-existing bespoke FolderRow, which was a bare
-  // toggle button with zero affordances.
+  // Bookmark and bookmark-folder rows map to null: the bookmarks panel
+  // supplies their menus through rowMenuOverride.
   const menuRowKind: TreeRowMenuKind | null = isFile
     ? "file"
     : isFolder
       ? "folder"
       : data.kind === "note"
         ? "note"
-        : isBookmark
-          ? "bookmark"
-          : null;
-
-  const bookmarkData = isBookmark ? (data as BookmarkNodeData) : null;
-  const bookmarkMenuHandlers = bookmarkData
-    ? {
-        bookmarkFolders: bookmarkMenu?.folders ?? [],
-        onRemoveBookmark: () => bookmarkMenu?.onRemove(bookmarkData.noteId),
-        onMoveBookmarkToFolder: (folderId: string | null) =>
-          bookmarkMenu?.onMoveToFolder(bookmarkData.bookmarkId, folderId),
-        onNewBookmarkFolder: () => bookmarkMenu?.onNewFolder(),
-      }
-    : {};
+        : null;
 
   const rowContent = (
     <div
@@ -781,7 +748,6 @@ export function TreeRow({
           onOpenInSplit={handleOpenInSplit}
           isBookmarked={noteIsBookmarked}
           onToggleBookmark={handleToggleBookmark}
-          {...bookmarkMenuHandlers}
           open={kebabOpen}
           onOpenChange={setKebabOpen}
         >
@@ -864,7 +830,6 @@ export function TreeRow({
       onBulkBookmark={onBulkBookmark}
       onBulkDelete={onBulkDelete}
       onOpenChange={handleContextMenuOpenChange}
-      {...bookmarkMenuHandlers}
     >
       {rowContent}
     </TreeRowContextMenu>

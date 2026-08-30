@@ -377,8 +377,7 @@ export function FileTree({ onSelectNote }: FileTreeProps) {
         });
       }
       // bookmark / bookmark-folder rows never reach handleRequestDelete —
-      // BookmarksPanel wires bookmark removal through bookmarkMenu.onRemove,
-      // not onRequestDelete.
+      // BookmarksPanel wires their menus through rowMenuOverride.
     },
     [tree],
   );
