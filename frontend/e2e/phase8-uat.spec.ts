@@ -921,7 +921,10 @@ test.describe("R4-15 (@r4-15) --data-dir flag removed", () => {
       const proc = spawn(
         JASPER_BIN,
         ["serve", "--data-dir", tmpDir, "--bind", "127.0.0.1:0"],
-        { stdio: ["ignore", "pipe", "pipe"] },
+        {
+          env: { ...process.env, JASPER_APP_HOME: tmpDir },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
       );
 
       let stderr = "";
