@@ -5,9 +5,11 @@
 package vault
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 )
 
@@ -38,6 +40,12 @@ type RecentVaultEntry struct {
 func AppHomePath() (string, error) {
 	if v := os.Getenv("JASPER_APP_HOME"); v != "" {
 		return filepath.Clean(v), nil
+	}
+	// Under `go test` the real ~/.jasper is never the right answer: a test that
+	// falls through to it rewrites the developer's own recent-vault list. Refuse
+	// loudly instead, so the missing isolation surfaces as a failure.
+	if testing.Testing() {
+		return "", errors.New("app home: refusing the real ~/.jasper under go test — set JASPER_APP_HOME (t.Setenv(\"JASPER_APP_HOME\", t.TempDir()))")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
