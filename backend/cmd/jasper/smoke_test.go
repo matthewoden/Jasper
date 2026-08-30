@@ -57,20 +57,41 @@ func pickFreePort(t *testing.T) string {
 	return addr
 }
 
-func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *bytes.Buffer) {
+// syncBuffer guards the capture buffer. Handing exec.Cmd a writer that is not an
+// *os.File makes it copy the child's output on its own goroutine, and these tests
+// read the log while the child is still running — an unsynchronised bytes.Buffer
+// there is a data race that only -race reports.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func spawn(t *testing.T, dataDir, addr string, env []string) (*exec.Cmd, *syncBuffer) {
 	t.Helper()
 	cmd := exec.Command(jasperBin, "serve", "--vault", dataDir, "--bind", addr)
 	cmd.Env = append(os.Environ(), env...)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+	buf := &syncBuffer{}
+	cmd.Stdout = buf
+	cmd.Stderr = buf
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("spawn: %v", err)
 	}
-	return cmd, &buf
+	return cmd, buf
 }
 
-func killAndWait(t *testing.T, cmd *exec.Cmd, log *bytes.Buffer) {
+func killAndWait(t *testing.T, cmd *exec.Cmd, log *syncBuffer) {
 	t.Helper()
 	if cmd.Process == nil {
 		return
