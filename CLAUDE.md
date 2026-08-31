@@ -33,7 +33,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 ## Runtime
 
 - **Go 1.25.0** - Backend; requires no runtime dependencies (pure-Go SQLite)
-- **Node.js 22+** - Frontend build and test tooling only (not runtime); Vite dev server on :5173
+- **Node.js 24** - Frontend build and test tooling only (not runtime); Vite dev server on :5173. Pinned via `.nvmrc`, not a floor — see the compatibility matrix.
 - **npm** (pnpm-compatible lockfile format) - Frontend
 - **go mod** - Backend
 - Lockfiles present: `frontend/package-lock.json`, `go.sum`
@@ -93,9 +93,9 @@ If everything else about Jasper fails, this must work: open the browser, write n
 
 ## Platform Requirements
 
-- macOS: native Go 1.25.0, Node 22+, make, [optional] air for hot-reload
+- macOS: native Go 1.25.0, Node 24 (`.nvmrc`), make, [optional] air for hot-reload
 - WSL2 (Ubuntu/Debian): same as Linux below
-- Linux: Go 1.25.0, Node 22+, make
+- Linux: Go 1.25.0, Node 24 (`.nvmrc`), make
 - No Docker requirement for dev (Docker used only for fake-WSL E2E in CI)
 - **macOS**: Native Go binary + launchd plist at `~/Library/LaunchAgents/com.jasper.server.plist` (per-user agent, no sudo)
 - **WSL2**: Native Go binary + systemd unit at `~/.config/systemd/user/jasper.service` (requires `systemd=true` in `/etc/wsl.conf` + `loginctl enable-linger`); documented in install step
@@ -145,7 +145,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 | Constraint | Supported | Notes |
 |-----------|-----------|-------|
 | **Go 1.25.0** | chi/v5 ≥ 5.2.5, modernc.org/sqlite ≥ 1.50, coder/websocket 1.8.14 | All current; no conflicts |
-| **Node 22+** | Vite 8.0, npm 10.x, all frontend deps | Vite 8 requires 22.12+ or 20.19+ LTS |
+| **Node 24** | Vite 8.0, npm 11.x, all frontend deps | Pinned exactly, in `.nvmrc` + `engines`, because npm 10 and npm 11 disagree on which optional peer deps belong in `package-lock.json`. A lock written by one npm major can fail `npm ci` under the other, so CI and every developer must resolve with the same npm. Use `nvm use` in this repo. |
 | **React 19.2** | react-arborist 3.5.0 | 3.5.0 supports React 18 and 19 per peerDeps |
 | **TypeScript 5.9** | @types/react 19.2, typescript-eslint 8.0 | No TS 7 (unstable beta); stay on 5.x for v1 |
 | **Vite 8.0** | @vitejs/plugin-react 6.0, vite 8.x | Rolldown bundler default; v7.3 still receives security fixes |
