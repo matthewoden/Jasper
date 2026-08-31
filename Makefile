@@ -1,4 +1,4 @@
-.PHONY: gen gen-check build test lint dev gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e
+.PHONY: gen gen-check build test lint dev lock gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e
 
 # Canonical port resolver. Returns server.port from
 # the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
@@ -97,6 +97,18 @@ test-wsl-e2e:
 # The CI job (.github/workflows/install-validation.yml) calls this target
 # directly so it cannot list divergent compose commands — zero drift.
 .PHONY: test-systemd-e2e
+# Regenerate frontend/package-lock.json the way CI installs it.
+#
+# Must run on Linux with the npm pinned in .nvmrc. npm only resolves the
+# optional @napi-rs/wasm-runtime tree on a platform that needs it, so a lock
+# generated on macOS omits entries `npm ci` then demands on a Linux runner —
+# and the npm major (which rides the Node patch) changes which ones. Running
+# `npm install` on a developer machine is what breaks CI; use this instead.
+lock:
+	docker run --rm -u $$(id -u):$$(id -g) -e npm_config_cache=/tmp/.npm \
+	  -v "$$PWD/frontend:/w" -w /w node:$$(cat .nvmrc) \
+	  npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
 test-systemd-e2e:
 	cd frontend && npm install && npm run build
 	rm -rf backend/internal/static/dist
