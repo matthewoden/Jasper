@@ -33,7 +33,9 @@ If everything else about Jasper fails, this must work: open the browser, write n
 ## Runtime
 
 - **Go 1.25.0** - Backend; requires no runtime dependencies (pure-Go SQLite)
-- **Node.js 24** - Frontend build and test tooling only (not runtime); Vite dev server on :5173. Pinned via `.nvmrc`, not a floor — see the compatibility matrix.
+- **Node.js 24.11.0** - Frontend build and test tooling only (not runtime); Vite dev server on :5173. Pinned to the exact patch in `.nvmrc` — see the compatibility matrix.
+
+**Never run `npm install` to update `frontend/package-lock.json` — run `make lock`.** npm resolves the optional `@napi-rs/wasm-runtime` tree only on a platform that needs it, so a lock generated on macOS omits entries `npm ci` then demands on the Linux CI runner. `make lock` regenerates it inside the pinned Node image on Linux, which is what CI installs against. Note that `make test-systemd-e2e` runs a bare `npm install`; re-run `make lock` and check `git diff` afterwards.
 - **npm** (pnpm-compatible lockfile format) - Frontend
 - **go mod** - Backend
 - Lockfiles present: `frontend/package-lock.json`, `go.sum`
@@ -145,7 +147,7 @@ If everything else about Jasper fails, this must work: open the browser, write n
 | Constraint | Supported | Notes |
 |-----------|-----------|-------|
 | **Go 1.25.0** | chi/v5 ≥ 5.2.5, modernc.org/sqlite ≥ 1.50, coder/websocket 1.8.14 | All current; no conflicts |
-| **Node 24** | Vite 8.0, npm 11.x, all frontend deps | Pinned exactly, in `.nvmrc` + `engines`, because npm 10 and npm 11 disagree on which optional peer deps belong in `package-lock.json`. A lock written by one npm major can fail `npm ci` under the other, so CI and every developer must resolve with the same npm. Use `nvm use` in this repo. |
+| **Node 24.11.0 (exact)** | Vite 8.0, npm 11.6.1, all frontend deps | Pinned to the patch in `.nvmrc`; both workflows read it via `node-version-file`. The npm major rides the Node patch (24.19 ships npm 12), and npm majors disagree about which optional peer deps belong in `package-lock.json` — so pinning only the major still lets CI and a developer resolve differently. Use `nvm use` in this repo. |
 | **React 19.2** | react-arborist 3.5.0 | 3.5.0 supports React 18 and 19 per peerDeps |
 | **TypeScript 5.9** | @types/react 19.2, typescript-eslint 8.0 | No TS 7 (unstable beta); stay on 5.x for v1 |
 | **Vite 8.0** | @vitejs/plugin-react 6.0, vite 8.x | Rolldown bundler default; v7.3 still receives security fixes |
