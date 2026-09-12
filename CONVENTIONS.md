@@ -10,8 +10,11 @@ Nearly every rule below was earned from a specific incident. The incidents are k
 
 - **Always use `make build` for any binary that will be tested or shipped.** The `build` target copies `frontend/dist/` into `backend/internal/static/dist/` between `npm run build` and `go build`. Skipping that copy bakes the *previous* frontend bundle into the binary via `//go:embed all:dist`, producing a stale UI that looks like a code bug.
 - For any instruction that says `npm run build && go build`, treat it as a defect and replace it with `make build`.
+- **A gitignored `frontend/vite.config.js` silently overrides `vite.config.ts`.** Vite resolves `.js` ahead of `.ts`, and because the file is ignored it never appears in `git status`. If an edit to the Vite config seems to have no effect, look for it and delete it *before* investigating anything else. The tell is a scratch copy of the config behaving correctly while the real one appears inert.
 
 *Incident: a full UAT walkthrough was lost to this — the binary contained old UI code despite the source being correct. The instinct to type the two commands separately persisted for weeks afterward.*
+
+*Incident: a `vite.config.js` dated six weeks earlier was found shadowing the real config, so every `make dev` in that window had been running a frozen proxy configuration. An hour went into suspecting the proxy code itself.*
 
 ## Verification: E2E before human UAT
 
