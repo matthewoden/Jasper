@@ -15,6 +15,7 @@ The `notes/` directory of `.md` files is the sole source of truth. SQLite is a f
 Concretely:
 
 - Deleting `.jasper/app.db` is never data loss. Reconcile rebuilds every derived surface — metadata, FTS5, tags, backlinks — from the files on disk.
+  - With one caveat that has already cost a defect: a note's **UUID** is minted in SQLite and stored nowhere else, so a rebuild re-mints it. Anything outside the index that references a note by id is therefore referencing a value this ADR makes disposable. See [ADR-0032](./0032-bookmarks-carry-a-path-recovery-hint.md).
 - No user-authored content exists only in SQLite. Tags live in the note body; properties live in the note's frontmatter; note content is the file.
 - Nothing outside the `index` package queries SQLite directly.
 

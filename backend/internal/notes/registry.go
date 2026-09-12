@@ -60,6 +60,22 @@ func (r *Registry) Lookup(id uuid.UUID) (string, bool) {
 	return relPath, ok
 }
 
+// PathIndex returns a relPath → id snapshot. Built on demand rather than
+// maintained as a third index: the only caller is bookmark recovery, which
+// runs when an id has already failed to resolve, so paying O(n) there beats
+// keeping another map in lockstep with byID and byTitle on every mutation.
+//
+// A path maps to one id — the registry cannot hold two notes at one path.
+func (r *Registry) PathIndex() map[string]uuid.UUID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	byPath := make(map[string]uuid.UUID, len(r.byID))
+	for id, relPath := range r.byID {
+		byPath[relPath] = id
+	}
+	return byPath
+}
+
 // Add inserts (or overwrites) the id → relPath mapping. Called by
 // Service.Create after the file write + index upsert succeed. Idempotent:
 // re-Adding the same id replaces the path in place.

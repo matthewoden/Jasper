@@ -84,7 +84,8 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 	if s.registry == nil {
 		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
 	}
-	if _, ok := s.registry.Lookup(noteID); !ok {
+	relPath, ok := s.registry.Lookup(noteID)
+	if !ok {
 		return Bookmark{}, fmt.Errorf("bookmarks.Add(%s): %w", noteID, ErrNoteNotFound)
 	}
 
@@ -104,6 +105,7 @@ func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (
 		ID:       uuid.NewString(),
 		NoteID:   noteID.String(),
 		FolderID: folderID,
+		Path:     relPath,
 		// Order is scoped per-folder, matching the OpenAPI contract's
 		// "display order among sibling bookmarks" — NOT a global counter,
 		// which would collide across unrelated folders and after removals.
