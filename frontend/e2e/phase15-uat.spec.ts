@@ -10,7 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { assertJasperBinary, spawnJasper, type JasperHandle } from "./helpers/binary";
 import { openNoteFromTree, noteRow } from "./helpers/openNoteFromTree";
 
 // ─── Shared helpers (single-vault path) ──────────────────────────────────────
@@ -335,11 +335,7 @@ interface VaultHandle {
 }
 
 async function spawnVaultJasper(appHome: string): Promise<VaultHandle> {
-  if (!fs.existsSync(JASPER_BIN15)) {
-    throw new Error(
-      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). Expected at: ${JASPER_BIN15}`,
-    );
-  }
+  assertJasperBinary(JASPER_BIN15);
   const port = await findFreePort();
   const mcpPort = await findFreePort();
   const proc = spawn(JASPER_BIN15, ["serve", "--bind", `127.0.0.1:${port}`], {

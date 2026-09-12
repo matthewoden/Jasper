@@ -11,7 +11,7 @@
  * retiring them.
  */
 import { test, expect } from "@playwright/test";
-import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { assertJasperBinary, spawnJasper, type JasperHandle } from "./helpers/binary";
 
 
 test.describe("first-run wizard (@first-run)", () => {
@@ -905,15 +905,7 @@ test.describe("R4-15 (@r4-15) --data-dir flag removed", () => {
     const repoRoot = path.resolve(__dirname, "..", "..");
     const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
 
-    const exists = await fs
-      .stat(JASPER_BIN)
-      .then(() => true)
-      .catch(() => false);
-    if (!exists) {
-      throw new Error(
-        `bin/jasper missing — run \`make build\` first. Expected at: ${JASPER_BIN}`,
-      );
-    }
+    assertJasperBinary(JASPER_BIN);
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "jasper-r4-15-"));
 
