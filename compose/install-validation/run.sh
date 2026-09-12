@@ -18,6 +18,15 @@ set -euo pipefail
 
 COMPOSE="docker compose -f compose/install-validation/docker-compose.yml"
 
+# Without this, a missing cross-compiled binary lets Docker create the bind-mount
+# source as an empty directory, and the failure only surfaces later as a missing
+# binary inside the container.
+LINUX_BIN="bin/linux-amd64/jasper"
+if [ ! -x "$LINUX_BIN" ]; then
+    echo "FAIL: $LINUX_BIN missing or not executable — run \`make test-systemd-e2e\`, which cross-compiles it first, rather than invoking run.sh directly." >&2
+    exit 1
+fi
+
 cleanup() {
     echo "==> Tearing down compose/install-validation suite"
     $COMPOSE down --volumes --remove-orphans
