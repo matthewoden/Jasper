@@ -32,7 +32,12 @@
 #   production source trees (threat T-16-05).
 #
 # Mounts:
-#   ../../bin           → /opt/jasper/bin     (built binary, read-only)
+#   ../../bin/linux-amd64 → /opt/jasper/bin   (cross-compiled binary, read-only)
+#     Deliberately the linux-amd64 subdirectory rather than ../../bin: the host's
+#     bin/jasper is the NATIVE build the Playwright suite execs, and mounting the
+#     parent invited `make test-systemd-e2e` to cross-compile over it (JASPER-43).
+#     The container path is unchanged, so test-install.sh still calls
+#     /opt/jasper/bin/jasper.
 #   ../../README.md     → /opt/jasper/README.md (docs validation, read-only)
 #   ./test-install.sh   → /opt/jasper/test-install.sh (script, read-only)
 
@@ -54,7 +59,7 @@ services:
       - /run/lock
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
-      - ../../bin:/opt/jasper/bin:ro
+      - ../../bin/linux-amd64:/opt/jasper/bin:ro
       - ../../README.md:/opt/jasper/README.md:ro
       - ./test-install.sh:/opt/jasper/test-install.sh:ro
     command: ["/sbin/init"]

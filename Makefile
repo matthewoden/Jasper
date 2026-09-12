@@ -115,5 +115,8 @@ test-systemd-e2e:
 	mkdir -p backend/internal/static/dist
 	cp -R frontend/dist/. backend/internal/static/dist/
 	touch backend/internal/static/dist/.keep
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/jasper ./cmd/jasper
+	# Built to bin/linux-amd64/ and NOT bin/jasper: the Playwright suite execs
+	# bin/jasper, so cross-compiling over it leaves every spec dying on
+	# `spawn ENOEXEC` until the next `make build` (JASPER-43).
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/linux-amd64/jasper ./cmd/jasper
 	@bash compose/install-validation/run.sh

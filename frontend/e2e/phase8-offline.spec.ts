@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { assertJasperBinary, spawnJasper, type JasperHandle } from "./helpers/binary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,12 +47,7 @@ async function findFreePort(): Promise<number> {
 async function spawnNoVaultJasper(
   appHome: string,
 ): Promise<{ proc: ChildProcess; baseURL: string; kill: () => void }> {
-  if (!fs.existsSync(JASPER_BIN)) {
-    throw new Error(
-      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
-        `Expected at: ${JASPER_BIN}`,
-    );
-  }
+  assertJasperBinary(JASPER_BIN);
   const port = await findFreePort();
   const proc = spawn(JASPER_BIN, ["serve", "--bind", `127.0.0.1:${port}`], {
     env: { ...process.env, JASPER_APP_HOME: appHome },

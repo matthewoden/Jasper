@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertJasperBinary } from "./helpers/binary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,11 +62,7 @@ interface VaultHandle {
 }
 
 async function spawnJasper(appHome: string, extraArgs: string[] = []): Promise<VaultHandle> {
-  if (!fs.existsSync(JASPER_BIN)) {
-    throw new Error(
-      `bin/jasper missing — run \`make build\` first. Expected at: ${JASPER_BIN}`,
-    );
-  }
+  assertJasperBinary(JASPER_BIN);
   const port = await findFreePort();
   const proc = spawn(
     JASPER_BIN,

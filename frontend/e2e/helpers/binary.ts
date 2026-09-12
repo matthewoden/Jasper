@@ -14,6 +14,7 @@
  * SO_REUSEADDR, so TIME_WAIT does not block the immediate rebind.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { closeSync, existsSync, openSync, readSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -128,6 +129,62 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
+export const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
+
+type ExeFormat = "Mach-O (macOS)" | "ELF (Linux)" | "PE (Windows)" | "unrecognised";
+
+const EXPECTED_FORMAT: Partial<Record<NodeJS.Platform, ExeFormat>> = {
+  darwin: "Mach-O (macOS)",
+  linux: "ELF (Linux)",
+  win32: "PE (Windows)",
+};
+
+function executableFormat(binPath: string): ExeFormat {
+  const head = Buffer.alloc(4);
+  const fd = openSync(binPath, "r");
+  try {
+    readSync(fd, head, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  if (head[0] === 0x7f && head.toString("latin1", 1, 4) === "ELF") return "ELF (Linux)";
+  if (head.toString("latin1", 0, 2) === "MZ") return "PE (Windows)";
+  switch (head.readUInt32BE(0)) {
+    case 0xfeedface:
+    case 0xfeedfacf:
+    case 0xcefaedfe:
+    case 0xcffaedfe:
+    case 0xcafebabe:
+      return "Mach-O (macOS)";
+    default:
+      return "unrecognised";
+  }
+}
+
+/**
+ * Reject a missing or foreign-platform binary with an instruction instead of a
+ * bare `spawn ENOEXEC`, which points at the spawn call and never mentions
+ * architecture. An unrecognised format is allowed through rather than risk
+ * failing a binary this check simply does not know how to classify.
+ */
+export function assertJasperBinary(binPath: string = JASPER_BIN): void {
+  if (!existsSync(binPath)) {
+    throw new Error(
+      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
+        `Expected at: ${binPath}`,
+    );
+  }
+  const actual = executableFormat(binPath);
+  const expected = EXPECTED_FORMAT[process.platform];
+  if (expected !== undefined && actual !== "unrecognised" && actual !== expected) {
+    throw new Error(
+      `bin/jasper was built as ${actual}, but this host (${process.platform}/${process.arch}) needs ${expected} — ` +
+        `run \`make build\` to restore the native build. A cross-compiled binary cannot be exec'd here. ` +
+        `Confirm with: file ${binPath}`,
+    );
+  }
+}
+
 /**
  * Spawn a Jasper binary against the given dataDir and port.
  * If dataDir is not provided, an ephemeral tmpdir is created.
@@ -139,6 +196,7 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..");
  * process.env verbatim.
  */
 async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpPort?: number; ownsDataDir: boolean; appHome?: string; env?: NodeJS.ProcessEnv }): Promise<JasperHandle> {
+  assertJasperBinary();
   const dataDir = opts.dataDir ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-"));
   const ownsDataDir = opts.ownsDataDir;
   // Without this the spawned binary falls through to the developer's real
@@ -146,7 +204,7 @@ async function spawnJasperInternal(opts: { dataDir?: string; port?: number; mcpP
   // handle and reused across restart() so vault state survives a restart.
   const ownsAppHome = opts.appHome === undefined;
   const appHome = opts.appHome ?? await mkdtemp(path.join(tmpdir(), "jasper-e2e-apphome-"));
-  const binPath = path.join(repoRoot, "bin", "jasper");
+  const binPath = JASPER_BIN;
 
   // Bounded spawn-retry. findFreePort() binds :0 then closes the socket before
   // returning the port, leaving a TOCTOU window where another parallel worker
@@ -243,21 +301,13 @@ export interface SpawnOpts {
 /**
  * Spawn a Jasper binary against an optional existing data directory.
  *
- * CLAUDE.md §Build & embed pipeline enforcement: this function fails fast with
- * a clear error if `bin/jasper` is missing — the caller must run `make build`
- * first. This prevents mysterious 404s from a stale binary or a missing binary
- * masking as a test failure.
+ * CLAUDE.md §Build & embed pipeline enforcement: fails fast (see
+ * assertJasperBinary) if `bin/jasper` is missing or was built for another
+ * platform — the caller must run `make build` first. This prevents mysterious
+ * 404s from a stale binary, or a missing/foreign binary masking as a test
+ * failure.
  */
 export async function spawnJasper(opts: SpawnOpts = {}): Promise<JasperHandle> {
-  const { existsSync } = await import("node:fs");
-  const JASPER_BIN = path.join(repoRoot, "bin", "jasper");
-  if (!existsSync(JASPER_BIN)) {
-    throw new Error(
-      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
-        `Expected at: ${JASPER_BIN}`,
-    );
-  }
-
   if (opts.dataDir !== undefined) {
     return spawnJasperInternal({ dataDir: opts.dataDir, ownsDataDir: false, env: opts.env });
   }

@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
+import { assertJasperBinary } from "./helpers/binary";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -92,12 +93,7 @@ async function spawnJasperWithEnv(
   appHome: string,
   env: NodeJS.ProcessEnv,
 ): Promise<Handle> {
-  if (!fs.existsSync(JASPER_BIN)) {
-    throw new Error(
-      `bin/jasper missing — run \`make build\` first (CLAUDE.md §Build & embed pipeline). ` +
-        `Expected at: ${JASPER_BIN}`,
-    );
-  }
+  assertJasperBinary(JASPER_BIN);
   const port = await findFreePort();
   // Per-binary ephemeral MCP port (overrides the fixed 6684 default via
   // JASPER_MCP_PORT) so this vault-switch test runs parallel with the suite.
