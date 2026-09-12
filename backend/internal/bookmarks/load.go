@@ -20,9 +20,10 @@ import (
 // An unknown field must never be treated like corrupt JSON: coercing it to an
 // empty document would wipe every bookmark on the next write.
 //
-// Bookmarks whose NoteID no longer resolves are pruned on read and the pruned
-// document re-saved. A nil registry skips pruning entirely — it resolves
-// nothing, so pruning against it would wipe every valid row.
+// Bookmarks whose NoteID no longer resolves are re-resolved by Path where
+// possible and pruned otherwise; a changed document is re-saved. A nil
+// registry skips both entirely — it resolves nothing, so pruning against it
+// would wipe every valid row.
 func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks, error) {
 	path := bookmarksPath(dataDir)
 	raw, err := os.ReadFile(path)
@@ -47,22 +48,58 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 		return doc, nil
 	}
 
-	pruned := make([]Bookmark, 0, len(doc.Bookmarks))
+	kept := make([]Bookmark, 0, len(doc.Bookmarks))
+	changed := false
+	// Built lazily: the common read resolves every id and never needs it.
+	var byPath map[string]uuid.UUID
+
 	for _, bm := range doc.Bookmarks {
 		id, parseErr := uuid.Parse(bm.NoteID)
 		if parseErr != nil {
+			changed = true
 			continue
 		}
-		if _, ok := registry.Lookup(id); !ok {
+
+		if relPath, ok := registry.Lookup(id); ok {
+			// Keep the hint current, or a later rebuild resolves a path the
+			// note left behind — which is how a rename would quietly disarm
+			// the recovery below.
+			if bm.Path != relPath {
+				bm.Path = relPath
+				changed = true
+			}
+			kept = append(kept, bm)
 			continue
 		}
-		pruned = append(pruned, bm)
+
+		if bm.Path == "" {
+			changed = true
+			continue
+		}
+		if byPath == nil {
+			byPath = registry.PathIndex()
+		}
+		newID, ok := byPath[bm.Path]
+		if !ok {
+			changed = true
+			continue
+		}
+		// The id was re-minted under this note (a full rebuild) — adopt it
+		// rather than dropping a row the user authored. Path is the only
+		// identity signal left, so a note now occupying a deleted note's
+		// path inherits its bookmark; that is the hint working as intended.
+		log.Info("bookmarks: re-resolved bookmark by path after id change",
+			"bookmark", bm.ID, "path", bm.Path,
+			"old_note_id", bm.NoteID, "new_note_id", newID.String())
+		bm.NoteID = newID.String()
+		changed = true
+		kept = append(kept, bm)
 	}
 
-	if len(pruned) != len(doc.Bookmarks) {
-		doc.Bookmarks = pruned
+	if changed {
+		doc.Bookmarks = kept
 		if saveErr := Save(dataDir, doc); saveErr != nil {
-			log.Warn("bookmarks: prune-on-read save failed",
+			log.Warn("bookmarks: heal-on-read save failed",
 				"path", path, "err", saveErr)
 		}
 	}

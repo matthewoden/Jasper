@@ -537,3 +537,99 @@ test.describe("@phase27 BOOK-04: bookmark persistence + identity survives rename
     ).toHaveText(["book04-target", "book04-renamed"], { timeout: 10_000 });
   });
 });
+
+// ─── BOOK-05 — a bookmark survives a full admin/reindex ───────────────────────
+//
+// BOOK-04 above proves persistence across a binary restart, which takes the
+// INCREMENTAL reconcile path and preserves note ids. A full reindex takes a
+// different route: it DROPs the notes table and re-mints every id, which used
+// to leave every bookmark dangling and silently pruned (and the loss written
+// straight back to bookmarks.json). The restart test cannot catch that, so
+// this covers the other path.
+
+test.describe("@phase27 @reindex BOOK-05: bookmarks survive a full reindex", () => {
+  let jasper: JasperHandle;
+  let appHome: string;
+  test.beforeAll(async () => {
+    ({ jasper, appHome } = await spawnIsolated());
+  });
+  test.afterAll(async () => {
+    if (jasper) await jasper.kill();
+    if (appHome) fs.rmSync(appHome, { recursive: true, force: true });
+  });
+
+  test("a bookmarked note stays bookmarked across POST /admin/reindex — BOOK-05", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForConnected(page, jasper.baseURL);
+
+    const idA = await apiCreateNote(page, jasper.baseURL, "book05-first");
+    const idB = await apiCreateNote(page, jasper.baseURL, "book05-second");
+
+    for (const id of [idA, idB]) {
+      await openNoteFromTree(page, id);
+      await page.getByTestId("bookmark-star").click();
+      await expect(page.getByTestId("bookmark-star")).toHaveAttribute(
+        "aria-label",
+        "Remove bookmark",
+      );
+    }
+
+    await openSidebarTab(page, "Bookmarks");
+    await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(2);
+
+    // Full mode is the destructive one — the same call the reset-and-rebuild
+    // recovery dialog makes. Assert it really re-indexed, so a future no-op
+    // cannot make this test pass without exercising anything.
+    const resp = await page.request.post(`${jasper.baseURL}/api/v1/admin/reindex`, {
+      data: { mode: "full" },
+    });
+    expect(resp.status()).toBe(202);
+    const { notes_indexed: notesIndexed } = (await resp.json()) as {
+      notes_indexed: number;
+    };
+    expect(notesIndexed).toBeGreaterThanOrEqual(2);
+
+    await page.reload();
+    await expect(page.getByTestId("connection-status-dot")).toHaveAttribute(
+      "data-status",
+      "connected",
+      { timeout: 15_000 },
+    );
+    await page.waitForLoadState("networkidle");
+    await openSidebarTab(page, "Bookmarks");
+
+    await expect(bookmarkRowByTitle(page, "book05-first")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(bookmarkRowByTitle(page, "book05-second")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator('[data-tree-row-kind="bookmark"]')).toHaveCount(2);
+
+    // The surviving rows must agree with the ids the rebuild actually minted,
+    // not merely be present: a bookmark pointing at a vanished id would render
+    // but resolve to nothing. Holds whether or not a future change makes ids
+    // stable across a rebuild.
+    const tree = await fetchTree(page, jasper.baseURL);
+    const liveIds = new Set(
+      tree.root.filter((n) => n.kind === "note").map((n) => n.id),
+    );
+    const bookmarksResp = await page.request.get(`${jasper.baseURL}/api/v1/bookmarks`);
+    const { bookmarks } = (await bookmarksResp.json()) as {
+      bookmarks: Array<{ note_id: string }>;
+    };
+    expect(bookmarks).toHaveLength(2);
+    for (const bm of bookmarks) {
+      expect(liveIds).toContain(bm.note_id);
+    }
+
+    // And it is still a working bookmark, not just a row.
+    await bookmarkRowByTitle(page, "book05-first").getByText("book05-first").click();
+    await expect(
+      page.locator('[data-testid="note-breadcrumb"]:visible').getByTestId("breadcrumb-segment"),
+    ).toHaveText(["book05-first"], { timeout: 10_000 });
+  });
+});
