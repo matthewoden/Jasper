@@ -34,8 +34,21 @@ const serviceName = "com.jasper.server"
 //
 // Program is nil: the install/uninstall subcommands need only the registration
 // surface.
+//
+// EnvVars stays empty deliberately. The unit used to carry
+// Environment=JASPER_DATA_DIR=<app home>, which ADR-0008 retired: the served
+// vault comes from current_vault in app.json, so the line had no effect and
+// named the app home rather than a vault. A unit file is the first thing read
+// when an install misbehaves, and that one invited editing a variable nothing
+// consumes. Both templates skip the block when the map is empty.
 func New(dataDir string) (service.Service, error) {
-	cfg := &service.Config{
+	return service.New(nil, newConfig(dataDir))
+}
+
+// newConfig is split out so a test can assert what the installed unit will
+// declare without going through service.New, which hides the config.
+func newConfig(dataDir string) *service.Config {
+	return &service.Config{
 		Name:        serviceName,
 		DisplayName: "Jasper",
 		Description: "Jasper local markdown notes server",
@@ -47,11 +60,7 @@ func New(dataDir string) (service.Service, error) {
 			"SystemdScript": systemdUnit,
 			"LogDirectory":  vault.AppLogsDir(dataDir),
 		},
-		EnvVars: map[string]string{
-			"JASPER_DATA_DIR": dataDir,
-		},
 	}
-	return service.New(nil, cfg)
 }
 
 // BootstrapMacOS calls `launchctl bootstrap gui/$(id -u) <plist>` after

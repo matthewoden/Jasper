@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"text/template"
 )
 
 // TestLaunchdTemplateKeepAliveCrashedDict pins the dict-form KeepAlive in
@@ -123,16 +124,54 @@ func TestNewReturnsService(t *testing.T) {
 	}
 }
 
-// TestNewWiresEnvVars runs the code path (so the package compiles + New
-// executes) and validates the EnvVars contract. Template-content tests
-// above cover LaunchdConfig + SystemdScript correctness.
-func TestNewWiresEnvVars(t *testing.T) {
-	svc, err := New("/var/jasper/notes")
-	if err != nil {
-		t.Fatalf("New: unexpected err: %v", err)
+// TestNewConfigDeclaresNoEnvVars pins that the installed unit declares no
+// environment. It used to carry JASPER_DATA_DIR, which ADR-0008 retired — the
+// binary ignores it (see TestRunServe_JasperDataDirEnvIgnored), so the line
+// told whoever read the unit to edit a variable nothing consumes. Re-adding an
+// env var here means committing to something actually reading it.
+func TestNewConfigDeclaresNoEnvVars(t *testing.T) {
+	cfg := newConfig("/var/jasper/notes")
+	if len(cfg.EnvVars) != 0 {
+		t.Errorf("newConfig().EnvVars = %v; want empty — the unit must not declare an env var the binary ignores", cfg.EnvVars)
 	}
-	if svc == nil {
-		t.Fatalf("New returned nil service")
+}
+
+// TestTemplatesEmitNoEnvironmentWhenEnvVarsEmpty guards the rendered end
+// product, not just the config: both templates must leave no environment
+// block behind when EnvVars is empty.
+//
+// Rendered against a local struct rather than kardianos's own, which is
+// unexported — this exercises our template text, not the library's plumbing.
+// cmdEscape is stubbed for the same reason; only the EnvVars blocks matter.
+func TestTemplatesEmitNoEnvironmentWhenEnvVarsEmpty(t *testing.T) {
+	data := struct {
+		Description, Path, Name, LogDirectory string
+		StandardOutPath, StandardErrorPath    string
+		EnvVars                               map[string]string
+	}{
+		Description: "Jasper", Path: "/usr/local/bin/jasper", Name: "com.jasper.server",
+		LogDirectory: "/home/u/.jasper/logs",
+		EnvVars:      newConfig("/home/u/.jasper").EnvVars,
+	}
+	funcs := template.FuncMap{"cmdEscape": func(s string) string { return s }}
+
+	for name, tmplText := range map[string]string{
+		"systemdUnit":  systemdUnit,
+		"launchdPlist": launchdPlist,
+	} {
+		tmpl, err := template.New(name).Funcs(funcs).Parse(tmplText)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		var out strings.Builder
+		if err := tmpl.Execute(&out, data); err != nil {
+			t.Fatalf("execute %s: %v", name, err)
+		}
+		for _, marker := range []string{"Environment=", "EnvironmentVariables"} {
+			if strings.Contains(out.String(), marker) {
+				t.Errorf("%s declares %q with empty EnvVars:\n%s", name, marker, out.String())
+			}
+		}
 	}
 }
 
