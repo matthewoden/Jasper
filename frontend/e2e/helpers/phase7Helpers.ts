@@ -202,29 +202,50 @@ export async function expectPaletteVisibleWithNCommands(
     page.getByText(expectedLabels[0], { exact: true }).first(),
   ).toBeVisible({ timeout: 5_000 });
 
-  // The palette list is virtualized (@tanstack/react-virtual, 36px rows,
-  // 50vh max-height) — since the registry grew from 8 to 17 entries
-  // (25/27/28), the tail entries no longer render in the DOM
-  // without scrolling. ArrowDown moves selectedIdx, which the component's
-  // own effect feeds into virtualizer.scrollToIndex — drive that real user
-  // interaction and record every label as it becomes visible, bounded by
-  // the list length (no fixed sleeps).
+  // The palette list is virtualized (@tanstack/react-virtual, 36px rows, 50vh
+  // max-height), so a label is only in the DOM while scrolled near. ArrowDown
+  // moves selectedIdx, which the component's own effect feeds into
+  // virtualizer.scrollToIndex — drive that real interaction and record what is
+  // rendered at each position.
+  //
+  // Read the rendered rows in ONE call per position rather than sweeping the 17
+  // labels with a per-label isVisible(). The sweep issued 17 sequential
+  // round-trips while the list was free to re-render between them, so a row
+  // created and recycled mid-sweep was never recorded — and the budget was a
+  // fixed 17 presses, leaving nothing in hand to find it again (JASPER-13).
   const seen = new Set<string>();
-  for (let i = 0; i < expectedLabels.length; i++) {
-    for (const label of expectedLabels) {
-      if (seen.has(label)) continue;
-      if (await page.getByText(label, { exact: true }).first().isVisible().catch(() => false)) {
-        seen.add(label);
-      }
+  const collectRenderedLabels = async (): Promise<number> => {
+    for (const text of await page.locator('[data-row-kind="cmd"]').allInnerTexts()) {
+      const match = expectedLabels.find((label) => text.includes(label));
+      if (match !== undefined) seen.add(match);
     }
-    if (seen.size === expectedLabels.length) break;
-    await page.keyboard.press("ArrowDown");
-  }
-  for (const label of expectedLabels) {
-    expect(
-      seen.has(label),
-      `expected command "${label}" to become visible while scrolling the palette`,
-    ).toBe(true);
+    return seen.size;
+  };
+
+  // Scroll until every label has been seen rather than for a fixed number of
+  // presses: the palette's contents can settle after its first row renders, and
+  // a fixed budget spends itself scrolling past a list that was still growing.
+  // Selection is walked one row at a time and the selected row is always
+  // scrolled into view, so every entry is observed at least once.
+  try {
+    await expect
+      .poll(
+        async () => {
+          const found = await collectRenderedLabels();
+          if (found < expectedLabels.length) {
+            await page.keyboard.press("ArrowDown");
+          }
+          return found;
+        },
+        { timeout: 15_000, intervals: [50] },
+      )
+      .toBe(expectedLabels.length);
+  } catch {
+    const missing = expectedLabels.filter((label) => !seen.has(label));
+    throw new Error(
+      `palette never rendered ${missing.length} of ${expectedLabels.length} commands ` +
+        `while scrolling: ${missing.join(", ")}`,
+    );
   }
 }
 
