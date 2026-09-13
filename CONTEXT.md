@@ -62,7 +62,7 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Reconcile** — the startup delta scan that walks the filesystem and syncs the index to it. Runs incrementally on every boot; a full rebuild is available via `POST /admin/reindex`.
 
-**Attachment** — a non-markdown file stored at `notes/<note-dir>/attachments/`. Collisions auto-rename (`image-1.png`).
+**Attachment** — a non-markdown file stored in an `attachments/` directory beside the note — **one per parent folder, shared by every note in it**, not one per note (`attachmentsRelDir` = the note's parent + `/attachments`). Collisions auto-rename (`image-1.png`). The sharing is what bites: an attachment directory cannot simply travel with a note that moves out of its folder, because a sibling left behind may reference the same file. The reference is also written into the note folder-relative (`![x](attachments/x.png)`) but *served* note-UUID-relative against the note's current path, so the two anchorings disagree the moment a note moves.
 
 **Bookmark** — a pinned reference to a note, held by UUID in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
 
