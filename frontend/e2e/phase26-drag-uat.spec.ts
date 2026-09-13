@@ -260,7 +260,13 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await cmdInput.fill("Split right");
     const splitRow = page.locator('[data-row-kind="cmd"]').filter({ hasText: "Split right" }).first();
     await expect(splitRow).toBeVisible({ timeout: 5_000 });
-    await splitRow.click();
+    // Activate with Enter rather than clicking the row. The palette list is
+    // virtualized, so the row can be re-rendered between the assertion above and
+    // the click, and Playwright's actionability check then never sees it stable —
+    // which is exactly how this presented: locator.click timing out 5s after the
+    // row had been asserted visible (JASPER-13). The palette is opened fresh
+    // here, so selection is still the first filtered row.
+    await page.keyboard.press("Enter");
     await expect(leafPanes(page)).toHaveCount(2);
 
     const leftLeaf = leafPanes(page).nth(0);
@@ -326,7 +332,13 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await cmdInput.fill("Split right");
     const splitRow = page.locator('[data-row-kind="cmd"]').filter({ hasText: "Split right" }).first();
     await expect(splitRow).toBeVisible({ timeout: 5_000 });
-    await splitRow.click();
+    // Activate with Enter rather than clicking the row. The palette list is
+    // virtualized, so the row can be re-rendered between the assertion above and
+    // the click, and Playwright's actionability check then never sees it stable —
+    // which is exactly how this presented: locator.click timing out 5s after the
+    // row had been asserted visible (JASPER-13). The palette is opened fresh
+    // here, so selection is still the first filtered row.
+    await page.keyboard.press("Enter");
     await expect(leafPanes(page)).toHaveCount(2);
 
     const leftLeaf = leafPanes(page).nth(0);
@@ -376,7 +388,13 @@ test.describe("@drag WS-01/WS-02: drag-to-split / drag-to-move", () => {
     await cmdInput.fill("Split right");
     const splitRow = page.locator('[data-row-kind="cmd"]').filter({ hasText: "Split right" }).first();
     await expect(splitRow).toBeVisible({ timeout: 5_000 });
-    await splitRow.click();
+    // Activate with Enter rather than clicking the row. The palette list is
+    // virtualized, so the row can be re-rendered between the assertion above and
+    // the click, and Playwright's actionability check then never sees it stable —
+    // which is exactly how this presented: locator.click timing out 5s after the
+    // row had been asserted visible (JASPER-13). The palette is opened fresh
+    // here, so selection is still the first filtered row.
+    await page.keyboard.press("Enter");
     await expect(leafPanes(page)).toHaveCount(2);
 
     const leftLeaf = leafPanes(page).nth(0);
