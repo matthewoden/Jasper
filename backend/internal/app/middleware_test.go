@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 
@@ -145,6 +146,26 @@ func TestSecurityHeadersMiddleware_SetsHeadersOnEveryResponse(t *testing.T) {
 // returns 500 when the inner handler panics. Headers MUST be set
 // before the panic (we set them first, THEN call next.ServeHTTP),
 // so the 500 response carries them too.
+// recordingLogEntry satisfies chi's middleware.LogEntry. Recoverer reports a
+// recovered panic to the in-context entry when there is one and falls back to
+// PrintPrettyStack otherwise — and that fallback writes a `panic:`-prefixed
+// stack to stderr, which `go test` reads as a crashed binary and blames on
+// whichever test happened to be running (JASPER-10). Supplying an entry keeps
+// the deliberate panic out of the output stream and lets us assert it was
+// reported rather than swallowed.
+type recordingLogEntry struct {
+	panicValue any
+	panicStack []byte
+}
+
+func (e *recordingLogEntry) Write(_, _ int, _ http.Header, _ time.Duration, _ interface{}) {
+}
+
+func (e *recordingLogEntry) Panic(v interface{}, stack []byte) {
+	e.panicValue = v
+	e.panicStack = stack
+}
+
 func TestSecurityHeadersMiddleware_HeadersPresentOn500(t *testing.T) {
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")
@@ -155,10 +176,18 @@ func TestSecurityHeadersMiddleware_HeadersPresentOn500(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notes", nil)
+	entry := &recordingLogEntry{}
+	req = middleware.WithLogEntry(req, entry)
 	h.ServeHTTP(rec, req)
 
 	if rec.Code != 500 {
 		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+	if entry.panicValue != "boom" {
+		t.Errorf("Recoverer reported panic value %v, want \"boom\"", entry.panicValue)
+	}
+	if len(entry.panicStack) == 0 {
+		t.Error("Recoverer reported an empty stack")
 	}
 	if got := rec.Header().Get("Content-Security-Policy"); got != cspHeaderValue {
 		t.Errorf("CSP missing on 500 panic response: got %q", got)
