@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -274,12 +275,53 @@ func diskFullReadyProbe(addr string) func() error {
 		if err != nil {
 			return err
 		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusServiceUnavailable {
-			return fmt.Errorf("admin/status: got %d, want 503", resp.StatusCode)
+			return fmt.Errorf("admin/status: got %d, want 503 (body=%s)", resp.StatusCode, body)
+		}
+		// The startup-error page answers 503 too, so status alone would let a
+		// boot that failed for an unrelated reason satisfy this probe.
+		if !bytes.Contains(body, []byte(`"code":"unrecoverable"`)) {
+			return fmt.Errorf("admin/status: 503 but not the disk-full page (body=%s)", body)
 		}
 		return nil
 	}
+}
+
+// waitForBoot polls like waitFor but gives up the moment the boot goroutine
+// returns. Without it, a Run that exits before serving — a failed app-home
+// resolve, or a vault mode that skips the phase under test — leaves the
+// PRE-BOUND listener accepting connections with nothing answering it, so the
+// probe burns the whole timeout and reports "timed out" while the real cause
+// sits unread in runErr.
+//
+// runErr must be buffered (every caller uses cap 1): the value received here is
+// put straight back, so the caller's own `<-runErr` still observes it.
+func waitForBoot(t *testing.T, timeout time.Duration, runErr chan error, httpFn func() error) error {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-runErr:
+			select {
+			case runErr <- err:
+			default:
+			}
+			if err != nil {
+				return fmt.Errorf("boot returned before becoming ready: %w", err)
+			}
+			return fmt.Errorf("boot returned nil before becoming ready (last probe: %v)", lastErr)
+		default:
+		}
+		lastErr = httpFn()
+		if lastErr == nil {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return fmt.Errorf("waitFor timed out after %s: %w", timeout, lastErr)
 }
 
 func waitFor(t *testing.T, timeout time.Duration, httpFn func() error) error {
@@ -614,7 +656,7 @@ func TestApp_Run_BrokenMigration_FiresPath1(t *testing.T) {
 	go func() { runErr <- a.Run(ctx) }()
 
 	probe := diskFullReadyProbe(addr)
-	if err := waitFor(t, 5*time.Second, probe); err != nil {
+	if err := waitForBoot(t, 5*time.Second, runErr, probe); err != nil {
 		cancel()
 		<-runErr
 		t.Fatalf("listener did not come up: %v", err)
@@ -695,7 +737,6 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
-	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
 	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -716,7 +757,7 @@ func TestApp_Run_DiskFull_ServesStaticPage(t *testing.T) {
 	go func() { runErr <- a.Run(ctx) }()
 
 	probe := diskFullReadyProbe(addr)
-	if err := waitFor(t, 5*time.Second, probe); err != nil {
+	if err := waitForBoot(t, 5*time.Second, runErr, probe); err != nil {
 		cancel()
 		<-runErr
 		t.Fatalf("listener did not come up: %v", err)
@@ -763,7 +804,6 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	seedRealSQLiteDB(t, dir)
 
 	t.Setenv("JASPER_TEST_FORCE_DISK_FULL", "1")
-	defer func() { _ = os.Unsetenv("JASPER_TEST_FORCE_DISK_FULL") }()
 
 	ln, addr := pickFreeListener(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -783,7 +823,7 @@ func TestRun_DiskFull_PreflightHaltsBeforeOpen(t *testing.T) {
 	go func() { runErr <- a.Run(ctx) }()
 
 	probe := diskFullReadyProbe(addr)
-	if err := waitFor(t, 5*time.Second, probe); err != nil {
+	if err := waitForBoot(t, 5*time.Second, runErr, probe); err != nil {
 		cancel()
 		<-runErr
 		t.Fatalf("listener did not come up: %v", err)
