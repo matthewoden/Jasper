@@ -78,11 +78,18 @@ test.describe("@pinned-close gap closure: pinned tabs survive Alt+W and middle-c
     await page.getByRole("menuitem", { name: "Pin tab" }).click();
     await expect(pinGlyphIn(strip, pinnedTitle)).toBeVisible({ timeout: 5_000 });
 
-    // (a) Alt+W on the pinned active tab refuses — tab survives, refusal toast appears.
+    // (a) Alt+W on the pinned active tab refuses — tab survives, refusal toast
+    // appears. The wait is armed BEFORE the keystroke deliberately: the toast
+    // auto-dismisses 5s after it renders (Toast.tsx DEFAULT_DURATION_MS), and
+    // press() resolves only once the event has been dispatched, so a wait that
+    // starts afterwards can begin its poll late enough to miss the toast's whole
+    // lifetime under 4-worker load. Polling from before the keystroke catches it
+    // whenever it renders, without widening the budget.
+    const refusalToast = page
+      .getByText("This tab is pinned — right-click to unpin")
+      .waitFor({ state: "visible", timeout: 5_000 });
     await page.keyboard.press("Alt+W");
-    await expect(
-      page.getByText("This tab is pinned — right-click to unpin"),
-    ).toBeVisible({ timeout: 5_000 });
+    await refusalToast;
     await expect(tabPillIn(strip, pinnedTitle)).toHaveCount(1);
 
     // (b) Middle-click on the pinned pill also refuses — tab still survives.
