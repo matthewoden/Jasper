@@ -56,6 +56,7 @@ This matters because these records were reconstructed from four shipped mileston
 | [0031](./0031-per-vault-logging.md) | The log file is per-vault, always on, and teed with the console | Operations |
 | [0032](./0032-bookmarks-carry-a-path-recovery-hint.md) | Bookmarks carry a path recovery hint, because note identity is not durable | Data integrity |
 | [0033](./0033-boot-refuses-to-serve-without-a-registry.md) | Boot refuses to serve when the registry cannot hydrate | Data integrity |
+| [0034](./0034-attachments-travel-with-the-note.md) | Attachments travel with a moved note; references are not rewritten | Data integrity |
 
 ## Renumbering note
 

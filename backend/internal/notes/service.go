@@ -427,6 +427,31 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 			"id", id.String(), "newPath", canonNew, "err", readErr)
 		content = nil
 	}
+
+	// Lives here rather than in the move handler so an MCP move_note gets it
+	// too — REST and MCP are independent listeners into this one Service.
+	attachmentRefsRewritten := false
+	if content != nil {
+		rewritten, relErr := s.relocateAttachments(ctx, id, content, oldRelPath, canonNew)
+		if relErr != nil {
+			if mvErr := s.files.MoveFile(canonNew, oldRelPath); mvErr != nil {
+				s.log.Warn("notes.Move: rollback MoveFile failed after attachment relocation error (reconciler will heal)",
+					"id", id.String(), "oldPath", oldRelPath, "newPath", canonNew, "err", mvErr)
+			}
+			return NoteSummary{}, fmt.Errorf("notes.Move(%s): %w", id, relErr)
+		}
+		if rewritten != nil {
+			if writeErr := s.files.WriteAtomic(canonNew, rewritten); writeErr != nil {
+				return NoteSummary{}, fmt.Errorf("notes.Move(%s): rewrite renamed attachment refs: %w", id, writeErr)
+			}
+			content = rewritten
+			attachmentRefsRewritten = true
+			if modTime, statErr := s.files.Stat(canonNew); statErr == nil {
+				postMoveMTime = modTime.UTC()
+			}
+		}
+	}
+
 	freshTitle := markdown.ExtractTitle(content, canonNew)
 
 	rec, err := s.index.LookupByPath(ctx, oldRelPath)
@@ -468,6 +493,16 @@ func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteS
 		"updated_at": postMoveMTime.Format(time.RFC3339Nano),
 		"title":      rec.Title,
 	}, SessionIDFromContext(ctx))
+
+	// note:moved only invalidates the tree; the body changed too, so other
+	// sessions need the event that drives content reconciliation.
+	if attachmentRefsRewritten {
+		s.broadcaster.Broadcast(EventNoteUpdated, map[string]any{
+			"id":         id.String(),
+			"path":       canonNew,
+			"updated_at": postMoveMTime.Format(time.RFC3339Nano),
+		}, SessionIDFromContext(ctx))
+	}
 
 	return NoteSummary{
 		ID:        id,

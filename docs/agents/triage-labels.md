@@ -16,6 +16,9 @@ These are real labels on the `tracker` MCP server — set them with `create_issu
 
 A label is the triage *role* — who the ticket waits on. It is independent of `status`, which is where the work is (`backlog` / `todo` / `in_progress` / `done` / `canceled`). A ticket can be `todo` and `needs-info`; clearing a role when a ticket closes is a courtesy to whoever reads the queue by label. See [`issue-tracker.md`](./issue-tracker.md).
 
-`needs-design` also exists on the server, outside the five canonical roles: UI work whose visual design is not settled. Don't reach for it when a mock already exists.
+Three labels exist on the server outside the five state roles:
+
+- `bug` and `enhancement` — the two **category** roles. A triaged issue should carry exactly one category label alongside its one state label: `bug` means something is broken, `enhancement` means new capability or improvement. They are independent of `status` and of the state role.
+- `needs-design` — UI work whose visual design is not settled. Don't reach for it when a mock already exists.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
