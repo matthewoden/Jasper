@@ -112,11 +112,11 @@ When an investigation concludes something different from the plan's example code
 - **Allowed shortcuts: none.** Not `t.Skip` behind a build tag, not retry loops, not `time.Sleep` "to let it settle." Each encodes the flake instead of fixing it.
 - **Poll for the eventual condition** rather than sleeping a fixed interval.
 
-**Known instances awaiting fix** (blockers, not deferred items):
-
-- `backend/internal/app/lifecycle.go:~290` — registry hydrate silently warns and proceeds with an empty registry when the index list fails. Under parallel filesystem load this surfaces as a boot test finding no notes. Retry, fail fast, or surface the error — warn-and-proceed-empty is wrong for tests *and* for users.
+**Known instances awaiting fix:** none. Add one here the moment it is found, with the reproduction — a flake nobody wrote down gets rediscovered from scratch.
 
 **Resolved:**
+
+- Registry hydrate warned and proceeded with an empty registry (JASPER-9) — fixed in `5b64f54`, reasoning in [ADR-0033](./docs/adr/0033-boot-refuses-to-serve-without-a-registry.md). It was a boot defect, not a test bug: with the `notes` table dropped, boot served `200 "state":"ok"` with nothing resolvable by UUID. Now retries three times for the transient `SQLITE_BUSY` class, then refuses to serve; `List` also skips an unparseable row instead of discarding every note. The same commit fixed `seedRealSQLiteDB`, which waited for a non-empty db *file* — SQLite writes its header long before migrations finish, so the helper could return a database with no schema.
 
 - `panic("boom")` reported against an unrelated test (JASPER-10) — **not an escaping panic and not a production defect**, fixed in `730cd61`. The stack showed the panic recovered on the request goroutine and the test asserting its 500 and passing; `middleware.Recoverer` re-panics only for `http.ErrAbortHandler`. With no `LogEntry` in the request context, Recoverer falls back to `PrintPrettyStack`, which writes a `panic:`-prefixed stack to **stderr** — and `go test` reads that as a crashed binary and blames whichever test was running. Supplying an in-context `LogEntry` (chi's own seam; `recovererErrorWriter` is unexported) takes the reporting branch and prints nothing: panic-looking output lines 1 → 0. Worth noting against the reproduction rule above — "only under cross-package parallelism" pointed at interference, but the variable was output interleaving, not shared state.
 
