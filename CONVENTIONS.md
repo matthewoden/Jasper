@@ -112,10 +112,9 @@ When an investigation concludes something different from the plan's example code
 - **Allowed shortcuts: none.** Not `t.Skip` behind a build tag, not retry loops, not `time.Sleep` "to let it settle." Each encodes the flake instead of fixing it.
 - **Poll for the eventual condition** rather than sleeping a fixed interval.
 
-**Known instances awaiting fix** (blockers, not deferred items — all three verified still present):
+**Known instances awaiting fix** (blockers, not deferred items):
 
 - `backend/internal/app/lifecycle.go:~290` — registry hydrate silently warns and proceeds with an empty registry when the index list fails. Under parallel filesystem load this surfaces as a boot test finding no notes. Retry, fail fast, or surface the error — warn-and-proceed-empty is wrong for tests *and* for users.
-- `TestApp_Run_DiskFull_ServesStaticPage` / `TestRun_DiskFull_PreflightHaltsBeforeOpen` — intermittent timeout in `./...` sweep mode despite a dedicated readiness probe. Root cause not isolated; likely an interaction between the forced-disk-full env timing and parallel sqlite/filesystem activity.
 - **`panic("boom")` escapes under full-suite `go test ./...`.** The panic originates in `backend/internal/app/middleware_test.go:150` (`TestSecurityHeadersMiddleware_HeadersPresentOn500`, which deliberately panics through `middleware.Recoverer`), but Go reports it against whichever test ran concurrently — usually `TestApp_Run_FreshDB_BootsAndIndexesScratchpad`, which is **not** the culprit.
 
   This is a textbook case of the reproduction rule above. It passes every isolated form — the app package alone 8/8, `-race -count=5`, the named test at `-count=20` — and fails *only* under cross-package parallelism. A debt gate that ran the app package in isolation never caught it.
@@ -123,6 +122,10 @@ When an investigation concludes something different from the plan's example code
   Repro: `cd backend && for i in $(seq 1 10); do go test ./... -count=1 >/dev/null 2>&1 || echo "run $i FAIL"; done`
 
   For the fixer: does `middleware.Recoverer` re-panic, or is there an unrecovered goroutine in the app-boot path the panic rides on? Diagnose the real race — don't skip or retry.
+
+**Resolved:**
+
+- `TestApp_Run_DiskFull_*` timeouts (JASPER-11) — would not reproduce in 29 sweeps (25 plain, 4 `-race -shuffle`), 300 isolated iterations, or under `GOMAXPROCS=1` with 24 CPU hogs. The stated hypothesis was impossible: `go test` runs one process per package, so a fault-injection env var cannot cross packages. The symptom is reachable two ways, both app.json state rather than fault injection — an unset `JASPER_APP_HOME`, and an app.json naming a deleted vault, which sends boot down the picker-shell branch that never reaches the disk-full preflight. The first was closed by `965a9af` (refuse the real app home under `go test`), which landed 8 days *after* the ticket was filed. `9bed800` then made both report their real cause instead of a 5s deadline.
 
 When one is fixed, delete its bullet and add a one-line entry referencing the fixing commit, so "we knew and fixed it" stays in the history.
 
