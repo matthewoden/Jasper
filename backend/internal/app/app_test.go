@@ -692,10 +692,9 @@ func seedRealSQLiteDB(t *testing.T, dir string) {
 	if err := os.MkdirAll(filepath.Join(dir, vault.SubdirName), 0o755); err != nil {
 		t.Fatalf("mkdir .jasper: %v", err)
 	}
-	dbPath := vault.AppDBPath(dir)
-
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(Config{DataDir: dir, ListenAddr: "127.0.0.1:0", Logger: logger, DisableFirstRunGate: true})
+	ln, addr := pickFreeListener(t)
+	a, err := New(Config{DataDir: dir, ListenAddr: addr, ListenerOverride: ln, Logger: logger, DisableFirstRunGate: true})
 	if err != nil {
 		t.Fatalf("New (seed): %v", err)
 	}
@@ -703,24 +702,14 @@ func seedRealSQLiteDB(t *testing.T, dir string) {
 	runErr := make(chan error, 1)
 	go func() { runErr <- a.Run(ctx) }()
 
-	probe := func() error {
-		c, derr := net.DialTimeout("tcp", a.cfg.ListenAddr, 50*time.Millisecond)
-		_ = c
-		_ = derr
-
-		info, statErr := os.Stat(dbPath)
-		if statErr != nil {
-			return statErr
-		}
-		if info.Size() == 0 {
-			return fmt.Errorf("db not yet written")
-		}
-		return nil
-	}
-	if err := waitFor(t, 5*time.Second, probe); err != nil {
+	// A non-empty file is not a seeded schema: SQLite writes its header long
+	// before the migrations finish, so waiting on size alone could hand back a
+	// database with no `notes` table. httpReadyProbe requires a 200, which only
+	// the completed normal-boot path serves.
+	if err := waitForBoot(t, 5*time.Second, runErr, httpReadyProbe(addr)); err != nil {
 		cancel()
 		<-runErr
-		t.Fatalf("seedRealSQLiteDB: db not ready: %v", err)
+		t.Fatalf("seedRealSQLiteDB: boot did not complete: %v", err)
 	}
 	cancel()
 	<-runErr

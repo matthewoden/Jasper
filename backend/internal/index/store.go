@@ -115,6 +115,7 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	}
 	defer func() { _ = rows.Close() }()
 	var out []notes.NoteSummary
+	var skipped int
 	for rows.Next() {
 		var idStr, path, title string
 		var mtime, createdAt int64
@@ -123,7 +124,14 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 		}
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("list parse uuid %q: %w", idStr, err)
+			// Skip, don't abort: this builds the boot registry, and failing the
+			// whole call for one unreadable id left every note in the vault
+			// unresolvable (JASPER-9). The row's file is still on disk and a
+			// reindex will re-mint its id.
+			skipped++
+			x.Log.Warn("index list: skipping row with unparseable id",
+				"id", idStr, "path", path)
+			continue
 		}
 		out = append(out, notes.NoteSummary{
 			ID:        id,
@@ -135,6 +143,10 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list rows: %w", err)
+	}
+	if skipped > 0 {
+		x.Log.Warn("index list: rows skipped, reindex to repair",
+			"skipped", skipped, "returned", len(out))
 	}
 	return out, nil
 }
