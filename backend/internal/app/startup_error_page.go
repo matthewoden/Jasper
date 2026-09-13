@@ -65,6 +65,11 @@ func suggestedActionFor(err error) string {
 		return "Restore from your most recent backup"
 	}
 	msg := strings.ToLower(err.Error())
+	// Before the sql/migration branch: the index is derived (ADR-0001), so the
+	// remedy is a rebuild, not a restore. `jasper doctor` only diagnoses.
+	if strings.Contains(msg, "registry hydrate") {
+		return "Stop Jasper, delete .jasper/app.db, and restart to rebuild the index"
+	}
 	if strings.Contains(msg, "migration") || strings.Contains(msg, "sql") {
 		return "Run jasper doctor"
 	}

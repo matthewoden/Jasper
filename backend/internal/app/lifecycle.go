@@ -287,18 +287,21 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
-		if summaries, err := a.indexer.List(ctx); err == nil {
-			notesSvc.Registry().Hydrate(summaries)
-			a.cfg.Logger.Info("registry hydrated", "count", len(summaries))
+		// Refuse to serve rather than come up with an empty registry: the
+		// registry is the UUID -> path map, so without it tabs, bookmarks, deep
+		// links and wiki-links all fail to resolve and the vault reads as empty
+		// while the notes sit untouched on disk (JASPER-9).
+		summaries, err := hydrateList(ctx, a.indexer, a.cfg.Logger, hydrateAttempts, hydrateBackoff)
+		if err != nil {
+			return a.serveStartupError(ctx, "Registry hydrate", fmt.Errorf("registry hydrate: %w", err))
+		}
+		notesSvc.Registry().Hydrate(summaries)
+		a.cfg.Logger.Info("registry hydrated", "count", len(summaries))
 
-			if rErr := a.indexer.ResolvePendingBacklinks(ctx, notesSvc.Registry()); rErr != nil {
-				a.cfg.Logger.Warn("startup: pending backlinks resolution failed (non-fatal)", "err", rErr)
-			} else {
-				a.cfg.Logger.Info("startup: pending backlinks resolved")
-			}
+		if rErr := a.indexer.ResolvePendingBacklinks(ctx, notesSvc.Registry()); rErr != nil {
+			a.cfg.Logger.Warn("startup: pending backlinks resolution failed (non-fatal)", "err", rErr)
 		} else {
-			a.cfg.Logger.Warn("registry hydrate: List failed (proceeding with empty registry)",
-				"err", err)
+			a.cfg.Logger.Info("startup: pending backlinks resolved")
 		}
 	}
 	a.mu.Lock()

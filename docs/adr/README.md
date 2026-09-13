@@ -55,6 +55,7 @@ This matters because these records were reconstructed from four shipped mileston
 | [0030](./0030-vault-directory-permissions.md) | Vault permissions: 0700 for Jasper's data, 0755 for notes | Security |
 | [0031](./0031-per-vault-logging.md) | The log file is per-vault, always on, and teed with the console | Operations |
 | [0032](./0032-bookmarks-carry-a-path-recovery-hint.md) | Bookmarks carry a path recovery hint, because note identity is not durable | Data integrity |
+| [0033](./0033-boot-refuses-to-serve-without-a-registry.md) | Boot refuses to serve when the registry cannot hydrate | Data integrity |
 
 ## Renumbering note
 

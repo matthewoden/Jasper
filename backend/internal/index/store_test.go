@@ -765,3 +765,37 @@ func TestSearchFTS_TagSQLMetacharacter(t *testing.T) {
 		t.Fatalf("SearchFTS with SQL-metacharacter tag: got %d hits, want 0 (injection guard failed)", len(hits))
 	}
 }
+
+// TestList_SkipsMalformedUUIDRow — one unreadable id must not discard the whole
+// vault. List builds the registry at boot, so returning an error here left the
+// app with nothing to resolve UUIDs against and every note unreachable, while
+// the files sat untouched on disk (JASPER-9).
+func TestList_SkipsMalformedUUIDRow(t *testing.T) {
+	t.Parallel()
+	idx, _ := newTestIndexer(t)
+	ctx := context.Background()
+
+	good := rec1(uuid.New())
+	good.Path = "good.md"
+	if err := idx.Upsert(ctx, good); err != nil {
+		t.Fatalf("upsert good: %v", err)
+	}
+	bad := rec1(uuid.New())
+	bad.Path = "bad.md"
+	if err := idx.Upsert(ctx, bad); err != nil {
+		t.Fatalf("upsert bad: %v", err)
+	}
+
+	if _, err := idx.Pair.Writer.ExecContext(ctx,
+		`UPDATE notes SET id = 'not-a-uuid' WHERE path = 'bad.md'`); err != nil {
+		t.Fatalf("corrupt row: %v", err)
+	}
+
+	got, err := idx.List(ctx)
+	if err != nil {
+		t.Fatalf("List: got error %v, want the readable rows", err)
+	}
+	if len(got) != 1 || got[0].Path != "good.md" {
+		t.Fatalf("List: got %d rows (%v), want 1 (good.md)", len(got), got)
+	}
+}
