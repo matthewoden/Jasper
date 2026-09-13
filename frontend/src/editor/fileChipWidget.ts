@@ -18,6 +18,7 @@ import {
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
+import { attachmentRequestUrl, decodeAttachmentFilename } from "../lib/attachmentRef";
 
 
 const LINK_RE = /\[([^\]]*)\]\((attachments\/[^)]+)\)/;
@@ -78,9 +79,9 @@ class FileChipWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const filename = this.src.replace(/^attachments\//, "");
+    const filename = decodeAttachmentFilename(this.src);
     const iconCategory = getIconCategory(filename);
-    const resolvedHref = `/api/v1/attachments/${encodeURIComponent(this.noteId)}/${encodeURIComponent(filename)}`;
+    const resolvedHref = attachmentRequestUrl(this.noteId, this.src);
 
     const anchor = document.createElement("a");
     anchor.href = resolvedHref;

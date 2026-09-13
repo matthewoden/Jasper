@@ -15,15 +15,24 @@ import (
 // attachment: folder-relative to the note that embeds it.
 const AttachmentRefPrefix = "attachments/"
 
+// AttachmentRef is one attachments/… destination. Raw is the text exactly as
+// it appears in the note; Path is that text percent-decoded, which is the path
+// on disk. They differ whenever a filename needs escaping, so a caller doing
+// filesystem work wants Path and a caller editing the note text wants Raw —
+// substituting one for the other silently fails on any escaped filename.
+type AttachmentRef struct {
+	Raw  string
+	Path string
+}
+
 // ExtractAttachmentRefs returns every attachments/… destination the content
-// embeds or links, deduplicated, in source order. Destinations are
-// percent-decoded, so the returned strings are filesystem paths.
+// embeds or links, deduplicated by Path, in source order.
 //
 // Only the attachments/ prefix is recognised — it is what the upload path
 // writes and what the editor resolves. A hand-authored ../elsewhere/pic.png is
 // deliberately not returned; nothing in Jasper produces one and relocating it
 // would need a resolver this has no business owning.
-func ExtractAttachmentRefs(content []byte) []string {
+func ExtractAttachmentRefs(content []byte) []AttachmentRef {
 	if len(content) == 0 {
 		return nil
 	}
@@ -37,7 +46,7 @@ func ExtractAttachmentRefs(content []byte) []string {
 
 	doc := md.Parser().Parse(text.NewReader(content))
 
-	var refs []string
+	var refs []AttachmentRef
 	seen := make(map[string]bool)
 	_ = goldmarkAst.Walk(doc, func(n goldmarkAst.Node, entering bool) (goldmarkAst.WalkStatus, error) {
 		if !entering {
@@ -54,24 +63,27 @@ func ExtractAttachmentRefs(content []byte) []string {
 			return goldmarkAst.WalkContinue, nil
 		}
 
-		ref := string(dest)
-		if decoded, err := url.PathUnescape(ref); err == nil {
-			ref = decoded
+		raw := string(dest)
+		decoded := raw
+		if unescaped, err := url.PathUnescape(raw); err == nil {
+			decoded = unescaped
 		}
-		if !strings.HasPrefix(ref, AttachmentRefPrefix) {
+		// Checked on both forms: a %2E%2E would slip a traversal past a test
+		// against the raw text, and an encoded prefix past one against decoded.
+		if !strings.HasPrefix(raw, AttachmentRefPrefix) || !strings.HasPrefix(decoded, AttachmentRefPrefix) {
 			return goldmarkAst.WalkContinue, nil
 		}
 		// A ../ inside the tail would escape the attachments directory; the
 		// caller joins these onto a vault-relative folder, so refuse here
 		// rather than relying on canonicalization further down.
-		if strings.Contains(ref, "..") {
+		if strings.Contains(raw, "..") || strings.Contains(decoded, "..") {
 			return goldmarkAst.WalkContinue, nil
 		}
-		if seen[ref] {
+		if seen[decoded] {
 			return goldmarkAst.WalkContinue, nil
 		}
-		seen[ref] = true
-		refs = append(refs, ref)
+		seen[decoded] = true
+		refs = append(refs, AttachmentRef{Raw: raw, Path: decoded})
 
 		return goldmarkAst.WalkContinue, nil
 	})

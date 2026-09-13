@@ -8,6 +8,7 @@ import { useAttachmentUpload } from "./useAttachmentUpload";
 import * as attachmentApiModule from "./attachmentApi";
 import { AttachmentTooLargeError } from "./attachmentApi";
 import type { AttachmentUploadResult } from "./attachmentApi";
+import { decodeAttachmentFilename } from "./attachmentRef";
 
 
 const mockToastFn = vi.fn();
@@ -397,5 +398,80 @@ describe("useAttachmentUpload / uploadAndInsert via drop", () => {
         title: "Couldn't attach file",
       })
     );
+  });
+});
+
+describe("useAttachmentUpload / reference encoding", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function insertFor(
+    path: string,
+    filename: string,
+    isImage: boolean
+  ): Promise<string> {
+    vi.spyOn(attachmentApiModule, "uploadAttachment").mockResolvedValue({
+      filename,
+      path,
+      category: isImage ? "image" : "document",
+      content_type: isImage ? "image/png" : "application/pdf",
+      is_image: isImage,
+      size_bytes: 100,
+    } as AttachmentUploadResult);
+
+    const { result } = renderHook(() => useAttachmentUpload("test-note-id"));
+    const insertedAt = { pos: -1, text: "" };
+    const view = makeFakeView(insertedAt);
+
+    const dropEvent = {
+      preventDefault: vi.fn(),
+      dataTransfer: { files: [new File(["x"], filename)] },
+      clientX: 10,
+      clientY: 10,
+    } as unknown as DragEvent;
+
+    await act(async () => {
+      await result.current.dragHandlers.onDrop(dropEvent, view);
+    });
+
+    return insertedAt.text;
+  }
+
+  it("percent-encodes a spaced filename in the destination but not the alt text", async () => {
+    const inserted = await insertFor(
+      "attachments/holiday photo.png",
+      "holiday photo.png",
+      true
+    );
+    expect(inserted).toBe(
+      "![holiday photo.png](attachments/holiday%20photo.png)"
+    );
+  });
+
+  it("encodes non-image attachments the same way", async () => {
+    const inserted = await insertFor(
+      "attachments/q1 report.pdf",
+      "q1 report.pdf",
+      false
+    );
+    expect(inserted).toBe("[q1 report.pdf](attachments/q1%20report.pdf)");
+  });
+
+  it("leaves a filename needing no escaping byte-identical", async () => {
+    const inserted = await insertFor("attachments/pic.png", "pic.png", true);
+    expect(inserted).toBe("![pic.png](attachments/pic.png)");
+  });
+
+  it("produces a destination the widget regex can match end to end", async () => {
+    const inserted = await insertFor(
+      "attachments/a b (1).png",
+      "a b (1).png",
+      true
+    );
+    const IMG_RE = /!\[([^\]]*)\]\((attachments\/[^)]+)\)/;
+    const m = IMG_RE.exec(inserted);
+    expect(m).not.toBeNull();
+    expect(decodeAttachmentFilename(m![2])).toBe("a b (1).png");
   });
 });

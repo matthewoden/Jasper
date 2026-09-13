@@ -13,6 +13,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { uploadAttachment, AttachmentTooLargeError } from "./attachmentApi";
+import { encodeAttachmentPath } from "./attachmentRef";
 import { useToast } from "../components/toast.utils";
 
 export interface UseAttachmentUploadResult {
@@ -62,9 +63,11 @@ export function useAttachmentUpload(
 
       try {
         const res = await uploadAttachment(noteId, file);
+        // Destination encoded, alt text left human-readable.
+        const dest = encodeAttachmentPath(res.path);
         const refMd = res.is_image
-          ? `![${res.filename}](${res.path})`
-          : `[${res.filename}](${res.path})`;
+          ? `![${res.filename}](${dest})`
+          : `[${res.filename}](${dest})`;
         insertMarkdown(view, refMd, pos);
       } catch (e) {
         if (e instanceof AttachmentTooLargeError) {

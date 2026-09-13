@@ -236,3 +236,86 @@ func TestRenameInPlaceLeavesAttachmentsAlone(t *testing.T) {
 		t.Errorf("want 200 after in-place rename, got %d", got)
 	}
 }
+
+// TestMovedNoteRelocatesEscapedAttachmentName covers a filename that has to be
+// percent-encoded in the reference: the extractor must decode it to find the
+// file on disk, or relocation silently skips exactly the names most likely to
+// need it.
+func TestMovedNoteRelocatesEscapedAttachmentName(t *testing.T) {
+	ts, notesDir := newAttachmentMoveServer(t)
+	defer ts.Close()
+
+	if resp, body := mustPostJSON(t, ts, "/api/v1/folders", `{"parent_path":"","name":"sub"}`); resp.StatusCode >= 300 {
+		t.Fatalf("create folder: %d %s", resp.StatusCode, body)
+	}
+	id, _ := createNoteWithBody(t, ts, notesDir, "sub", "photo-note",
+		"# photo-note\n\n![holiday photo.png](attachments/holiday%20photo.png)\n")
+	writeAttachment(t, notesDir, "sub", "holiday photo.png", []byte("\x89PNG\r\n\x1a\nescaped"))
+
+	if got := getAttachmentStatus(t, ts, id, "holiday%20photo.png"); got != http.StatusOK {
+		t.Fatalf("precondition: want 200 before move, got %d", got)
+	}
+
+	moveNote(t, ts, id, "photo-note.md")
+
+	if got := getAttachmentStatus(t, ts, id, "holiday%20photo.png"); got != http.StatusOK {
+		t.Errorf("after move: want 200, got %d", got)
+	}
+	if _, err := os.Stat(filepath.Join(notesDir, "attachments", "holiday photo.png")); err != nil {
+		t.Errorf("escaped-name attachment should have travelled: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(notesDir, "photo-note.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("(attachments/holiday%20photo.png)")) {
+		t.Errorf("reference should stay encoded and untouched, got:\n%s", body)
+	}
+}
+
+// TestMovedNoteRenamesCollidingEscapedAttachment is the escaped-name version of
+// the -N suffix path. The rewrite has to find the text as WRITTEN in the note,
+// so keying it on the decoded path would substitute nothing and leave the note
+// pointing at the occupant.
+func TestMovedNoteRenamesCollidingEscapedAttachment(t *testing.T) {
+	ts, notesDir := newAttachmentMoveServer(t)
+	defer ts.Close()
+
+	if resp, body := mustPostJSON(t, ts, "/api/v1/folders", `{"parent_path":"","name":"sub"}`); resp.StatusCode >= 300 {
+		t.Fatalf("create folder: %d %s", resp.StatusCode, body)
+	}
+	id, _ := createNoteWithBody(t, ts, notesDir, "sub", "photo-note",
+		"# photo-note\n\n![holiday photo.png](attachments/holiday%20photo.png)\n")
+	writeAttachment(t, notesDir, "sub", "holiday photo.png", []byte("incoming"))
+	occupantPath := writeAttachment(t, notesDir, "", "holiday photo.png", []byte("unrelated-occupant"))
+
+	moveNote(t, ts, id, "photo-note.md")
+
+	occupant, err := os.ReadFile(occupantPath)
+	if err != nil {
+		t.Fatalf("read occupant: %v", err)
+	}
+	if string(occupant) != "unrelated-occupant" {
+		t.Errorf("occupant was clobbered, now %q", occupant)
+	}
+
+	relocated, err := os.ReadFile(filepath.Join(notesDir, "attachments", "holiday photo-1.png"))
+	if err != nil {
+		t.Fatalf("expected incoming file at 'holiday photo-1.png': %v", err)
+	}
+	if string(relocated) != "incoming" {
+		t.Errorf("relocated file has wrong bytes: %q", relocated)
+	}
+
+	body, err := os.ReadFile(filepath.Join(notesDir, "photo-note.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("(attachments/holiday%20photo-1.png)")) {
+		t.Errorf("suffix should be applied to the encoded reference, got:\n%s", body)
+	}
+	if got := getAttachmentStatus(t, ts, id, "holiday%20photo-1.png"); got != http.StatusOK {
+		t.Errorf("rewritten reference should resolve: got %d", got)
+	}
+}
