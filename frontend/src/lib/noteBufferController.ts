@@ -199,6 +199,13 @@ class NoteBufferControllerImpl implements NoteBufferController {
   private content = "";
   private saveState: SaveState = initialSaveState;
   private conflict: ConflictState | null = null;
+  /**
+   * Bumped every time the conflict state is deliberately resolved (Save anyway,
+   * Discard, dismiss). A save captures it before going on the wire so a reply
+   * that arrives after a resolution can tell that it is describing a conflict
+   * the user has already dealt with.
+   */
+  private resolutionGeneration = 0;
   private deleted: DeletedState | null = null;
   private h1RenameError: string | null = null;
 
@@ -278,6 +285,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
       this.lastKnownETag = data.etag;
       this.h1RenameError = null;
       this.conflict = null;
+      this.resolutionGeneration++;
       this.discardPendingEdit();
       this.userHasEdited = false;
       this.notify();
@@ -312,6 +320,15 @@ class NoteBufferControllerImpl implements NoteBufferController {
   }
 
   hydrate(serverContent: string, path: string, etag: string): void {
+    // Discard resolves a conflict through here, so the edit being dropped must
+    // not keep its queued save: a debounce left armed both re-PUT the discarded
+    // content and made onNoteUpdated read as work-in-progress, re-raising the
+    // banner Discard had just closed (JASPER-41).
+    if (this.debounceTimer !== null) {
+      window.clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.resolutionGeneration++;
     this.content = serverContent;
     this.lastNotePath = path;
     this.lastKnownETag = etag;
@@ -450,6 +467,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
   }
 
   setConflict(c: ConflictState | null): void {
+    if (c === null) this.resolutionGeneration++;
     this.conflict = c;
     this.notify();
   }
@@ -552,11 +570,20 @@ class NoteBufferControllerImpl implements NoteBufferController {
         }
       }
 
+      const generation = this.resolutionGeneration;
       const { data, error } = await updateNote(
         this.noteId,
         latestContent,
         this.lastKnownETag ?? undefined,
       );
+      // discardPendingEdit can cancel a debounce timer but cannot recall a
+      // request already on the wire. If the user resolved the conflict while
+      // this one was in flight, its reply describes a state that no longer
+      // exists — applying it re-arms the banner and the resolution click looks
+      // like it did nothing (JASPER-41).
+      if (generation !== this.resolutionGeneration) {
+        return { ok: error === undefined && data !== undefined };
+      }
       if (error || !data) {
         // The 409 path the optimistic-locking machinery was built for. Every
         // piece of it already existed — the StaleWriteError schema, the banner,

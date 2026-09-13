@@ -790,3 +790,89 @@ describe("If-Match threading (conflict safety)", () => {
     expect(c.getConflict()?.visible).toBe(true);
   });
 });
+
+// Discard calls hydrate() to drop the user's edit and adopt the server's copy.
+// hydrate cleared userHasEdited but left the debounce armed, so the edit the
+// user just discarded still had a save queued — and onNoteUpdated treats a
+// pending debounce as work in progress, re-raising the very conflict banner the
+// Discard had closed (JASPER-41).
+describe("hydrate abandons the work it is replacing", () => {
+  it("a discarded edit leaves no save queued", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+
+    c.handleEditorChange("edit the user is about to discard");
+    c.hydrate("server version", "n1.md", FIXTURE_ETAG);
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(updateNoteMock).not.toHaveBeenCalled();
+  });
+
+  it("a note:updated after a discard is adopted, not turned back into a conflict", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+
+    c.handleEditorChange("edit the user is about to discard");
+    c.hydrate("server version", "n1.md", FIXTURE_ETAG);
+
+    getNoteFreshMock.mockResolvedValueOnce(
+      okGet("newer server version", "n1.md", "2026-01-02T00:00:00Z"),
+    );
+    c.onNoteUpdated({ id: "note-1", path: "n1.md", updated_at: "2026-01-02T00:00:00Z" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(c.getConflict()).toBeNull();
+    expect(c.getContent()).toBe("newer server version");
+  });
+});
+
+// discardPendingEdit cancels the debounce TIMER, but a save already on the wire
+// cannot be recalled. If its 409 lands after the user resolved the conflict, the
+// error path re-arms the banner for a conflict that no longer exists — the
+// resolution click appears to have done nothing (JASPER-41 / JASPER-13).
+describe("a superseded save cannot re-raise a resolved conflict", () => {
+  function staleWrite(currentUpdatedAt: string): UpdateReturn {
+    return {
+      data: undefined,
+      error: {
+        code: "stale_write",
+        message: "note was updated in another session",
+        current_updated_at: currentUpdatedAt,
+      },
+      response: new Response(null, { status: 409 }),
+    } as unknown as UpdateReturn;
+  }
+
+  it("a 409 from a save that was in flight when Save anyway succeeded does not bring the banner back", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+    c.handleEditorChange("B's pending edit");
+
+    const stale: { finish: (() => void) | null } = { finish: null };
+    updateNoteMock.mockImplementationOnce(
+      () =>
+        new Promise<UpdateReturn>((res) => {
+          stale.finish = () => res(staleWrite("2026-01-02T00:00:00Z"));
+        }),
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+
+    c.onNoteUpdated({ id: "note-1", path: "n1.md", updated_at: "2026-01-02T00:00:00Z" });
+    await Promise.resolve();
+    expect(c.getConflict()?.visible).toBe(true);
+
+    updateNoteMock.mockResolvedValueOnce(okUpdate("2026-01-03T00:00:00Z"));
+    const outcome = await c.saveOverridingConflict();
+    expect(outcome.status).toBe("saved");
+    expect(c.getConflict()).toBeNull();
+
+    stale.finish?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(c.getConflict()).toBeNull();
+  });
+});
