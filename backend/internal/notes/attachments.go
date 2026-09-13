@@ -55,7 +55,7 @@ func (s *Service) relocateAttachments(
 
 	rewrites := make(map[string]string)
 	for _, ref := range refs {
-		src := joinRel(oldFolder, ref)
+		src := joinRel(oldFolder, ref.Path)
 		if _, err := s.files.Stat(src); err != nil {
 			// Already dangling before the move; relocating nothing is the
 			// honest outcome and the reference is no worse off.
@@ -65,18 +65,18 @@ func (s *Service) relocateAttachments(
 			return fail(fmt.Errorf("relocateAttachments: stat %q: %w", src, err))
 		}
 
-		dstDir := joinRel(newFolder, path.Dir(ref))
+		dstDir := joinRel(newFolder, path.Dir(ref.Path))
 		if err := s.ensureDir(dstDir); err != nil {
 			return fail(err)
 		}
 
-		dstRef, err := s.freeAttachmentRef(newFolder, ref)
+		suffix, err := s.freeAttachmentSuffix(newFolder, ref.Path)
 		if err != nil {
 			return fail(err)
 		}
-		dst := joinRel(newFolder, dstRef)
+		dst := joinRel(newFolder, applyNameSuffix(ref.Path, suffix))
 
-		if shared[ref] {
+		if shared[ref.Path] {
 			data, readErr := s.files.Read(src)
 			if readErr != nil {
 				return fail(fmt.Errorf("relocateAttachments: read %q: %w", src, readErr))
@@ -102,8 +102,10 @@ func (s *Service) relocateAttachments(
 			})
 		}
 
-		if dstRef != ref {
-			rewrites[ref] = dstRef
+		// Keyed on Raw, and the suffix applied to Raw, so the substitution
+		// finds the text actually in the note even when it is escaped.
+		if suffix > 0 {
+			rewrites[ref.Raw] = applyNameSuffix(ref.Raw, suffix)
 		}
 	}
 
@@ -151,7 +153,7 @@ func (s *Service) attachmentRefsHeldInFolder(
 			continue
 		}
 		for _, ref := range markdown.ExtractAttachmentRefs(data) {
-			held[ref] = true
+			held[ref.Path] = true
 		}
 	}
 
@@ -170,30 +172,47 @@ func (s *Service) ensureDir(relPath string) error {
 	return nil
 }
 
-// freeAttachmentRef returns ref, or ref with a -N suffix on its basename when
-// the destination folder already holds that name.
-func (s *Service) freeAttachmentRef(newFolder, ref string) (string, error) {
-	if _, err := s.files.Stat(joinRel(newFolder, ref)); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return ref, nil
-		}
-		return "", fmt.Errorf("relocateAttachments: stat dest %q: %w", ref, err)
-	}
-
-	dir, base := path.Dir(ref), path.Base(ref)
-	ext := path.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
-
-	for i := 1; i < 1000; i++ {
-		candidate := path.Join(dir, fmt.Sprintf("%s-%d%s", stem, i, ext))
+// freeAttachmentSuffix returns 0 when the destination folder does not already
+// hold the name, otherwise the N for a free "<stem>-N<ext>". Returning the
+// number rather than a path lets the caller apply it to the decoded path and to
+// the note's raw reference text, which are not the same string.
+func (s *Service) freeAttachmentSuffix(newFolder, ref string) (int, error) {
+	taken := func(candidate string) (bool, error) {
 		if _, err := s.files.Stat(joinRel(newFolder, candidate)); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				return candidate, nil
+				return false, nil
 			}
-			return "", fmt.Errorf("relocateAttachments: stat dest %q: %w", candidate, err)
+			return false, fmt.Errorf("relocateAttachments: stat dest %q: %w", candidate, err)
+		}
+		return true, nil
+	}
+
+	if isTaken, err := taken(ref); err != nil {
+		return 0, err
+	} else if !isTaken {
+		return 0, nil
+	}
+
+	for i := 1; i < 1000; i++ {
+		isTaken, err := taken(applyNameSuffix(ref, i))
+		if err != nil {
+			return 0, err
+		}
+		if !isTaken {
+			return i, nil
 		}
 	}
-	return "", fmt.Errorf("relocateAttachments: no free name for %q in %q", ref, newFolder)
+	return 0, fmt.Errorf("relocateAttachments: no free name for %q in %q", ref, newFolder)
+}
+
+// applyNameSuffix inserts -n before the extension. Safe on percent-escaped
+// text: an extension is never escaped, so the split lands in the same place.
+func applyNameSuffix(ref string, n int) string {
+	if n == 0 {
+		return ref
+	}
+	ext := path.Ext(ref)
+	return strings.TrimSuffix(ref, ext) + fmt.Sprintf("-%d", n) + ext
 }
 
 // rewriteAttachmentRef swaps a reference inside ( ) delimiters only, so prose

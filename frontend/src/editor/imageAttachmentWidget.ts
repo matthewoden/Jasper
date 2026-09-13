@@ -19,6 +19,7 @@ import {
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
+import { attachmentRequestUrl, decodeAttachmentFilename } from "../lib/attachmentRef";
 
 
 const IMG_RE = /!\[([^\]]*)\]\((attachments\/[^)]+)\)/;
@@ -54,8 +55,8 @@ class InlineImageWidget extends WidgetType {
     ].join(";");
     container.dataset.testid = "attachment-image-widget";
 
-    const filename = this.src.replace(/^attachments\//, "");
-    const resolvedSrc = `/api/v1/attachments/${encodeURIComponent(this.noteId)}/${encodeURIComponent(filename)}`;
+    const filename = decodeAttachmentFilename(this.src);
+    const resolvedSrc = attachmentRequestUrl(this.noteId, this.src);
 
     const img = document.createElement("img");
     img.src = resolvedSrc;
