@@ -288,7 +288,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
 		// Refuse to serve rather than come up with an empty registry: the
-		// registry is the UUID -> path map, so without it tabs, bookmarks, deep
+		// registry is the id -> path map, so without it tabs, bookmarks, deep
 		// links and wiki-links all fail to resolve and the vault reads as empty
 		// while the notes sit untouched on disk (JASPER-9).
 		summaries, err := hydrateList(ctx, a.indexer, a.cfg.Logger, hydrateAttempts, hydrateBackoff)
@@ -337,7 +337,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
 		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
-		api.HandlerFromMux(si, r)
+		api.Mount(si, r)
 
 		r.Get("/ws", hub.ServeHTTP)
 
@@ -523,7 +523,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
 		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
-		api.HandlerFromMux(si, r)
+		api.Mount(si, r)
 		r.Get("/ws", hub.ServeHTTP)
 		r.Get("/files", apiServer.ServeFile)
 	})

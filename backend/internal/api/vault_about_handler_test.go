@@ -62,7 +62,7 @@ func setupVaultAboutServer(t *testing.T) (*httptest.Server, *notes.Service, *mcp
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
@@ -185,7 +185,7 @@ func TestGetVaultAbout_NilSubsystems_Returns200WithZeros(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -906,7 +905,7 @@ func TestPostFileMove_NotFoundAndCollision_NoBroadcast(t *testing.T) {
 // with the note-parent-relative attachment path and final filename.
 func TestCreateAttachment_BroadcastsFileCreated(t *testing.T) {
 	t.Parallel()
-	noteID := uuid.New()
+	noteID := notes.NewID()
 	summaries := []notes.NoteSummary{
 		{ID: noteID, Path: "root.md", Title: "Root", UpdatedAt: time.Now()},
 	}

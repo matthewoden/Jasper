@@ -3,7 +3,7 @@
 // cache, no vault-swap teardown needed (mirrors internal/bookmarks and
 // internal/config).
 //
-// Workspace prefs never reference note UUIDs, so unlike bookmarks this
+// Workspace prefs never reference note ids, so unlike bookmarks this
 // package has no notes.Registry dependency anywhere.
 package workspace
 

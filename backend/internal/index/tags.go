@@ -8,8 +8,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -34,7 +32,7 @@ var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 // one BEGIN IMMEDIATE transaction. Nil and empty are equivalent.
 //
 // Tags must already be normalized by the caller.
-func (x *Indexer) SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error {
+func (x *Indexer) SyncTags(ctx context.Context, noteID notes.ID, tags []string) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
 		return fmt.Errorf("synctags begin: %w", err)
@@ -133,9 +131,9 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 		if err := rows.Scan(&idStr, &path, &title, &mtime); err != nil {
 			return nil, fmt.Errorf("notesbytag scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("notesbytag parse uuid %q: %w", idStr, err)
+			return nil, fmt.Errorf("notesbytag parse id %q: %w", idStr, err)
 		}
 		out = append(out, notes.NoteSummary{
 			ID:        id,
@@ -151,7 +149,7 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 }
 
 // RenameTag atomically renames a tag from oldName to newName and returns the
-// UUIDs of all notes that carried the tag (so callers can build the
+// ids of all notes that carried the tag (so callers can build the
 // tags:rewritten WS payload). The tag_id is NOT changed — only tags.name is
 // updated — so all note_tags rows remain valid.
 //
@@ -159,7 +157,7 @@ func (x *Indexer) NotesByTag(ctx context.Context, name string) ([]notes.NoteSumm
 //   - ErrTagNotFound if oldName does not exist
 //   - ErrTagCollision if newName already exists
 //   - ErrInvalidTagName if newName violates the [a-z0-9_-] charset
-func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
+func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]notes.ID, error) {
 	if !validTagRE.MatchString(newName) {
 		return nil, ErrInvalidTagName
 	}
@@ -207,11 +205,11 @@ func (x *Indexer) RenameTag(ctx context.Context, oldName, newName string) ([]uui
 }
 
 // DeleteTag atomically removes a tag and all its note_tags rows (via ON
-// DELETE CASCADE in the schema) and returns the UUIDs of the notes that
+// DELETE CASCADE in the schema) and returns the ids of the notes that
 // carried the tag (for the tags:rewritten WS payload).
 //
 // Returns ErrTagNotFound if the tag does not exist.
-func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]uuid.UUID, error) {
+func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]notes.ID, error) {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("deletetag begin: %w", err)
@@ -244,7 +242,7 @@ func (x *Indexer) DeleteTag(ctx context.Context, name string) ([]uuid.UUID, erro
 	return noteIDs, nil
 }
 
-func tagNoteIDs(ctx context.Context, tx *sql.Tx, tagID int64) ([]uuid.UUID, error) {
+func tagNoteIDs(ctx context.Context, tx *sql.Tx, tagID int64) ([]notes.ID, error) {
 	rows, err := tx.QueryContext(ctx,
 		`SELECT note_id FROM note_tags WHERE tag_id = ?`, tagID)
 	if err != nil {
@@ -252,15 +250,15 @@ func tagNoteIDs(ctx context.Context, tx *sql.Tx, tagID int64) ([]uuid.UUID, erro
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []uuid.UUID
+	var out []notes.ID
 	for rows.Next() {
 		var idStr string
 		if err := rows.Scan(&idStr); err != nil {
 			return nil, fmt.Errorf("tagNoteIDs scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("tagNoteIDs parse uuid %q: %w", idStr, err)
+			return nil, fmt.Errorf("tagNoteIDs parse id %q: %w", idStr, err)
 		}
 		out = append(out, id)
 	}

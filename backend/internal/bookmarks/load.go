@@ -9,8 +9,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -51,10 +49,10 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 	kept := make([]Bookmark, 0, len(doc.Bookmarks))
 	changed := false
 	// Built lazily: the common read resolves every id and never needs it.
-	var byPath map[string]uuid.UUID
+	var byPath map[string]notes.ID
 
 	for _, bm := range doc.Bookmarks {
-		id, parseErr := uuid.Parse(bm.NoteID)
+		id, parseErr := notes.ParseID(bm.NoteID)
 		if parseErr != nil {
 			changed = true
 			continue

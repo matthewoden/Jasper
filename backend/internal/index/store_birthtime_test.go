@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -101,7 +99,7 @@ func TestReconcileIncremental_BackfillsZeroBirthtime_ForUpToDateRows(t *testing.
 	// Simulate the pre-phase-29 index row: mtime matches disk (so the
 	// incremental walk takes the skip branch), birthtime at the 0 sentinel.
 	rec := notes.NoteRecord{
-		ID:            uuid.New(),
+		ID:            notes.NewID(),
 		Path:          "old.md",
 		Title:         "Old",
 		MTimeUnix:     mtime.Unix(),
@@ -164,7 +162,7 @@ func TestUpsert_ZeroBirthtime_DoesNotClobberStored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchFTS(sort=created): %v", err)
 	}
-	assertHitOrder(t, hits, []uuid.UUID{alpha, gamma})
+	assertHitOrder(t, hits, []notes.ID{alpha, gamma})
 
 	// A real positive birthtime (full-reconcile refresh) must still update.
 	refreshed := edited

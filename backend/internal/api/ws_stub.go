@@ -3,7 +3,7 @@ package api
 import "context"
 
 // GetApiV1Ws is a strict-server stub. The actual /ws route is handled by
-// wshub.Hub.ServeHTTP, registered after api.HandlerFromMux so it wins under
+// wshub.Hub.ServeHTTP, registered after api.Mount so it wins under
 // chi's last-registration-wins routing. This stub exists only to satisfy the
 // StrictServerInterface contract and is unreachable in production.
 //

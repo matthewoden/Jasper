@@ -8,9 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -90,7 +89,7 @@ func TestFTS5Migration(t *testing.T) {
 		t.Fatalf("expected 3 fts triggers; got %d", trigCnt)
 	}
 
-	id1 := uuid.New().String()
+	id1 := notes.NewID().String()
 	insertNoteRow(t, pair, id1, "hello.md", "hello world")
 
 	var ftsCnt int
@@ -103,7 +102,7 @@ func TestFTS5Migration(t *testing.T) {
 		t.Fatalf("expected 1 FTS row matching 'hello'; got %d", ftsCnt)
 	}
 
-	id2 := uuid.New().String()
+	id2 := notes.NewID().String()
 	insertNoteRow(t, pair, id2, "other.md", "uniqueterm world")
 
 	var preCnt int

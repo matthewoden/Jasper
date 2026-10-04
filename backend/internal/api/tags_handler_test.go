@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -21,9 +20,9 @@ import (
 type tagFakeIndex struct {
 	mu sync.RWMutex
 
-	summaries map[uuid.UUID]notes.NoteSummary
+	summaries map[notes.ID]notes.NoteSummary
 
-	tags map[string]map[uuid.UUID]bool
+	tags map[string]map[notes.ID]bool
 
 	listTagsErr   error
 	notesByTagErr error
@@ -33,22 +32,22 @@ type tagFakeIndex struct {
 
 func newTagFakeIndex() *tagFakeIndex {
 	return &tagFakeIndex{
-		summaries: make(map[uuid.UUID]notes.NoteSummary),
-		tags:      make(map[string]map[uuid.UUID]bool),
+		summaries: make(map[notes.ID]notes.NoteSummary),
+		tags:      make(map[string]map[notes.ID]bool),
 	}
 }
 
-func (f *tagFakeIndex) addNote(id uuid.UUID, relPath, title string) {
+func (f *tagFakeIndex) addNote(id notes.ID, relPath, title string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.summaries[id] = notes.NoteSummary{ID: id, Path: relPath, Title: title, UpdatedAt: time.Now()}
 }
 
-func (f *tagFakeIndex) addTag(tagName string, ids ...uuid.UUID) {
+func (f *tagFakeIndex) addTag(tagName string, ids ...notes.ID) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.tags[tagName] == nil {
-		f.tags[tagName] = make(map[uuid.UUID]bool)
+		f.tags[tagName] = make(map[notes.ID]bool)
 	}
 	for _, id := range ids {
 		f.tags[tagName][id] = true
@@ -56,7 +55,7 @@ func (f *tagFakeIndex) addTag(tagName string, ids ...uuid.UUID) {
 }
 
 func (f *tagFakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
-func (f *tagFakeIndex) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *tagFakeIndex) Delete(_ context.Context, _ notes.ID) error         { return nil }
 func (f *tagFakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -74,8 +73,8 @@ func (f *tagFakeIndex) LookupByPath(_ context.Context, _ string) (notes.NoteReco
 func (f *tagFakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, error) { return 0, nil }
 
 func (f *tagFakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }
-func (f *tagFakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error   { return nil }
-func (f *tagFakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+func (f *tagFakeIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error    { return nil }
+func (f *tagFakeIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
 	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
 ) error {
 	return nil
@@ -85,11 +84,11 @@ func (f *tagFakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]no
 	return []notes.NoteSummary{}, nil
 }
 
-func (f *tagFakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *tagFakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (f *tagFakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+func (f *tagFakeIndex) GetBacklinks(_ context.Context, _ notes.ID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
 
@@ -138,7 +137,7 @@ func (f *tagFakeIndex) NotesByTag(_ context.Context, name string) ([]notes.NoteS
 	return out, nil
 }
 
-func (f *tagFakeIndex) RenameTag(_ context.Context, oldName, newName string) ([]uuid.UUID, error) {
+func (f *tagFakeIndex) RenameTag(_ context.Context, oldName, newName string) ([]notes.ID, error) {
 	if f.renameTagErr != nil {
 		return nil, f.renameTagErr
 	}
@@ -153,14 +152,14 @@ func (f *tagFakeIndex) RenameTag(_ context.Context, oldName, newName string) ([]
 	}
 	f.tags[newName] = carriers
 	delete(f.tags, oldName)
-	ids := make([]uuid.UUID, 0, len(carriers))
+	ids := make([]notes.ID, 0, len(carriers))
 	for id := range carriers {
 		ids = append(ids, id)
 	}
 	return ids, nil
 }
 
-func (f *tagFakeIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, error) {
+func (f *tagFakeIndex) DeleteTag(_ context.Context, name string) ([]notes.ID, error) {
 	if f.deleteTagErr != nil {
 		return nil, f.deleteTagErr
 	}
@@ -170,7 +169,7 @@ func (f *tagFakeIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, e
 	if !ok || len(carriers) == 0 {
 		return nil, notes.ErrTagNotFound
 	}
-	ids := make([]uuid.UUID, 0, len(carriers))
+	ids := make([]notes.ID, 0, len(carriers))
 	for id := range carriers {
 		ids = append(ids, id)
 	}
@@ -188,7 +187,7 @@ func setupTagServer(t *testing.T, idx *tagFakeIndex) *httptest.Server {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -239,9 +238,9 @@ func TestGetTags_GT1_Empty(t *testing.T) {
 func TestGetTags_GT2_Alphabetical(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
-	idB := uuid.New()
-	idC := uuid.New()
+	idA := notes.NewID()
+	idB := notes.NewID()
+	idC := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addNote(idB, "b.md", "B")
 	idx.addNote(idC, "c.md", "C")
@@ -284,8 +283,8 @@ func tagNames(tags []TagWithCount) []string {
 func TestGetTagNotes_GN1_Carriers(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
-	idB := uuid.New()
+	idA := notes.NewID()
+	idB := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addNote(idB, "b.md", "B")
 	idx.addTag("foo", idA, idB)
@@ -329,8 +328,8 @@ func TestGetTagNotes_GN2_NotFound(t *testing.T) {
 func TestPutTag_PT1_Rename(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
-	idB := uuid.New()
+	idA := notes.NewID()
+	idB := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addNote(idB, "b.md", "B")
 	idx.addTag("foo", idA, idB)
@@ -396,7 +395,7 @@ func TestPutTag_PT3_SourceNotFound(t *testing.T) {
 func TestPutTag_PT4_Collision(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
+	idA := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addTag("foo", idA)
 	idx.addTag("feature", idA)
@@ -421,9 +420,9 @@ func TestPutTag_PT4_Collision(t *testing.T) {
 func TestDeleteTag_DT1_Delete(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
-	idB := uuid.New()
-	idC := uuid.New()
+	idA := notes.NewID()
+	idB := notes.NewID()
+	idC := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addNote(idB, "b.md", "B")
 	idx.addNote(idC, "c.md", "C")
@@ -499,7 +498,7 @@ func TestPutTag_PT2b_InvalidOldName(t *testing.T) {
 func TestGetTagNotes_NilVsEmpty(t *testing.T) {
 	t.Parallel()
 	idx := newTagFakeIndex()
-	idA := uuid.New()
+	idA := notes.NewID()
 	idx.addNote(idA, "a.md", "A")
 	idx.addTag("solo", idA)
 	ts := setupTagServer(t, idx)

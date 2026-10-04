@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
@@ -87,10 +85,10 @@ type Index interface {
 	// preserved — the index is recoverable via Reconcile.
 	Upsert(ctx context.Context, rec NoteRecord) error
 
-	// Delete removes the index row for the given UUID. No-op if the row
+	// Delete removes the index row for the given id. No-op if the row
 	// is already absent (idempotent — file-deletes can race with the
 	// indexer scan).
-	Delete(ctx context.Context, id uuid.UUID) error
+	Delete(ctx context.Context, id ID) error
 
 	// List returns one NoteSummary per indexed note for the file-tree /
 	// notes-list UI. Order is undefined at the port level; the API
@@ -124,11 +122,11 @@ type Index interface {
 
 	// SyncTags replaces all tags for noteID atomically (orphan cleanup).
 	// Passing nil or empty slice removes all tags for the note.
-	SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error
+	SyncTags(ctx context.Context, noteID ID, tags []string) error
 
 	// SyncBacklinks resolves [[Title]] refs, deduplicates, and rewrites
 	// all backlinks rows for sourceID atomically.
-	SyncBacklinks(ctx context.Context, sourceID uuid.UUID, sourcePath string,
+	SyncBacklinks(ctx context.Context, sourceID ID, sourcePath string,
 		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
 
 	// NotesByTag returns one NoteSummary per note carrying the named tag,
@@ -137,13 +135,13 @@ type Index interface {
 	NotesByTag(ctx context.Context, name string) ([]NoteSummary, error)
 
 	// RenameTag atomically renames oldName to newName in the SQL store and
-	// returns the UUIDs of all carrier notes. Returns ErrTagNotFound,
+	// returns the ids of all carrier notes. Returns ErrTagNotFound,
 	// ErrTagCollision, ErrInvalidTagName on the respective error conditions.
-	RenameTag(ctx context.Context, oldName, newName string) ([]uuid.UUID, error)
+	RenameTag(ctx context.Context, oldName, newName string) ([]ID, error)
 
 	// DeleteTag atomically removes the tag and its note_tags rows and returns
-	// the UUIDs of the notes that carried it. Returns ErrTagNotFound.
-	DeleteTag(ctx context.Context, name string) ([]uuid.UUID, error)
+	// the ids of the notes that carried it. Returns ErrTagNotFound.
+	DeleteTag(ctx context.Context, name string) ([]ID, error)
 
 	// SourcesByBacklinkTitle returns one NoteSummary per source note that has
 	// a backlinks row where target_title = title. Used by
@@ -154,12 +152,12 @@ type Index interface {
 	// target_title = oldTitle to use newTitle (and optionally newTargetID).
 	// Called by RenameRewriteWikilinks after the FS pass succeeds. Non-fatal
 	// on error — filesystem is truth; next Reconcile heals.
-	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
+	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *ID) error
 
 	// GetBacklinks returns the resolved backlinks for targetID sorted by
 	// source note recency (mtime_unix DESC). Pending rows are excluded.
 	// Returns a non-nil empty slice when there are none.
-	GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error)
+	GetBacklinks(ctx context.Context, targetID ID) ([]BacklinkRow, error)
 
 	// SearchTitles returns up to limit notes whose titles contain q
 	// (case-insensitive LIKE match), ordered by mtime DESC. When q is
@@ -184,7 +182,7 @@ type Index interface {
 // mention lines (multiple references on the same line collapse to one
 // excerpt for that line).
 type BacklinkRow struct {
-	SourceID    uuid.UUID
+	SourceID    ID
 	SourceTitle string
 	SourcePath  string
 	Excerpts    []string // server-built HTML snippets, one per mention line
@@ -193,7 +191,7 @@ type BacklinkRow struct {
 // SearchResult is the projection returned by Index.SearchTitles.
 // Used by GetNotesSearchTitles for wiki-link autocomplete.
 type SearchResult struct {
-	ID        uuid.UUID
+	ID        ID
 	Title     string
 	Path      string
 	MtimeUnix int64
@@ -216,7 +214,7 @@ type TagWithCount struct {
 // BodyFTS/TagNamesFTS are "" for callers without content; reconcile repopulates.
 // Checksum is always "".
 type NoteRecord struct {
-	ID            uuid.UUID
+	ID            ID
 	Path          string // canonical relpath (NFC + lowercase) under notes/
 	Title         string // first-H1 or filename-without-.md
 	MTimeUnix     int64
@@ -238,7 +236,7 @@ type NoteRecord struct {
 // the API handler translates NoteSummary -> api.Note, keeping internal-only
 // fields (Checksum, UpdatedAtUnix) off the wire.
 type NoteSummary struct {
-	ID        uuid.UUID
+	ID        ID
 	Path      string
 	Title     string
 	UpdatedAt time.Time

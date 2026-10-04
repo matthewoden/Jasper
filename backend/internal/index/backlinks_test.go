@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -378,7 +377,7 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 		{ID: targetID, Path: "notes/target.md", Title: "target"},
 	})
 
-	for _, src := range []uuid.UUID{src1, src2, src3} {
+	for _, src := range []notes.ID{src1, src2, src3} {
 		refs := []markdown.WikiLinkRef{{Target: "target"}}
 		content := []byte("See [[target]] here.\n")
 		if err := idx.SyncBacklinks(ctx, src, "notes/src.md", refs, reg, content); err != nil {
@@ -394,7 +393,7 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 		t.Fatalf("GetBacklinks: got %d, want 3", len(rows))
 	}
 
-	wantOrder := []uuid.UUID{src2, src3, src1}
+	wantOrder := []notes.ID{src2, src3, src1}
 	for i, w := range wantOrder {
 		if rows[i].SourceID != w {
 			t.Errorf("rows[%d].SourceID: got %v, want %v", i, rows[i].SourceID, w)
@@ -740,13 +739,13 @@ func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	idx, _ := newTagTestIndexer(t)
 	ctx := context.Background()
 
-	targetID := uuid.New()
+	targetID := notes.NewID()
 	if err := idx.Upsert(ctx, notes.NoteRecord{
 		ID: targetID, Path: "notes/target.md", Title: "Target", MTimeUnix: 1700000002,
 	}); err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
-	sourceID := uuid.New()
+	sourceID := notes.NewID()
 	if err := idx.Upsert(ctx, notes.NoteRecord{
 		ID: sourceID, Path: "notes/source.md", Title: "Source", MTimeUnix: 1700000001,
 	}); err != nil {
@@ -786,13 +785,13 @@ func TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	idx, _ := newTagTestIndexer(t)
 	ctx := context.Background()
 
-	targetID := uuid.New()
+	targetID := notes.NewID()
 	if err := idx.Upsert(ctx, notes.NoteRecord{
 		ID: targetID, Path: "notes/target.md", Title: "Target", MTimeUnix: 1700000002,
 	}); err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
-	sourceID := uuid.New()
+	sourceID := notes.NewID()
 	if err := idx.Upsert(ctx, notes.NoteRecord{
 		ID: sourceID, Path: "notes/source.md", Title: "Source", MTimeUnix: 1700000001,
 	}); err != nil {
@@ -946,7 +945,7 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 
 	reg := &notes.Registry{}
 	reg.Hydrate([]notes.NoteSummary{
-		{ID: uuid.New(), Path: "notes/other.md", Title: "Other Note"},
+		{ID: notes.NewID(), Path: "notes/other.md", Title: "Other Note"},
 	})
 
 	if err := idx.ResolvePendingBacklinks(ctx, reg); err != nil {

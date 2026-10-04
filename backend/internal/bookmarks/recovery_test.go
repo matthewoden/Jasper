@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // A full rebuild (POST /admin/reindex, or reset-and-rebuild) DROPs the notes
@@ -14,10 +14,10 @@ func TestLoad_ReResolvesByPathAfterIDChange(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	oldID := uuid.New()
-	newID := uuid.New()
+	oldID := notes.NewID()
+	newID := notes.NewID()
 	// The rebuild's registry: same path, freshly minted id.
-	registry := newTestRegistry(map[uuid.UUID]string{newID: "notes/keep.md"})
+	registry := newTestRegistry(map[notes.ID]string{newID: "notes/keep.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -55,9 +55,9 @@ func TestLoad_PrunesWhenPathIsAlsoGone(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	liveID := uuid.New()
-	deadID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{liveID: "notes/live.md"})
+	liveID := notes.NewID()
+	deadID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{liveID: "notes/live.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -85,8 +85,8 @@ func TestLoad_RefreshesStalePathHint(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/renamed.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/renamed.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -107,8 +107,8 @@ func TestLoad_RefreshesStalePathHint(t *testing.T) {
 
 	// Refreshed on disk too: prove it by rebuilding identity under the new
 	// path and checking the row is still recoverable.
-	rebuilt := uuid.New()
-	rebuiltRegistry := newTestRegistry(map[uuid.UUID]string{rebuilt: "notes/renamed.md"})
+	rebuilt := notes.NewID()
+	rebuiltRegistry := newTestRegistry(map[notes.ID]string{rebuilt: "notes/renamed.md"})
 	after, err := Load(dir, rebuiltRegistry, testLogger())
 	if err != nil {
 		t.Fatalf("Load() (after rebuild) error = %v", err)
@@ -124,8 +124,8 @@ func TestLoad_PrunesRowWithNoPathHint(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	deadID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{uuid.New(): "notes/other.md"})
+	deadID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{notes.NewID(): "notes/other.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{{ID: "bm-legacy", NoteID: deadID.String(), Order: 0}},
@@ -145,8 +145,8 @@ func TestLoad_PrunesRowWithNoPathHint(t *testing.T) {
 
 func TestService_Add_RecordsPathHint(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	svc := newTestService(t, dir, registry, &fakeBroadcaster{})
 
 	bm, err := svc.Add(context.Background(), noteID, nil)

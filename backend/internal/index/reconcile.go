@@ -7,8 +7,6 @@ import (
 	"os"
 	"sort"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -80,7 +78,7 @@ func (x *Indexer) reconcileIncrementalWithRegistry(ctx context.Context, registry
 			return nil
 		}
 
-		existingID := uuid.Nil
+		existingID := notes.ID("")
 		if ok {
 			existingID = cur.ID
 		}
@@ -152,7 +150,7 @@ func (x *Indexer) reconcileFullWithRegistry(ctx context.Context, registry *notes
 
 		tags := unionTags(markdown.ExtractTags(content), markdown.ExtractBodyTags(content))
 
-		id := chooseID(uuid.Nil, fm.CanonicalRelPath)
+		id := chooseID(notes.ID(""), fm.CanonicalRelPath)
 		rec := notes.NoteRecord{
 			ID:            id,
 			Path:          fm.CanonicalRelPath,
@@ -202,7 +200,7 @@ func unionTags(a, b []string) []string {
 	return out
 }
 
-func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id uuid.UUID, path string, content []byte, tags []string, registry *notes.Registry) {
+func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id notes.ID, path string, content []byte, tags []string, registry *notes.Registry) {
 	if err := x.SyncTags(ctx, id, tags); err != nil {
 		x.Log.Warn("reconcile: tag sync failed", "id", id, "err", err)
 	}

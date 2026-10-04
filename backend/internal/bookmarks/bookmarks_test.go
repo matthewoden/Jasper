@@ -31,7 +31,7 @@ func mustMkdirJasper(t *testing.T, dir string) {
 // newTestRegistry returns a *notes.Registry seeded with the given
 // id->relPath pairs, in addition to the registry's built-in scratchpad
 // mapping.
-func newTestRegistry(entries map[uuid.UUID]string) *notes.Registry {
+func newTestRegistry(entries map[notes.ID]string) *notes.Registry {
 	r := notes.NewRegistry()
 	for id, relPath := range entries {
 		r.Add(id, relPath)
@@ -86,8 +86,8 @@ func TestLoad_MalformedFile_ReturnsEmptyAndWarns(t *testing.T) {
 func TestLoad_UnknownField_RoundTripsWithoutDataLoss(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 
 	path := bookmarksPath(dir)
 	raw := `{
@@ -124,8 +124,8 @@ func TestLoad_UnknownField_RoundTripsWithoutDataLoss(t *testing.T) {
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 
 	folderID := "folder-1"
 	doc := Bookmarks{
@@ -154,9 +154,9 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 func TestLoad_PrunesDeadNoteBookmarks(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
-	liveID := uuid.New()
-	deadID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{liveID: "notes/live.md"})
+	liveID := notes.NewID()
+	deadID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{liveID: "notes/live.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -219,8 +219,8 @@ func newTestService(t *testing.T, dir string, registry *notes.Registry, bc notes
 
 func TestService_Add_CreatesBookmarkAndBroadcasts(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -253,7 +253,7 @@ func TestService_Add_UnregisteredNoteID_RejectsAndDoesNotPersist(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
-	unknownID := uuid.New()
+	unknownID := notes.NewID()
 	_, err := svc.Add(context.Background(), unknownID, nil)
 	if !errors.Is(err, ErrNoteNotFound) {
 		t.Fatalf("Add() error = %v, want ErrNoteNotFound", err)
@@ -268,8 +268,8 @@ func TestService_Add_UnregisteredNoteID_RejectsAndDoesNotPersist(t *testing.T) {
 
 func TestService_Add_UnknownFolderID_RejectsWithErrFolderNotFound(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -285,8 +285,8 @@ func TestService_Add_UnknownFolderID_RejectsWithErrFolderNotFound(t *testing.T) 
 
 func TestService_Remove_DropsRowAndBroadcasts(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -329,8 +329,8 @@ func TestService_Remove_UnknownID_ReturnsErrNotFound(t *testing.T) {
 
 func TestService_MoveToFolder_SetsFolderIDAndBroadcasts(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -386,8 +386,8 @@ func TestService_MoveToFolder_UnknownBookmarkID_ReturnsErrNotFound(t *testing.T)
 
 func TestService_MoveToFolder_UnknownFolderID_ReturnsErrFolderNotFound(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -409,8 +409,8 @@ func TestService_MoveToFolder_UnknownFolderID_ReturnsErrFolderNotFound(t *testin
 // folder renumbered too).
 func TestService_Order_RenumberedAcrossFoldersOnMove(t *testing.T) {
 	dir := t.TempDir()
-	noteA, noteB, noteC := uuid.New(), uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA, noteB, noteC := notes.NewID(), notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md",
 	})
 	bc := &fakeBroadcaster{}
@@ -504,10 +504,10 @@ func TestService_CreateFolder_AppendsAndBroadcasts(t *testing.T) {
 func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
 	dir := t.TempDir()
 	const n = 20
-	noteIDs := make([]uuid.UUID, n)
-	entries := make(map[uuid.UUID]string, n)
+	noteIDs := make([]notes.ID, n)
+	entries := make(map[notes.ID]string, n)
 	for i := range noteIDs {
-		id := uuid.New()
+		id := notes.NewID()
 		noteIDs[i] = id
 		entries[id] = "notes/concurrent.md"
 	}
@@ -518,7 +518,7 @@ func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for _, id := range noteIDs {
-		go func(id uuid.UUID) {
+		go func(id notes.ID) {
 			defer wg.Done()
 			if _, err := svc.Add(context.Background(), id, nil); err != nil {
 				t.Errorf("Add(%s) error = %v", id, err)
@@ -542,9 +542,9 @@ func TestService_Add_ConcurrentCallsDoNotLoseUpdates(t *testing.T) {
 // start at Order 0.
 func TestService_Order_ScopedPerFolderNotGlobal(t *testing.T) {
 	dir := t.TempDir()
-	noteA := uuid.New()
-	noteB := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA := notes.NewID()
+	noteB := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md",
 		noteB: "notes/b.md",
 	})
@@ -579,8 +579,8 @@ func TestService_Order_ScopedPerFolderNotGlobal(t *testing.T) {
 // existing Order value.
 func TestService_Order_RenumberedOnRemove(t *testing.T) {
 	dir := t.TempDir()
-	noteA, noteB, noteC, noteD := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA, noteB, noteC, noteD := notes.NewID(), notes.NewID(), notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md", noteD: "notes/d.md",
 	})
 	bc := &fakeBroadcaster{}
@@ -652,8 +652,8 @@ func TestService_CreateFolder_EmptyName_ReturnsErrInvalidName(t *testing.T) {
 // persisted, and a subsequent Load reflects it.
 func TestService_Reorder_PersistsExplicitOrderWithinTopLevel(t *testing.T) {
 	dir := t.TempDir()
-	noteA, noteB, noteC := uuid.New(), uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA, noteB, noteC := notes.NewID(), notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md", noteB: "notes/b.md", noteC: "notes/c.md",
 	})
 	bc := &fakeBroadcaster{}
@@ -697,8 +697,8 @@ func TestService_Reorder_PersistsExplicitOrderWithinTopLevel(t *testing.T) {
 // TestService_Reorder_WithinFolderScope guards a non-nil folder scope.
 func TestService_Reorder_WithinFolderScope(t *testing.T) {
 	dir := t.TempDir()
-	noteA, noteB := uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA, noteB := notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md", noteB: "notes/b.md",
 	})
 	bc := &fakeBroadcaster{}
@@ -740,8 +740,8 @@ func TestService_Reorder_WithinFolderScope(t *testing.T) {
 // ErrNotFound.
 func TestService_Reorder_MembershipMismatch_ReturnsErrNotFoundNoWrite(t *testing.T) {
 	dir := t.TempDir()
-	noteA, noteB := uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	noteA, noteB := notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		noteA: "notes/a.md", noteB: "notes/b.md",
 	})
 	bc := &fakeBroadcaster{}

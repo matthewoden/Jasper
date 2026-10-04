@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -73,7 +71,7 @@ func NewAttachmentAdapter(notesSvc *notes.Service, dataDir string) AttachmentPro
 // with the same 5-rule path pipeline used by api.GetAttachment.
 // Returns the file bytes + a sniffed mime. Symlinks are rejected.
 func (a *attachmentAdapterImpl) Read(_ context.Context, noteID, filename string) ([]byte, string, error) {
-	id, err := uuid.Parse(noteID)
+	id, err := notes.ParseID(noteID)
 	if err != nil {
 		return nil, "", fmt.Errorf("invalid note id %q: %w", noteID, err)
 	}

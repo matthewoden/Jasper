@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 func newTagTestIndexer(t *testing.T) (*Indexer, string) {
@@ -15,7 +15,7 @@ func newTagTestIndexer(t *testing.T) (*Indexer, string) {
 	return newTestIndexer(t)
 }
 
-func insertNote(t *testing.T, idx *Indexer, id uuid.UUID, path string, mtimeUnix int64) {
+func insertNote(t *testing.T, idx *Indexer, id notes.ID, path string, mtimeUnix int64) {
 	t.Helper()
 	_, err := idx.Pair.Writer.ExecContext(context.Background(),
 		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at)
@@ -26,9 +26,9 @@ func insertNote(t *testing.T, idx *Indexer, id uuid.UUID, path string, mtimeUnix
 	}
 }
 
-func newNoteID(t *testing.T, idx *Indexer, path string, mtimeUnix int64) uuid.UUID {
+func newNoteID(t *testing.T, idx *Indexer, path string, mtimeUnix int64) notes.ID {
 	t.Helper()
-	id := uuid.New()
+	id := notes.NewID()
 	insertNote(t, idx, id, path, mtimeUnix)
 	return id
 }
@@ -297,18 +297,18 @@ func TestNotesByTag_ReturnsMatchingNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	notes, err := idx.NotesByTag(ctx, "foo")
+	got, err := idx.NotesByTag(ctx, "foo")
 	if err != nil {
 		t.Fatalf("NotesByTag: %v", err)
 	}
-	if len(notes) != 3 {
-		t.Fatalf("NotesByTag: got %d, want 3", len(notes))
+	if len(got) != 3 {
+		t.Fatalf("NotesByTag: got %d, want 3", len(got))
 	}
 
-	wantOrder := []uuid.UUID{n2, n3, n1}
+	wantOrder := []notes.ID{n2, n3, n1}
 	for i, w := range wantOrder {
-		if notes[i].ID != w {
-			t.Errorf("notes[%d].ID: got %v, want %v", i, notes[i].ID, w)
+		if got[i].ID != w {
+			t.Errorf("notes[%d].ID: got %v, want %v", i, got[i].ID, w)
 		}
 	}
 }

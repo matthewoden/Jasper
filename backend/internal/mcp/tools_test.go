@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
@@ -132,7 +131,7 @@ func (f *testServerFixture) callTool(t *testing.T, name string, args map[string]
 func TestTool_ListNotes_HappyPath(t *testing.T) {
 	t.Parallel()
 	f := newTestServer(t)
-	id := uuid.New()
+	id := notes.NewID()
 	f.NotesProv.notes = []notes.NoteSummary{
 		{ID: id, Path: "projects/alpha.md", Title: "Alpha", UpdatedAt: time.Now()},
 	}

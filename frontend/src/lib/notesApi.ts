@@ -12,11 +12,11 @@ import { client } from "../api/client";
 import { createKeyedResource } from "./resources";
 
 /**
- * Hard-coded UUID for the scratchpad note. Must match the backend's
- * notes.ScratchpadUUID constant byte-for-byte.
+ * Fixed id of the scratchpad note. Must match the backend's
+ * notes.ScratchpadID constant byte-for-byte.
  */
-export const ScratchpadUUID =
-  "00000000-0000-4000-a000-000000000001" as const;
+export const ScratchpadID =
+  "00000000000000000000000001" as const;
 
 function fetchNote(id: string, signal?: AbortSignal) {
   return client.GET("/notes/{id}", {

@@ -31,7 +31,7 @@ func setupAdminStatusServer(t *testing.T, status migrate.StatusProvider) *httpte
 
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -130,7 +130,7 @@ func TestGetAdminStatus_NilProvider_FallsBackToOK(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()

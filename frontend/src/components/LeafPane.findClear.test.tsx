@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/notesApi", () => ({
-  ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+  ScratchpadID: "00000000000000000000000001",
   getNote: vi.fn(),
   updateNote: vi.fn(),
 }));
@@ -40,7 +40,7 @@ vi.mock("../lib/treeApi", async (importOriginal) => {
   };
 });
 
-import { ScratchpadUUID, getNote } from "../lib/notesApi";
+import { ScratchpadID, getNote } from "../lib/notesApi";
 import { treeResource } from "../lib/treeApi";
 import type { ApiError, Tree } from "../lib/treeApi";
 import { __resetAllControllersForTest } from "../lib/noteBufferController";
@@ -63,7 +63,7 @@ function okTree(notePath: string): GetTreeReturn {
       root: [
         {
           kind: "note",
-          id: ScratchpadUUID,
+          id: ScratchpadID,
           path: notePath,
           title: "scratchpad",
           updated_at: "2025-01-01T00:00:00Z",
@@ -78,7 +78,7 @@ function okTree(notePath: string): GetTreeReturn {
 function okGet(content: string): GetReturn {
   return {
     data: {
-      id: ScratchpadUUID,
+      id: ScratchpadID,
       path: "scratchpad.md",
       content,
       updated_at: "2025-01-01T00:00:00Z",
@@ -88,7 +88,7 @@ function okGet(content: string): GetReturn {
   } as GetReturn;
 }
 
-const tabA: Tab = { id: "tab-a", noteId: ScratchpadUUID };
+const tabA: Tab = { id: "tab-a", noteId: ScratchpadID };
 const oneTabLeaf: LeafNode = { t: "leaf", id: "leaf-a", tabs: [tabA], active: "tab-a" };
 
 function renderLeaf() {

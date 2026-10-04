@@ -31,7 +31,7 @@ func setupVaultTestServer(t *testing.T) *httptest.Server {
 
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -522,7 +522,7 @@ func setupVaultSwitchServer(t *testing.T, switcher VaultSwitcher) *httptest.Serv
 
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }

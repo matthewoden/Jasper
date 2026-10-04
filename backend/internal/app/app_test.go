@@ -18,8 +18,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/vault"
 	"github.com/matthewoden/jasper/backend/migrations"
@@ -47,7 +45,7 @@ func newTestApp(t *testing.T) (*App, string) {
 	return a, dir
 }
 
-// GET /api/v1/notes/{ScratchpadUUID} returns 200 + JSON body
+// GET /api/v1/notes/{ScratchpadID} returns 200 + JSON body
 // containing the welcome content. Confirms the API handler runs, not
 // the SPA fallback.
 func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
@@ -55,7 +53,7 @@ func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
 	ts := httptest.NewServer(a.Handler())
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/api/v1/notes/" + notes.ScratchpadUUID.String())
+	resp, err := http.Get(ts.URL + "/api/v1/notes/" + notes.ScratchpadID.String())
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -79,8 +77,8 @@ func TestApp_GetScratchpadReturns200JSON(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
-	if got.ID != notes.ScratchpadUUID.String() {
-		t.Errorf("id: got %q, want %q", got.ID, notes.ScratchpadUUID.String())
+	if got.ID != notes.ScratchpadID.String() {
+		t.Errorf("id: got %q, want %q", got.ID, notes.ScratchpadID.String())
 	}
 	if got.Path != notes.ScratchpadRelPath {
 		t.Errorf("path: got %q, want %q", got.Path, notes.ScratchpadRelPath)
@@ -210,7 +208,7 @@ func TestApp_UnknownUUIDReturns404(t *testing.T) {
 	ts := httptest.NewServer(a.Handler())
 	defer ts.Close()
 
-	random := uuid.New()
+	random := notes.NewID()
 	resp, err := http.Get(ts.URL + "/api/v1/notes/" + random.String())
 	if err != nil {
 		t.Fatalf("GET: %v", err)
@@ -468,8 +466,8 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		<-runErr
 		t.Fatalf("scratchpad never indexed: %v", err)
 	}
-	if scratchpadID != notes.ScratchpadUUID.String() {
-		t.Errorf("scratchpad id: got %q, want %q", scratchpadID, notes.ScratchpadUUID.String())
+	if scratchpadID != notes.ScratchpadID.String() {
+		t.Errorf("scratchpad id: got %q, want %q", scratchpadID, notes.ScratchpadID.String())
 	}
 
 	resp2, err := http.Get("http://" + addr + "/api/v1/admin/status")
@@ -499,7 +497,7 @@ func TestApp_Run_FreshDB_BootsAndIndexesScratchpad(t *testing.T) {
 		t.Fatalf("admin/status state: got %q, want ok; body=%s", statusOut.State, body2)
 	}
 
-	resp3, err := http.Get("http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String())
+	resp3, err := http.Get("http://" + addr + "/api/v1/notes/" + notes.ScratchpadID.String())
 	if err != nil {
 		cancel()
 		<-runErr
@@ -919,7 +917,7 @@ func TestRun_HydrateRegistry(t *testing.T) {
 	}
 
 	for _, n := range listOut.Notes {
-		id, perr := uuid.Parse(n.ID)
+		id, perr := notes.ParseID(n.ID)
 		if perr != nil {
 			cancel()
 			<-runErr

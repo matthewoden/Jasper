@@ -11,15 +11,13 @@ package notes
 import (
 	"errors"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Note is the domain object — distinct from api.Note (the wire shape) so
 // the service is not coupled to HTTP. The handler in internal/api
 // translates notes.Note -> api.Note.
 type Note struct {
-	ID        uuid.UUID
+	ID        ID
 	Path      string    // canonicalized relative path under notes/ (NFC + lowercase)
 	Content   string    // raw markdown
 	UpdatedAt time.Time // wall-clock UTC of the last successful write
@@ -36,7 +34,7 @@ func ETag(modTime time.Time) string {
 
 // Sentinel errors. Callers gate behavior with errors.Is.
 var (
-	// ErrNotFound is returned when the requested UUID is not in the
+	// ErrNotFound is returned when the requested id is not in the
 	// registry, or the underlying file is missing on disk.
 	ErrNotFound = errors.New("notes: note not found")
 	// ErrInvalidContent is returned for content that fails validation (e.g.

@@ -8,8 +8,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
@@ -29,7 +27,7 @@ import (
 // On any error every completed file operation is undone before returning.
 func (s *Service) relocateAttachments(
 	ctx context.Context,
-	id uuid.UUID,
+	id ID,
 	content []byte,
 	oldRelPath, newRelPath string,
 ) ([]byte, error) {
@@ -127,7 +125,7 @@ func (s *Service) relocateAttachments(
 // from under it.
 func (s *Service) attachmentRefsHeldInFolder(
 	ctx context.Context,
-	exclude uuid.UUID,
+	exclude ID,
 	folder string,
 ) map[string]bool {
 	held := make(map[string]bool)

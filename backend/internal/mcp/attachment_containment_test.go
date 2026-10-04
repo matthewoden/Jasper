@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -61,7 +59,7 @@ func newSymlinkedAttachmentAdapter(t *testing.T) (mcp.AttachmentProvider, string
 
 	// Register a note living behind the link, which is what puts the derived
 	// attachments directory outside the vault.
-	noteID := uuid.New()
+	noteID := notes.NewID()
 	svc.Registry().AddRecord(noteID, "shared/note.md", "note")
 
 	return mcp.NewAttachmentAdapter(svc, dataDir), noteID.String()

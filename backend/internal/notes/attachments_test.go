@@ -10,8 +10,6 @@ import (
 	"sort"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // memFileStore is an in-memory FileStore that can be told to fail the Nth
@@ -143,7 +141,7 @@ func TestRelocateAttachmentsUndoesEveryMoveOnFailure(t *testing.T) {
 
 	svc := newRelocateService(store, nil)
 	rewritten, err := svc.relocateAttachments(
-		context.Background(), uuid.New(), []byte(body), "sub/n.md", "n.md",
+		context.Background(), NewID(), []byte(body), "sub/n.md", "n.md",
 	)
 
 	if err == nil {
@@ -176,11 +174,11 @@ func TestRelocateAttachmentsCopiesWhenASiblingStillReferencesIt(t *testing.T) {
 	store.files["sub/stayer.md"] = []byte("# stayer\n\n![s](attachments/s.png)\n")
 	store.files["sub/attachments/s.png"] = []byte("S")
 
-	stayerID := uuid.New()
+	stayerID := NewID()
 	svc := newRelocateService(store, []NoteSummary{{ID: stayerID, Path: "sub/stayer.md"}})
 
 	rewritten, err := svc.relocateAttachments(
-		context.Background(), uuid.New(), []byte(moverBody), "sub/mover.md", "mover.md",
+		context.Background(), NewID(), []byte(moverBody), "sub/mover.md", "mover.md",
 	)
 	if err != nil {
 		t.Fatalf("relocateAttachments: %v", err)
@@ -208,10 +206,10 @@ func TestRelocateAttachmentsMovesWhenTheSiblingNoLongerReferencesIt(t *testing.T
 	store.files["sub/stayer.md"] = []byte("# stayer\n\nno attachments here\n")
 	store.files["sub/attachments/s.png"] = []byte("S")
 
-	svc := newRelocateService(store, []NoteSummary{{ID: uuid.New(), Path: "sub/stayer.md"}})
+	svc := newRelocateService(store, []NoteSummary{{ID: NewID(), Path: "sub/stayer.md"}})
 
 	if _, err := svc.relocateAttachments(
-		context.Background(), uuid.New(), []byte(moverBody), "sub/mover.md", "mover.md",
+		context.Background(), NewID(), []byte(moverBody), "sub/mover.md", "mover.md",
 	); err != nil {
 		t.Fatalf("relocateAttachments: %v", err)
 	}
@@ -234,7 +232,7 @@ func TestRelocateAttachmentsSkipsAlreadyDanglingReference(t *testing.T) {
 
 	svc := newRelocateService(store, nil)
 	rewritten, err := svc.relocateAttachments(
-		context.Background(), uuid.New(), []byte(body), "sub/n.md", "n.md",
+		context.Background(), NewID(), []byte(body), "sub/n.md", "n.md",
 	)
 	if err != nil {
 		t.Fatalf("a reference that was already broken must not fail the move: %v", err)
@@ -256,7 +254,7 @@ func TestRelocateAttachmentsIsANoopForAnInPlaceRename(t *testing.T) {
 
 	svc := newRelocateService(store, nil)
 	if _, err := svc.relocateAttachments(
-		context.Background(), uuid.New(), []byte(body), "sub/before.md", "sub/after.md",
+		context.Background(), NewID(), []byte(body), "sub/before.md", "sub/after.md",
 	); err != nil {
 		t.Fatalf("relocateAttachments: %v", err)
 	}

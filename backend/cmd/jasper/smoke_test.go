@@ -229,8 +229,8 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	for _, n := range listOut.Notes {
 		if n.Path == notes.ScratchpadRelPath {
 			foundScratchpad = true
-			if n.ID != notes.ScratchpadUUID.String() {
-				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadUUID.String())
+			if n.ID != notes.ScratchpadID.String() {
+				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadID.String())
 			}
 		}
 	}
@@ -238,7 +238,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Fatalf("scratchpad.md not in /api/v1/notes; body=%s", body)
 	}
 
-	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
+	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadID.String())
 	if status != 200 {
 		t.Fatalf("GET scratchpad-by-UUID status: got %d; body=%s", status, body)
 	}
@@ -262,12 +262,12 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	}
 
 	putBody, _ := json.Marshal(map[string]string{"content": "# smoke round-trip"})
-	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String(), putBody)
+	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadID.String(), putBody)
 	if status != 200 {
 		t.Fatalf("PUT scratchpad status: got %d; body=%s", status, body)
 	}
 
-	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
+	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadID.String())
 	if status != 200 {
 		t.Fatalf("re-GET scratchpad status: got %d; body=%s", status, body)
 	}
@@ -393,7 +393,7 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 		t.Fatalf("listener never came up; output:\n%s", log.String())
 	}
 
-	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String()
+	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadID.String()
 	origin := "http://" + addr
 	const N = 100
 

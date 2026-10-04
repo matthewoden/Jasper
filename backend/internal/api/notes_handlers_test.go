@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
@@ -30,7 +29,7 @@ type fakeIndex struct {
 }
 
 func (f *fakeIndex) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
-func (f *fakeIndex) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *fakeIndex) Delete(_ context.Context, _ notes.ID) error         { return nil }
 func (f *fakeIndex) List(_ context.Context) ([]notes.NoteSummary, error) {
 	return f.listResult, f.listErr
 }
@@ -48,9 +47,9 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 func (f *fakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	return []notes.TagWithCount{}, nil
 }
-func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+func (f *fakeIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
 
-func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+func (f *fakeIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
 	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
 ) error {
 	return nil
@@ -60,11 +59,11 @@ func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary
 	return []notes.NoteSummary{}, nil
 }
 
-func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
-func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
@@ -72,11 +71,11 @@ func (f *fakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes
 	return []notes.NoteSummary{}, nil
 }
 
-func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+func (f *fakeIndex) GetBacklinks(_ context.Context, _ notes.ID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
 
@@ -97,7 +96,7 @@ func setupGetNotesServer(t *testing.T, idx notes.Index) *httptest.Server {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -141,7 +140,7 @@ func TestGetNotes_Empty_ReturnsEmptyArray(t *testing.T) {
 // format has 3 entries with correct fields.
 func TestGetNotes_PopulatedFromIndex(t *testing.T) {
 	t.Parallel()
-	id1, id2, id3 := uuid.New(), uuid.New(), uuid.New()
+	id1, id2, id3 := notes.NewID(), notes.NewID(), notes.NewID()
 	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	idx := &fakeIndex{listResult: []notes.NoteSummary{
 		{ID: id1, Path: "a.md", Title: "Alpha", UpdatedAt: t1},
@@ -167,7 +166,7 @@ func TestGetNotes_PopulatedFromIndex(t *testing.T) {
 	if len(got.Notes) != 3 {
 		t.Fatalf("len: got %d, want 3; body=%s", len(got.Notes), body)
 	}
-	if uuid.UUID(got.Notes[0].Id) != id1 {
+	if notes.ID(got.Notes[0].Id) != id1 {
 		t.Errorf("[0].Id: got %v, want %v", got.Notes[0].Id, id1)
 	}
 	if got.Notes[1].Path != "b.md" {
@@ -188,7 +187,7 @@ func TestGetNotes_NilIndex_FallsBackToEmpty(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -219,9 +218,9 @@ func TestGetNotes_OrderedByPathASC(t *testing.T) {
 	t.Parallel()
 	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	idx := &fakeIndex{listResult: []notes.NoteSummary{
-		{ID: uuid.New(), Path: "a.md", Title: "A", UpdatedAt: t1},
-		{ID: uuid.New(), Path: "m.md", Title: "M", UpdatedAt: t1},
-		{ID: uuid.New(), Path: "z.md", Title: "Z", UpdatedAt: t1},
+		{ID: notes.NewID(), Path: "a.md", Title: "A", UpdatedAt: t1},
+		{ID: notes.NewID(), Path: "m.md", Title: "M", UpdatedAt: t1},
+		{ID: notes.NewID(), Path: "z.md", Title: "Z", UpdatedAt: t1},
 	}}
 	ts := setupGetNotesServer(t, idx)
 	defer ts.Close()
@@ -265,7 +264,7 @@ func TestGetNotes_IndexErr_Returns500_GenericMessage(t *testing.T) {
 
 type realIndex struct {
 	byPath    map[string]notes.NoteRecord
-	byID      map[uuid.UUID]notes.NoteRecord
+	byID      map[notes.ID]notes.NoteRecord
 	upsertErr error
 
 	backlinks map[string][]notes.NoteSummary
@@ -274,7 +273,7 @@ type realIndex struct {
 func newRealIndex() *realIndex {
 	return &realIndex{
 		byPath:    make(map[string]notes.NoteRecord),
-		byID:      make(map[uuid.UUID]notes.NoteRecord),
+		byID:      make(map[notes.ID]notes.NoteRecord),
 		backlinks: make(map[string][]notes.NoteSummary),
 	}
 }
@@ -298,7 +297,7 @@ func (r *realIndex) Upsert(_ context.Context, rec notes.NoteRecord) error {
 	return nil
 }
 
-func (r *realIndex) Delete(_ context.Context, id uuid.UUID) error {
+func (r *realIndex) Delete(_ context.Context, id notes.ID) error {
 	if rec, ok := r.byID[id]; ok {
 		delete(r.byPath, rec.Path)
 		delete(r.byID, id)
@@ -351,8 +350,8 @@ func (r *realIndex) MovePathPrefix(_ context.Context, oldPrefix, newPrefix strin
 func (r *realIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	return []notes.TagWithCount{}, nil
 }
-func (r *realIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
-func (r *realIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+func (r *realIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
+func (r *realIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
 	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
 ) error {
 	return nil
@@ -362,11 +361,11 @@ func (r *realIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary
 	return []notes.NoteSummary{}, nil
 }
 
-func (r *realIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (r *realIndex) RenameTag(_ context.Context, _, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
-func (r *realIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (r *realIndex) DeleteTag(_ context.Context, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
@@ -390,11 +389,11 @@ func (r *realIndex) SourcesByBacklinkTitle(_ context.Context, title string) ([]n
 	return out, nil
 }
 
-func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (r *realIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (r *realIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+func (r *realIndex) GetBacklinks(_ context.Context, _ notes.ID) ([]notes.BacklinkRow, error) {
 	return []notes.BacklinkRow{}, nil
 }
 
@@ -438,7 +437,7 @@ func setupRealFSServer(t *testing.T) (*httptest.Server, *notes.Service, string, 
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r), svc, notesDir, idx
 }
@@ -503,7 +502,7 @@ func TestPostNotes_HappyPath_201(t *testing.T) {
 	if got.Title != "alpha" {
 		t.Errorf("Title: got %q, want %q", got.Title, "alpha")
 	}
-	if uuid.UUID(got.Id) == uuid.Nil {
+	if notes.ID(got.Id) == notes.ID("") {
 		t.Errorf("Id: got nil UUID")
 	}
 	if got.UpdatedAt.IsZero() {
@@ -669,7 +668,7 @@ func TestDeleteNoteById_HappyPath_204(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatal(err)
 	}
-	id := uuid.UUID(created.Id).String()
+	id := notes.ID(created.Id).String()
 
 	resp, body = mustDelete(t, ts, "/api/v1/notes/"+id)
 	if resp.StatusCode != 204 {
@@ -689,7 +688,7 @@ func TestDeleteNoteById_NotFound_404(t *testing.T) {
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
 
-	resp, body := mustDelete(t, ts, "/api/v1/notes/"+uuid.New().String())
+	resp, body := mustDelete(t, ts, "/api/v1/notes/"+notes.NewID().String())
 	if resp.StatusCode != 404 {
 		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
 	}
@@ -718,7 +717,7 @@ func TestPostNoteMove_HappyPath_200(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatal(err)
 	}
-	id := uuid.UUID(created.Id).String()
+	id := notes.ID(created.Id).String()
 
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+id+"/move",
 		`{"new_path":"renamed.md"}`)
@@ -761,7 +760,7 @@ func TestPostNoteMove_Collision_409(t *testing.T) {
 		t.Fatalf("create beta: %d; body=%s", resp.StatusCode, body)
 	}
 
-	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+uuid.UUID(alpha.Id).String()+"/move",
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+notes.ID(alpha.Id).String()+"/move",
 		`{"new_path":"beta.md"}`)
 	if resp.StatusCode != 409 {
 		t.Fatalf("status: got %d, want 409; body=%s", resp.StatusCode, body)
@@ -781,7 +780,7 @@ func TestPostNoteMove_NotFound_404(t *testing.T) {
 	ts, _, _, _ := setupRealFSServer(t)
 	defer ts.Close()
 
-	resp, body := mustPostJSON(t, ts, "/api/v1/notes/"+uuid.New().String()+"/move",
+	resp, body := mustPostJSON(t, ts, "/api/v1/notes/"+notes.NewID().String()+"/move",
 		`{"new_path":"renamed.md"}`)
 	if resp.StatusCode != 404 {
 		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
@@ -809,7 +808,7 @@ func TestPostNoteMove_PathEscape_400(t *testing.T) {
 	var created NoteSummary
 	_ = json.Unmarshal(body, &created)
 
-	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+uuid.UUID(created.Id).String()+"/move",
+	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+notes.ID(created.Id).String()+"/move",
 		`{"new_path":"../x.md"}`)
 	if resp.StatusCode != 400 {
 		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
@@ -839,7 +838,7 @@ func TestPostNotes_DoesNotLeakInternalErrors(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -923,7 +922,7 @@ func setupRealFSServerWithBroadcaster(t *testing.T) (*httptest.Server, *notes.Se
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r), svc, root, idx, bc
 }
@@ -948,7 +947,7 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 	if err := json.Unmarshal(body, &aSummary); err != nil {
 		t.Fatalf("unmarshal A: %v; body=%s", err, body)
 	}
-	aID := uuid.UUID(aSummary.Id)
+	aID := notes.ID(aSummary.Id)
 
 	aPath := filepath.Join(root, "foo.md")
 	if err := os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading here\n"), 0o600); err != nil {
@@ -963,7 +962,7 @@ func TestPostNoteMove_M1_TitleChangeTriggerRewrite(t *testing.T) {
 	if err := json.Unmarshal(body, &bSummary); err != nil {
 		t.Fatalf("unmarshal B: %v; body=%s", err, body)
 	}
-	bID := uuid.UUID(bSummary.Id)
+	bID := notes.ID(bSummary.Id)
 	bPath := filepath.Join(root, "b.md")
 
 	if err := os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[foo]]\n"), 0o600); err != nil {
@@ -1030,9 +1029,9 @@ func TestPostNoteMove_M2_NoRewrite_WhenTitleUnchanged(t *testing.T) {
 	if err := json.Unmarshal(body, &aSummary); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	aID := uuid.UUID(aSummary.Id)
+	aID := notes.ID(aSummary.Id)
 
-	otherID := uuid.New()
+	otherID := notes.NewID()
 	idx.setBacklink("foo", notes.NoteSummary{ID: otherID, Path: "b.md", Title: "b"})
 
 	resp, body = mustPostJSON(t, ts, "/api/v1/notes/"+aID.String()+"/move",
@@ -1062,7 +1061,7 @@ func TestPostNoteMove_M4_NoBroadcast_WhenNoReferrers(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	aID := uuid.UUID(created.Id)
+	aID := notes.ID(created.Id)
 
 	soloPath := filepath.Join(root, "solo.md")
 	_ = os.WriteFile(soloPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
@@ -1097,7 +1096,7 @@ func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	aID := uuid.UUID(created.Id)
+	aID := notes.ID(created.Id)
 
 	aPath := filepath.Join(root, "alpha.md")
 	_ = os.WriteFile(aPath, []byte("---\ntags: []\n---\n\nno heading\n"), 0o600)
@@ -1108,7 +1107,7 @@ func TestPostNoteMove_M5_OldTitleCapturedBeforeMove(t *testing.T) {
 	}
 	var bSummary NoteSummary
 	_ = json.Unmarshal(body, &bSummary)
-	bID := uuid.UUID(bSummary.Id)
+	bID := notes.ID(bSummary.Id)
 	bPath := filepath.Join(root, "b.md")
 	_ = os.WriteFile(bPath, []byte("---\ntags: []\n---\n\nsee [[alpha]]\n"), 0o600)
 	idx.setBacklink("alpha", notes.NoteSummary{ID: bID, Path: "b.md", Title: "b"})
@@ -1149,7 +1148,7 @@ func TestPostNoteMove_SelfLinkingNote_ReturnsPostRewriteComparator(t *testing.T)
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	id := uuid.UUID(created.Id)
+	id := notes.ID(created.Id)
 
 	// No H1, so ExtractTitle falls back to the filename and foo.md → bar.md
 	// counts as a title change. The body references the note's own title.

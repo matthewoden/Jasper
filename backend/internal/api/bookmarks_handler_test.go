@@ -46,7 +46,7 @@ func setupBookmarksTestServer(t *testing.T) (*httptest.Server, *apiBroadcaster) 
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r), bc
 }
@@ -84,8 +84,8 @@ func TestPostBookmark_HappyPath_201(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
-	if got.NoteId.String() != noteID {
-		t.Errorf("NoteId: got %q, want %q", got.NoteId.String(), noteID)
+	if got.NoteId != noteID {
+		t.Errorf("NoteId: got %q, want %q", got.NoteId, noteID)
 	}
 	if got.FolderId != nil {
 		t.Errorf("FolderId: got %v, want nil", got.FolderId)
@@ -111,7 +111,7 @@ func TestPostBookmark_UnregisteredNoteId_404(t *testing.T) {
 	ts, _ := setupBookmarksTestServer(t)
 	defer ts.Close()
 
-	forged := uuid.NewString()
+	forged := notes.NewID().String()
 	resp, body := mustPostJSON(t, ts, "/api/v1/bookmarks", `{"note_id":"`+forged+`"}`)
 	if resp.StatusCode != 404 {
 		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
@@ -371,7 +371,7 @@ func TestGetBookmarks_NilNotesService_DoesNotPanic(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -391,7 +391,7 @@ func TestGetBookmarks_NilNotesService_DoesNotPanic(t *testing.T) {
 	// POST must not panic on registry.Lookup either — expect a graceful
 	// "not found" response (nothing can resolve without a registry), not a
 	// crash.
-	resp, body = mustPostJSON(t, ts, "/api/v1/bookmarks", `{"note_id":"`+uuid.NewString()+`"}`)
+	resp, body = mustPostJSON(t, ts, "/api/v1/bookmarks", `{"note_id":"`+notes.NewID().String()+`"}`)
 	if resp.StatusCode != 404 {
 		t.Fatalf("POST /bookmarks with nil notes service: status = %d, want 404; body=%s", resp.StatusCode, body)
 	}

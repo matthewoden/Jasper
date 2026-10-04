@@ -5,8 +5,6 @@ import (
 	"errors"
 	"regexp"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -56,7 +54,7 @@ func (s *Server) GetTagNotes(
 	out := make([]NoteSummary, 0, len(carriers))
 	for _, sm := range carriers {
 		out = append(out, NoteSummary{
-			Id:        openapi_types.UUID(sm.ID),
+			Id:        sm.ID.String(),
 			Path:      sm.Path,
 			Title:     sm.Title,
 			UpdatedAt: sm.UpdatedAt,
@@ -116,14 +114,14 @@ func (s *Server) PutTag(
 		}, sessionID)
 	}
 
-	touchedUUIDs := make([]openapi_types.UUID, len(touchedIDs))
+	touchedWire := make([]string, len(touchedIDs))
 	for i, id := range touchedIDs {
-		touchedUUIDs[i] = openapi_types.UUID(id)
+		touchedWire[i] = id.String()
 	}
 	return PutTag200JSONResponse(TagRenameResponse{
 		OldName:        oldName,
 		NewName:        newName,
-		TouchedNoteIds: touchedUUIDs,
+		TouchedNoteIds: touchedWire,
 	}), nil
 }
 
@@ -168,12 +166,12 @@ func (s *Server) DeleteTag(
 		}, sessionID)
 	}
 
-	touchedUUIDs := make([]openapi_types.UUID, len(touchedIDs))
+	touchedWire := make([]string, len(touchedIDs))
 	for i, id := range touchedIDs {
-		touchedUUIDs[i] = openapi_types.UUID(id)
+		touchedWire[i] = id.String()
 	}
 	return DeleteTag200JSONResponse(TagDeleteResponse{
 		OldName:        name,
-		TouchedNoteIds: touchedUUIDs,
+		TouchedNoteIds: touchedWire,
 	}), nil
 }

@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -62,12 +60,12 @@ func New(pair *sqlite.Pair, notesDir string, log *slog.Logger) *Indexer {
 
 var _ notes.Index = (*Indexer)(nil)
 
-func chooseID(existingID uuid.UUID, relPath string) uuid.UUID {
-	if existingID != uuid.Nil {
+func chooseID(existingID notes.ID, relPath string) notes.ID {
+	if existingID != notes.ID("") {
 		return existingID
 	}
 	if relPath == notes.ScratchpadRelPath {
-		return notes.ScratchpadUUID
+		return notes.ScratchpadID
 	}
-	return uuid.New()
+	return notes.NewID()
 }

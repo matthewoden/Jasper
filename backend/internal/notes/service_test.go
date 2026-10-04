@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
@@ -103,7 +101,7 @@ type fakeIndex struct {
 
 	observedSeq  *[]string
 	deleteCalls  int
-	lastDeleteID uuid.UUID
+	lastDeleteID ID
 	listResult   []NoteSummary
 }
 
@@ -116,7 +114,7 @@ func (f *fakeIndex) Upsert(_ context.Context, rec NoteRecord) error {
 	return f.upsertErr
 }
 
-func (f *fakeIndex) Delete(_ context.Context, id uuid.UUID) error {
+func (f *fakeIndex) Delete(_ context.Context, id ID) error {
 	f.deleteCalls++
 	f.lastDeleteID = id
 	return nil
@@ -137,10 +135,10 @@ func (f *fakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error)
 }
 
 // nopIndex no-ops for fakeIndex.
-func (f *fakeIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
-func (f *fakeIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+func (f *fakeIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return []TagWithCount{}, nil }
+func (f *fakeIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
-func (f *fakeIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+func (f *fakeIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
 	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
 ) error {
 	return nil
@@ -151,11 +149,11 @@ func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, erro
 	return []NoteSummary{}, nil
 }
 
-func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndex) RenameTag(_ context.Context, _, _ string) ([]ID, error) {
 	return nil, nil
 }
 
-func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndex) DeleteTag(_ context.Context, _ string) ([]ID, error) {
 	return nil, nil
 }
 
@@ -163,12 +161,12 @@ func (f *fakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteS
 	return []NoteSummary{}, nil
 }
 
-func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *fakeIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *ID) error {
 	return nil
 }
 
 // fakeIndex stubs for GetBacklinks + SearchTitles.
-func (f *fakeIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+func (f *fakeIndex) GetBacklinks(_ context.Context, _ ID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
 
@@ -227,12 +225,12 @@ func TestService_Get_Known(t *testing.T) {
 	}
 	svc := newSvc(t, files)
 
-	note, err := svc.Get(context.Background(), ScratchpadUUID)
+	note, err := svc.Get(context.Background(), ScratchpadID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if note.ID != ScratchpadUUID {
-		t.Errorf("ID: got %v, want %v", note.ID, ScratchpadUUID)
+	if note.ID != ScratchpadID {
+		t.Errorf("ID: got %v, want %v", note.ID, ScratchpadID)
 	}
 	if note.Path != ScratchpadRelPath {
 		t.Errorf("Path: got %q, want %q", note.Path, ScratchpadRelPath)
@@ -250,7 +248,7 @@ func TestService_Get_Unknown(t *testing.T) {
 	files := &fakeFileStore{}
 	svc := newSvc(t, files)
 
-	_, err := svc.Get(context.Background(), uuid.New())
+	_, err := svc.Get(context.Background(), NewID())
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -263,7 +261,7 @@ func TestService_Get_MissingFile(t *testing.T) {
 	}
 	svc := newSvc(t, files)
 
-	_, err := svc.Get(context.Background(), ScratchpadUUID)
+	_, err := svc.Get(context.Background(), ScratchpadID)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound on missing file, got %v", err)
 	}
@@ -278,7 +276,7 @@ func TestService_Update_Known(t *testing.T) {
 	svc := newSvc(t, files)
 
 	const content = "---\ntags: []\n---\n\nnew content"
-	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	note, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -301,7 +299,7 @@ func TestService_Update_Unknown(t *testing.T) {
 	files := &fakeFileStore{}
 	svc := newSvc(t, files)
 
-	_, err := svc.Update(context.Background(), uuid.New(), "ignored", "")
+	_, err := svc.Update(context.Background(), NewID(), "ignored", "")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -315,7 +313,7 @@ func TestService_Update_EmptyContent(t *testing.T) {
 	files := &fakeFileStore{statTime: time.Now()}
 	svc := newSvc(t, files)
 
-	if _, err := svc.Update(context.Background(), ScratchpadUUID, "", ""); err != nil {
+	if _, err := svc.Update(context.Background(), ScratchpadID, "", ""); err != nil {
 		t.Fatalf("expected empty content to be legal, got %v", err)
 	}
 	if files.writeCalls != 1 {
@@ -332,7 +330,7 @@ func TestService_Update_WriteErrorPropagates(t *testing.T) {
 	files := &fakeFileStore{writeErr: sentinel}
 	svc := newSvc(t, files)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	_, err := svc.Update(context.Background(), ScratchpadID, "content", "")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -344,9 +342,9 @@ func TestService_Update_WriteErrorPropagates(t *testing.T) {
 // Sanity: registry.Lookup of the seeded UUID returns the expected path.
 func TestRegistry_LookupScratchpad(t *testing.T) {
 	r := NewRegistry()
-	relPath, ok := r.Lookup(ScratchpadUUID)
+	relPath, ok := r.Lookup(ScratchpadID)
 	if !ok {
-		t.Fatalf("ScratchpadUUID not in registry")
+		t.Fatalf("ScratchpadID not in registry")
 	}
 	if relPath != ScratchpadRelPath {
 		t.Errorf("got %q, want %q", relPath, ScratchpadRelPath)
@@ -396,7 +394,7 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	svc := newSvcWithIndex(t, files, idx)
 
 	const content = "---\ntags: []\n---\n\nnew content"
-	note, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	note, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -412,8 +410,8 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	}
 
 	rec := idx.lastUpsertRecord
-	if rec.ID != ScratchpadUUID {
-		t.Errorf("rec.ID: got %v, want %v", rec.ID, ScratchpadUUID)
+	if rec.ID != ScratchpadID {
+		t.Errorf("rec.ID: got %v, want %v", rec.ID, ScratchpadID)
 	}
 	if rec.Path != ScratchpadRelPath {
 		t.Errorf("rec.Path: got %q, want %q", rec.Path, ScratchpadRelPath)
@@ -446,7 +444,7 @@ func TestService_Update_CaseCollision_PropagatesError(t *testing.T) {
 	idx := &fakeIndex{upsertErr: ErrCaseCollision}
 	svc := newSvcWithIndex(t, files, idx)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	_, err := svc.Update(context.Background(), ScratchpadID, "content", "")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -470,7 +468,7 @@ func TestService_Update_OtherIndexError_DoesNotFailSave(t *testing.T) {
 	idx := &fakeIndex{upsertErr: transient}
 	svc := newSvcWithIndex(t, files, idx)
 
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	note, err := svc.Update(context.Background(), ScratchpadID, "content", "")
 	if err != nil {
 		t.Fatalf("file-FIRST contract violated: transient index error must not fail save, got %v", err)
 	}
@@ -494,7 +492,7 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := NewService(files, nil, nil, logger)
 
-	if _, err := svc.Update(context.Background(), ScratchpadUUID, "content", ""); err != nil {
+	if _, err := svc.Update(context.Background(), ScratchpadID, "content", ""); err != nil {
 		t.Fatalf("nil Index path failed: %v", err)
 	}
 	if files.writeCalls != 1 {
@@ -506,7 +504,7 @@ type stubIndex struct {
 	mu sync.RWMutex
 
 	byPath map[string]NoteRecord
-	byID   map[uuid.UUID]NoteRecord
+	byID   map[ID]NoteRecord
 
 	upsertErr             error
 	deleteErr             error
@@ -521,7 +519,7 @@ type stubIndex struct {
 func newStubIndex() *stubIndex {
 	return &stubIndex{
 		byPath: make(map[string]NoteRecord),
-		byID:   make(map[uuid.UUID]NoteRecord),
+		byID:   make(map[ID]NoteRecord),
 	}
 }
 
@@ -544,7 +542,7 @@ func (s *stubIndex) Upsert(_ context.Context, rec NoteRecord) error {
 	return nil
 }
 
-func (s *stubIndex) Delete(_ context.Context, id uuid.UUID) error {
+func (s *stubIndex) Delete(_ context.Context, id ID) error {
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
@@ -634,10 +632,10 @@ func (s *stubIndex) DeleteByPathPrefix(_ context.Context, prefix string) (int, e
 }
 
 // stubIndex no-ops for tag + backlink sync.
-func (s *stubIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
-func (s *stubIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+func (s *stubIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return []TagWithCount{}, nil }
+func (s *stubIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
-func (s *stubIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
+func (s *stubIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
 	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
 ) error {
 	return nil
@@ -648,11 +646,11 @@ func (s *stubIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, erro
 	return []NoteSummary{}, nil
 }
 
-func (s *stubIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (s *stubIndex) RenameTag(_ context.Context, _, _ string) ([]ID, error) {
 	return nil, nil
 }
 
-func (s *stubIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (s *stubIndex) DeleteTag(_ context.Context, _ string) ([]ID, error) {
 	return nil, nil
 }
 
@@ -665,12 +663,12 @@ func (s *stubIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteS
 	return append([]NoteSummary(nil), s.backlinkSources...), nil
 }
 
-func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (s *stubIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *ID) error {
 	return nil
 }
 
 // stubIndex stubs for GetBacklinks + SearchTitles.
-func (s *stubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+func (s *stubIndex) GetBacklinks(_ context.Context, _ ID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
 
@@ -683,7 +681,7 @@ func (s *stubIndex) SearchFTS(_ context.Context, _ string, _ []string, _ int, _ 
 	return []SearchHit{}, nil
 }
 
-func (s *stubIndex) recByID(id uuid.UUID) (NoteRecord, bool) {
+func (s *stubIndex) recByID(id ID) (NoteRecord, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	rec, ok := s.byID[id]
@@ -907,7 +905,7 @@ func TestService_Delete_HappyPath(t *testing.T) {
 func TestService_Delete_UnknownId(t *testing.T) {
 	t.Parallel()
 	svc, _, _ := newRealFSSvc(t)
-	err := svc.Delete(context.Background(), uuid.New())
+	err := svc.Delete(context.Background(), NewID())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -1427,8 +1425,8 @@ func TestService_Delete_FSFailLeavesIndexIntact(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := NewService(fake, idx, nil, logger)
 
-	// ScratchpadUUID is pre-seeded in the registry by NewRegistry().
-	id := ScratchpadUUID
+	// ScratchpadID is pre-seeded in the registry by NewRegistry().
+	id := ScratchpadID
 	priorRec := NoteRecord{ID: id, Path: ScratchpadRelPath}
 	idx.byID[id] = priorRec
 	idx.byPath[ScratchpadRelPath] = priorRec
@@ -1504,7 +1502,7 @@ func TestService_MoveFolder_NestedSubtree(t *testing.T) {
 	}
 
 	for _, tt := range []struct {
-		id   uuid.UUID
+		id   ID
 		want string
 	}{
 		{a.ID, "new/a.md"},
@@ -1544,7 +1542,7 @@ func TestService_MoveFolder_Cycle(t *testing.T) {
 func TestRegistry_Add_AndLookup(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.Add(id, "foo.md")
 	got, ok := r.Lookup(id)
 	if !ok {
@@ -1558,7 +1556,7 @@ func TestRegistry_Add_AndLookup(t *testing.T) {
 func TestRegistry_Remove_Idempotent(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.Add(id, "foo.md")
 	r.Remove(id)
 	r.Remove(id)
@@ -1570,7 +1568,7 @@ func TestRegistry_Remove_Idempotent(t *testing.T) {
 func TestRegistry_Rename_OnlyIfPresent(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.Rename(id, "new.md")
 	if _, ok := r.Lookup(id); ok {
 		t.Errorf("Rename should not insert for unknown id")
@@ -1586,10 +1584,10 @@ func TestRegistry_Rename_OnlyIfPresent(t *testing.T) {
 func TestRegistry_Hydrate_ReplacesAll(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
-	preExistingID := uuid.New()
+	preExistingID := NewID()
 	r.Add(preExistingID, "old.md")
-	id1 := uuid.New()
-	id2 := uuid.New()
+	id1 := NewID()
+	id2 := NewID()
 	r.Hydrate([]NoteSummary{
 		{ID: id1, Path: "a.md"},
 		{ID: id2, Path: "b.md"},
@@ -1610,9 +1608,9 @@ func TestRegistry_AddRemoveRename_Concurrency(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry()
 	const n = 50
-	ids := make([]uuid.UUID, n)
+	ids := make([]ID, n)
 	for i := range ids {
-		ids[i] = uuid.New()
+		ids[i] = NewID()
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
@@ -1643,7 +1641,7 @@ func TestService_Update_IfMatch_Mismatch_ReturnsErrStaleWrite(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "wrong-ifmatch-value")
+	_, err := svc.Update(context.Background(), ScratchpadID, "new content", "wrong-ifmatch-value")
 	if !errors.Is(err, ErrStaleWrite) {
 		t.Fatalf("expected ErrStaleWrite, got %v", err)
 	}
@@ -1667,7 +1665,7 @@ func TestService_Update_IfMatch_Empty_SkipsValidation(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	note, err := svc.Update(context.Background(), ScratchpadID, "content", "")
 	if err != nil {
 		t.Fatalf("empty ifMatch should be permissive; got error: %v", err)
 	}
@@ -1689,7 +1687,7 @@ func TestService_Update_IfMatch_Match_ProceedsAsNormal(t *testing.T) {
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
 	ifMatch := now.UTC().Format(time.RFC3339Nano)
-	note, err := svc.Update(context.Background(), ScratchpadUUID, "content", ifMatch)
+	note, err := svc.Update(context.Background(), ScratchpadID, "content", ifMatch)
 	if err != nil {
 		t.Fatalf("matching If-Match should succeed; got error: %v", err)
 	}
@@ -1716,7 +1714,7 @@ func TestService_Update_BroadcastsAfterIndexUpsert(t *testing.T) {
 	bc := &fakeBroadcaster{observedSeq: &seq}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "new content", "")
+	_, err := svc.Update(context.Background(), ScratchpadID, "new content", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1754,7 +1752,7 @@ func TestService_Update_NoBroadcastOnTransientIndexError(t *testing.T) {
 	bc := &fakeBroadcaster{}
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
-	_, err := svc.Update(context.Background(), ScratchpadUUID, "content", "")
+	_, err := svc.Update(context.Background(), ScratchpadID, "content", "")
 	if err != nil {
 		t.Fatalf("transient index error must not propagate; got %v", err)
 	}
@@ -1772,7 +1770,7 @@ func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
 	svc := newSvcWithBroadcaster(t, files, nil, bc)
 
 	content := "# Just a Heading\nno frontmatter"
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1795,7 +1793,7 @@ func TestService_Update_PreservesExistingFrontmatter(t *testing.T) {
 	svc := newSvc(t, files)
 
 	content := "---\ntags: [foo]\n---\n\n# Heading\nbody"
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1816,7 +1814,7 @@ func TestService_Update_BroadcastsEventTagsUpdated(t *testing.T) {
 	svc := newSvcWithBroadcaster(t, files, idx, bc)
 
 	content := "---\ntags: [foo]\n---\n\n# Note"
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1845,11 +1843,11 @@ type tagStubIndex struct {
 
 	mu sync.RWMutex
 
-	tags map[string]map[uuid.UUID]bool
+	tags map[string]map[ID]bool
 
-	backlinks map[string]map[uuid.UUID]bool
+	backlinks map[string]map[ID]bool
 
-	summaries map[uuid.UUID]NoteSummary
+	summaries map[ID]NoteSummary
 
 	renameTagErr error
 	deleteTagErr error
@@ -1863,9 +1861,9 @@ type tagStubIndex struct {
 func newTagStubIndex() *tagStubIndex {
 	return &tagStubIndex{
 		stubIndex: newStubIndex(),
-		tags:      make(map[string]map[uuid.UUID]bool),
-		backlinks: make(map[string]map[uuid.UUID]bool),
-		summaries: make(map[uuid.UUID]NoteSummary),
+		tags:      make(map[string]map[ID]bool),
+		backlinks: make(map[string]map[ID]bool),
+		summaries: make(map[ID]NoteSummary),
 	}
 }
 
@@ -1880,20 +1878,20 @@ func (t *tagStubIndex) Upsert(ctx context.Context, rec NoteRecord) error {
 	return nil
 }
 
-func (t *tagStubIndex) setTag(tagName string, noteID uuid.UUID) {
+func (t *tagStubIndex) setTag(tagName string, noteID ID) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.tags[tagName] == nil {
-		t.tags[tagName] = make(map[uuid.UUID]bool)
+		t.tags[tagName] = make(map[ID]bool)
 	}
 	t.tags[tagName][noteID] = true
 }
 
-func (t *tagStubIndex) setBacklink(targetTitle string, sourceID uuid.UUID) {
+func (t *tagStubIndex) setBacklink(targetTitle string, sourceID ID) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.backlinks[targetTitle] == nil {
-		t.backlinks[targetTitle] = make(map[uuid.UUID]bool)
+		t.backlinks[targetTitle] = make(map[ID]bool)
 	}
 	t.backlinks[targetTitle][sourceID] = true
 }
@@ -1911,7 +1909,7 @@ func (t *tagStubIndex) NotesByTag(_ context.Context, name string) ([]NoteSummary
 	return out, nil
 }
 
-func (t *tagStubIndex) RenameTag(_ context.Context, oldName, newName string) ([]uuid.UUID, error) {
+func (t *tagStubIndex) RenameTag(_ context.Context, oldName, newName string) ([]ID, error) {
 	if t.renameTagErr != nil {
 		return nil, t.renameTagErr
 	}
@@ -1925,14 +1923,14 @@ func (t *tagStubIndex) RenameTag(_ context.Context, oldName, newName string) ([]
 
 	t.tags[newName] = carriers
 	delete(t.tags, oldName)
-	ids := make([]uuid.UUID, 0, len(carriers))
+	ids := make([]ID, 0, len(carriers))
 	for id := range carriers {
 		ids = append(ids, id)
 	}
 	return ids, nil
 }
 
-func (t *tagStubIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, error) {
+func (t *tagStubIndex) DeleteTag(_ context.Context, name string) ([]ID, error) {
 	if t.deleteTagErr != nil {
 		return nil, t.deleteTagErr
 	}
@@ -1940,7 +1938,7 @@ func (t *tagStubIndex) DeleteTag(_ context.Context, name string) ([]uuid.UUID, e
 	defer t.mu.Unlock()
 	t.deleteTagCalled = append(t.deleteTagCalled, name)
 	carriers := t.tags[name]
-	ids := make([]uuid.UUID, 0, len(carriers))
+	ids := make([]ID, 0, len(carriers))
 	for id := range carriers {
 		ids = append(ids, id)
 	}
@@ -1961,7 +1959,7 @@ func (t *tagStubIndex) SourcesByBacklinkTitle(_ context.Context, title string) (
 	return out, nil
 }
 
-func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, newTitle string, _ *uuid.UUID) error {
+func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, newTitle string, _ *ID) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.updateBacklinksCalled = true
@@ -1973,7 +1971,7 @@ func (t *tagStubIndex) UpdateBacklinksTargetTitle(_ context.Context, oldTitle, n
 }
 
 // tagStubIndex stubs for GetBacklinks + SearchTitles.
-func (t *tagStubIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+func (t *tagStubIndex) GetBacklinks(_ context.Context, _ ID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
 
@@ -1992,7 +1990,7 @@ func newCrossVaultSvc(t *testing.T) (*Service, string, *tagStubIndex, *fakeBroad
 	return svc, root, idx, bc
 }
 
-func createTestNote(t *testing.T, svc *Service, root, relPath, content string) uuid.UUID {
+func createTestNote(t *testing.T, svc *Service, root, relPath, content string) ID {
 	t.Helper()
 	fullPath := filepath.Join(root, relPath)
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
@@ -2001,7 +1999,7 @@ func createTestNote(t *testing.T, svc *Service, root, relPath, content string) u
 	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile %s: %v", relPath, err)
 	}
-	id := uuid.New()
+	id := NewID()
 	svc.registry.Add(id, relPath)
 	return id
 }
@@ -2453,7 +2451,7 @@ func TestService_Update_BodyTagsAddedToFrontmatter(t *testing.T) {
 	svc := newSvc(t, files)
 
 	content := "---\ntags: [oldtag]\n---\n\n#newtag is cool"
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -2492,7 +2490,7 @@ func TestService_Update_BodyTagsNoChange(t *testing.T) {
 	svc := newSvc(t, files)
 
 	content := "---\ntags: [existing]\n---\n\nThis note is about #existing concepts."
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -2516,7 +2514,7 @@ func TestService_Update_BodyTagInsideCodeFenceNotExtracted(t *testing.T) {
 	svc := newSvc(t, files)
 
 	content := "---\ntags: []\n---\n\n```\n#shouldskip\n```\n"
-	_, err := svc.Update(context.Background(), ScratchpadUUID, content, "")
+	_, err := svc.Update(context.Background(), ScratchpadID, content, "")
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}

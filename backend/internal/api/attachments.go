@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -214,7 +212,7 @@ func (s *Server) lookupNoteByStringID(ctx context.Context, noteID string) (notes
 		return notes.NoteSummary{}, errors.New("no index")
 	}
 
-	id, err := uuid.Parse(noteID)
+	id, err := notes.ParseID(noteID)
 	if err != nil {
 		return notes.NoteSummary{}, fmt.Errorf("invalid note id: %w", err)
 	}

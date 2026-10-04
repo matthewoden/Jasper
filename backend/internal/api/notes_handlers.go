@@ -6,9 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -38,7 +35,7 @@ func (s *Server) GetNotes(
 	out := GetNotes200JSONResponse{Notes: make([]NoteSummary, 0, len(summaries))}
 	for _, sm := range summaries {
 		out.Notes = append(out.Notes, NoteSummary{
-			Id:        openapi_types.UUID(sm.ID),
+			Id:        sm.ID.String(),
 			Path:      sm.Path,
 			Title:     sm.Title,
 			UpdatedAt: sm.UpdatedAt,
@@ -79,7 +76,7 @@ func (s *Server) PostNotes(
 		return nil, errors.New("could not create note")
 	}
 	return PostNotes201JSONResponse{
-		Id:        openapi_types.UUID(summary.ID),
+		Id:        summary.ID.String(),
 		Path:      summary.Path,
 		Title:     summary.Title,
 		UpdatedAt: summary.UpdatedAt,
@@ -94,10 +91,10 @@ func (s *Server) DeleteNoteById(
 	req DeleteNoteByIdRequestObject,
 ) (DeleteNoteByIdResponseObject, error) {
 	defer s.trackWrite()()
-	if err := s.notes.Delete(ctx, uuid.UUID(req.Id)); err != nil {
+	if err := s.notes.Delete(ctx, notes.ID(req.Id)); err != nil {
 		s.log.Error(
 			"DeleteNoteById: domain error",
-			"id", uuid.UUID(req.Id).String(),
+			"id", notes.ID(req.Id).String(),
 			"err", err,
 		)
 		if code, msg, ok := mapServiceErrorToWire(err); ok {
@@ -129,7 +126,7 @@ func (s *Server) PostNoteMove(
 		return PostNoteMove400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
 
-	id := uuid.UUID(req.Id)
+	id := notes.ID(req.Id)
 
 	var oldTitle string
 	oldSummary, _ := s.notes.LookupSummary(id)
@@ -196,7 +193,7 @@ func (s *Server) PostNoteMove(
 				rolledAt = restored.UpdatedAt
 			}
 			return PostNoteMove200JSONResponse{
-				Id:        openapi_types.UUID(rolledBack.ID),
+				Id:        rolledBack.ID.String(),
 				Path:      rolledBack.Path,
 				Title:     rolledBack.Title,
 				UpdatedAt: rolledAt,
@@ -219,7 +216,7 @@ func (s *Server) PostNoteMove(
 		updatedAt = time.Now().UTC()
 	}
 	return PostNoteMove200JSONResponse{
-		Id:        openapi_types.UUID(summary.ID),
+		Id:        summary.ID.String(),
 		Path:      summary.Path,
 		Title:     summary.Title,
 		UpdatedAt: updatedAt,

@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -158,9 +156,9 @@ func TestReconcileIncremental_MTimeUnchanged_Skipped(t *testing.T) {
 	}
 }
 
-// TestReconcile_Scratchpad_KeepsScratchpadUUID — writing scratchpad.md
-// in the notes dir and reconciling assigns it the canonical ScratchpadUUID.
-func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
+// TestReconcile_Scratchpad_KeepsScratchpadID — writing scratchpad.md
+// in the notes dir and reconciling assigns it the canonical ScratchpadID.
+func TestReconcile_Scratchpad_KeepsScratchpadID(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)
 
@@ -173,8 +171,8 @@ func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len: got %d, want 1", len(got))
 	}
-	if got[0].ID != notes.ScratchpadUUID {
-		t.Errorf("ID: got %v, want ScratchpadUUID %v", got[0].ID, notes.ScratchpadUUID)
+	if got[0].ID != notes.ScratchpadID {
+		t.Errorf("ID: got %v, want ScratchpadID %v", got[0].ID, notes.ScratchpadID)
 	}
 }
 
@@ -196,14 +194,14 @@ func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List after seed: %v", err)
 	}
-	var firstUUID uuid.UUID
+	var firstUUID notes.ID
 	for _, sm := range firstList {
 		if sm.Path == "restored.md" {
 			firstUUID = sm.ID
 			break
 		}
 	}
-	if firstUUID == uuid.Nil {
+	if firstUUID == notes.ID("") {
 		t.Fatalf("seed: restored.md not found in index")
 	}
 
@@ -241,8 +239,8 @@ func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
 			continue
 		}
 		found = true
-		if sm.ID == uuid.Nil {
-			t.Errorf("restored UUID is nil; chooseID must mint uuid.New() for a newly-seen path")
+		if sm.ID == notes.ID("") {
+			t.Errorf("restored UUID is nil; chooseID must mint notes.NewID() for a newly-seen path")
 		}
 		if sm.Title != "Restored Title" {
 			t.Errorf("restored title: got %q, want %q", sm.Title, "Restored Title")

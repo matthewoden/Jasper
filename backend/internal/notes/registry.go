@@ -6,13 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
 	"golang.org/x/text/unicode/norm"
 )
 
-// ScratchpadUUID is the hard-coded UUID for the scratchpad note.
+// ScratchpadID is the fixed id of the scratchpad note.
 // Matches the example in api/openapi.yaml.
-var ScratchpadUUID = uuid.MustParse("00000000-0000-4000-a000-000000000001")
+const ScratchpadID ID = "00000000000000000000000001"
 
 // ScratchpadRelPath is the canonical relative path under notes/ for the scratchpad.
 const ScratchpadRelPath = "scratchpad.md"
@@ -31,7 +30,7 @@ const ScratchpadWelcome = "# Welcome to Jasper\n" +
 	"\n" +
 	"This file lives at `~/.jasper/notes/scratchpad.md`. Open it with any editor; it's just markdown.\n"
 
-// Registry maps UUIDs to canonical relative paths. It also maintains a
+// Registry maps note ids to canonical relative paths. It also maintains a
 // title→records index for wiki-link resolution. Ambiguous titles resolve
 // same-folder-first, then alphabetical.
 //
@@ -40,20 +39,20 @@ const ScratchpadWelcome = "# Welcome to Jasper\n" +
 // maintained in lockstep with byID across all mutation methods.
 type Registry struct {
 	mu      sync.RWMutex
-	byID    map[uuid.UUID]string
+	byID    map[ID]string
 	byTitle map[string][]NoteRecord
 }
 
 // NewRegistry returns a Registry seeded with the scratchpad mapping.
 func NewRegistry() *Registry {
 	return &Registry{
-		byID:    map[uuid.UUID]string{ScratchpadUUID: ScratchpadRelPath},
+		byID:    map[ID]string{ScratchpadID: ScratchpadRelPath},
 		byTitle: make(map[string][]NoteRecord),
 	}
 }
 
-// Lookup returns the canonical relPath for a UUID, or "", false if unknown.
-func (r *Registry) Lookup(id uuid.UUID) (string, bool) {
+// Lookup returns the canonical relPath for an id, or "", false if unknown.
+func (r *Registry) Lookup(id ID) (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	relPath, ok := r.byID[id]
@@ -66,10 +65,10 @@ func (r *Registry) Lookup(id uuid.UUID) (string, bool) {
 // keeping another map in lockstep with byID and byTitle on every mutation.
 //
 // A path maps to one id — the registry cannot hold two notes at one path.
-func (r *Registry) PathIndex() map[string]uuid.UUID {
+func (r *Registry) PathIndex() map[string]ID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	byPath := make(map[string]uuid.UUID, len(r.byID))
+	byPath := make(map[string]ID, len(r.byID))
 	for id, relPath := range r.byID {
 		byPath[relPath] = id
 	}
@@ -82,7 +81,7 @@ func (r *Registry) PathIndex() map[string]uuid.UUID {
 //
 // Note: Add does NOT update the title map because it does not receive the
 // note title. Use AddRecord for full title-index maintenance.
-func (r *Registry) Add(id uuid.UUID, relPath string) {
+func (r *Registry) Add(id ID, relPath string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.byID[id] = relPath
@@ -95,7 +94,7 @@ func (r *Registry) Add(id uuid.UUID, relPath string) {
 // titleNormalized must be the NFC-normalized lowercase title string (the
 // caller is responsible for normalization — the registry stores and
 // queries using the same canonical form).
-func (r *Registry) AddRecord(id uuid.UUID, relPath, titleNormalized string) {
+func (r *Registry) AddRecord(id ID, relPath, titleNormalized string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -112,7 +111,7 @@ func (r *Registry) AddRecord(id uuid.UUID, relPath, titleNormalized string) {
 // is a no-op (the registry can be ahead/behind reality during reconcile).
 // Called by Service.Delete after a successful FS delete. Also removes
 // the entry from the title index.
-func (r *Registry) Remove(id uuid.UUID) {
+func (r *Registry) Remove(id ID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.removeTitleEntryLocked(id)
@@ -125,7 +124,7 @@ func (r *Registry) Remove(id uuid.UUID) {
 //
 // Note: Rename only updates the path, not the title. Use AddRecord if
 // the title changed alongside the path.
-func (r *Registry) Rename(id uuid.UUID, newRelPath string) {
+func (r *Registry) Rename(id ID, newRelPath string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.byID[id]; ok {
@@ -152,7 +151,7 @@ func (r *Registry) Rename(id uuid.UUID, newRelPath string) {
 func (r *Registry) Hydrate(summaries []NoteSummary) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.byID = make(map[uuid.UUID]string, len(summaries))
+	r.byID = make(map[ID]string, len(summaries))
 	r.byTitle = make(map[string][]NoteRecord, len(summaries))
 	for _, s := range summaries {
 		r.byID[s.ID] = s.Path
@@ -189,10 +188,10 @@ func (r *Registry) FindByTitle(titleLower, sourceFolder string) []NoteRecord {
 	return out
 }
 
-func (r *Registry) idsUnder(folderPath string) []uuid.UUID {
+func (r *Registry) idsUnder(folderPath string) []ID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var out []uuid.UUID
+	var out []ID
 	prefix := folderPath + "/"
 	for id, p := range r.byID {
 		if p == folderPath || strings.HasPrefix(p, prefix) {
@@ -228,7 +227,7 @@ func isSameFolder(notePath, sourceFolder string) bool {
 	return filepath.Dir(notePath) == sourceFolder
 }
 
-func (r *Registry) removeTitleEntryLocked(id uuid.UUID) {
+func (r *Registry) removeTitleEntryLocked(id ID) {
 	for key, recs := range r.byTitle {
 		newRecs := recs[:0]
 		for _, rec := range recs {

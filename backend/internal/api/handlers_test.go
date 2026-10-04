@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -66,7 +65,7 @@ func setupTestServer(t *testing.T, files notes.FileStore) *httptest.Server {
 
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -114,7 +113,7 @@ func TestGetNoteById_OK(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	resp, body := mustGet(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String())
+	resp, body := mustGet(t, ts, "/api/v1/notes/"+notes.ScratchpadID.String())
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, body)
 	}
@@ -122,8 +121,8 @@ func TestGetNoteById_OK(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
-	if uuid.UUID(got.Id) != notes.ScratchpadUUID {
-		t.Errorf("Id: got %v, want %v", got.Id, notes.ScratchpadUUID)
+	if notes.ID(got.Id) != notes.ScratchpadID {
+		t.Errorf("Id: got %v, want %v", got.Id, notes.ScratchpadID)
 	}
 	if got.Path != notes.ScratchpadRelPath {
 		t.Errorf("Path: got %q, want %q", got.Path, notes.ScratchpadRelPath)
@@ -142,7 +141,7 @@ func TestGetNoteById_NotFound(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	random := uuid.New()
+	random := notes.NewID()
 	resp, body := mustGet(t, ts, "/api/v1/notes/"+random.String())
 	if resp.StatusCode != 404 {
 		t.Fatalf("status: got %d, want 404; body=%s", resp.StatusCode, body)
@@ -183,7 +182,7 @@ func TestPutNoteById_OK(t *testing.T) {
 
 	const content = "---\ntags: []\n---\n\n# changed"
 	body, _ := json.Marshal(map[string]string{"content": content})
-	resp, respBody := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(), body)
+	resp, respBody := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadID.String(), body)
 	if resp.StatusCode != 200 {
 		t.Fatalf("status: got %d, want 200; body=%s", resp.StatusCode, respBody)
 	}
@@ -191,8 +190,8 @@ func TestPutNoteById_OK(t *testing.T) {
 	if err := json.Unmarshal(respBody, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, respBody)
 	}
-	if uuid.UUID(got.Id) != notes.ScratchpadUUID {
-		t.Errorf("Id: got %v, want %v", got.Id, notes.ScratchpadUUID)
+	if notes.ID(got.Id) != notes.ScratchpadID {
+		t.Errorf("Id: got %v, want %v", got.Id, notes.ScratchpadID)
 	}
 	if got.Path != notes.ScratchpadRelPath {
 		t.Errorf("Path: got %q, want %q", got.Path, notes.ScratchpadRelPath)
@@ -220,7 +219,7 @@ func TestPutNoteById_BadJSON(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	resp, body := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(),
+	resp, body := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadID.String(),
 		[]byte(`{not json`))
 	if resp.StatusCode != 400 {
 		t.Fatalf("status: got %d, want 400; body=%s", resp.StatusCode, body)
@@ -236,7 +235,7 @@ func TestPutNoteById_NotFound(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	random := uuid.New()
+	random := notes.NewID()
 	resp, body := mustPut(t, ts, "/api/v1/notes/"+random.String(),
 		[]byte(`{"content": "ignored"}`))
 	if resp.StatusCode != 404 {
@@ -264,7 +263,7 @@ func TestPutNoteById_WriteFailure(t *testing.T) {
 	ts := setupTestServer(t, files)
 	defer ts.Close()
 
-	resp, body := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadUUID.String(),
+	resp, body := mustPut(t, ts, "/api/v1/notes/"+notes.ScratchpadID.String(),
 		[]byte(`{"content": "hello"}`))
 	if resp.StatusCode != 500 {
 		t.Fatalf("status: got %d, want 500; body=%s", resp.StatusCode, body)

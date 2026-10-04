@@ -11,8 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -30,7 +28,7 @@ type BacklinkRow = notes.BacklinkRow
 // UNIQUE(source_id, target_title) collapse specifically to allow that.
 func (x *Indexer) SyncBacklinks(
 	ctx context.Context,
-	sourceID uuid.UUID,
+	sourceID notes.ID,
 	sourcePath string,
 	refs []markdown.WikiLinkRef,
 	registry *notes.Registry,
@@ -40,7 +38,7 @@ func (x *Indexer) SyncBacklinks(
 
 	type pendingRow struct {
 		targetTitle string
-		targetID    *uuid.UUID
+		targetID    *notes.ID
 		excerpts    []string
 	}
 	grouped := make(map[string]*pendingRow, len(refs))
@@ -52,7 +50,7 @@ func (x *Indexer) SyncBacklinks(
 			continue
 		}
 
-		var tid *uuid.UUID
+		var tid *notes.ID
 		if registry != nil {
 			candidates := registry.FindByTitle(key, sourceFolder)
 			if len(candidates) > 0 {
@@ -119,7 +117,7 @@ func (x *Indexer) SyncBacklinks(
 // aggregate's own ORDER BY clause (SQLite >= 3.44) guarantees each card's
 // excerpts array preserves b.id insertion/document order — an ordered
 // subquery feeding an aggregate is NOT guaranteed to preserve order.
-func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error) {
+func (x *Indexer) GetBacklinks(ctx context.Context, targetID notes.ID) ([]BacklinkRow, error) {
 	rows, err := x.Pair.Reader.QueryContext(ctx,
 		`SELECT source_id, title, path,
 		        json_group_array(excerpt ORDER BY bl_id) AS excerpts
@@ -144,9 +142,9 @@ func (x *Indexer) GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]Backl
 		if err := rows.Scan(&sourceIDStr, &title, &path, &excerptsJSON); err != nil {
 			return nil, fmt.Errorf("getbacklinks scan: %w", err)
 		}
-		sid, err := uuid.Parse(sourceIDStr)
+		sid, err := notes.ParseID(sourceIDStr)
 		if err != nil {
-			return nil, fmt.Errorf("getbacklinks parse uuid %q: %w", sourceIDStr, err)
+			return nil, fmt.Errorf("getbacklinks parse id %q: %w", sourceIDStr, err)
 		}
 		var excerpts []string
 		if err := json.Unmarshal([]byte(excerptsJSON), &excerpts); err != nil {
@@ -191,9 +189,9 @@ func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]n
 		if err := rows.Scan(&idStr, &p, &t, &mtime); err != nil {
 			return nil, fmt.Errorf("sourcesbybltitle scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("sourcesbybltitle parse uuid %q: %w", idStr, err)
+			return nil, fmt.Errorf("sourcesbybltitle parse id %q: %w", idStr, err)
 		}
 		out = append(out, notes.NoteSummary{
 			ID:        id,
@@ -211,10 +209,10 @@ func (x *Indexer) SourcesByBacklinkTitle(ctx context.Context, title string) ([]n
 // UpdateBacklinksTargetTitle re-points every row at oldTitle without a full
 // SyncBacklinks per referrer.
 //
-// newTargetID is usually nil: a rename keeps the same UUID and changes only the
+// newTargetID is usually nil: a rename keeps the same id and changes only the
 // title. Pass non-nil only when the ID actually changes.
 func (x *Indexer) UpdateBacklinksTargetTitle(
-	ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID,
+	ctx context.Context, oldTitle, newTitle string, newTargetID *notes.ID,
 ) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {

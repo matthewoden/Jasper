@@ -95,7 +95,7 @@ func TestService_Update_ConcurrentSameIfMatch_ExactlyOneWins(t *testing.T) {
 				start.Wait()
 				_, err := svc.Update(
 					context.Background(),
-					ScratchpadUUID,
+					ScratchpadID,
 					"---\ntags: []\n---\n\nwriter "+string(rune('A'+n))+"\n",
 					ifMatch,
 				)

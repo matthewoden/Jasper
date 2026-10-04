@@ -53,7 +53,7 @@ func setupTreeServer(t *testing.T) (*httptest.Server, *index.Indexer, string, *n
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
@@ -244,7 +244,7 @@ func TestGetTree_NilIndex_ReturnsEmpty(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()

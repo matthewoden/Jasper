@@ -360,7 +360,7 @@ func (s *Server) PostFileMove(
 }
 
 // ServeFile bypasses the generated GetFile wrapper, which hard-codes
-// application/octet-stream. Mounted AFTER HandlerFromMux so chi's
+// application/octet-stream. Mounted AFTER Mount so chi's
 // last-registration-wins promotes it. Sniffs the type, overriding .svg to
 // image/svg+xml — browsers refuse the sniffed "text/xml" in an <img>.
 func (s *Server) ServeFile(w http.ResponseWriter, r *http.Request) {

@@ -11,6 +11,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.0
 	github.com/oapi-codegen/runtime v1.4.0
+	github.com/oklog/ulid/v2 v2.1.2
 	github.com/spf13/cobra v1.10.1
 	github.com/yuin/goldmark v1.8.2
 	go.abhg.dev/goldmark/frontmatter v0.3.0

@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/internal/vault"
@@ -111,7 +109,7 @@ func (s *stubLister) List(context.Context) ([]notes.NoteSummary, error) {
 // to boot.
 func TestHydrateList_RetriesThenSucceeds(t *testing.T) {
 	t.Parallel()
-	want := []notes.NoteSummary{{ID: uuid.New(), Path: "a.md", Title: "a"}}
+	want := []notes.NoteSummary{{ID: notes.NewID(), Path: "a.md", Title: "a"}}
 	s := &stubLister{failures: 2, summaries: want, err: errors.New("database is locked")}
 
 	got, err := hydrateList(context.Background(), s, slog.New(slog.NewTextHandler(io.Discard, nil)), 3, 0)

@@ -52,11 +52,16 @@ func (s *Server) PostBookmark(
 		return PostBookmark400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
 
-	bm, err := s.bookmarks.Add(ctx, uuid.UUID(req.Body.NoteId), uuidPtrToStringPtr(req.Body.FolderId))
+	noteID, err := notes.ParseID(req.Body.NoteId)
+	if err != nil {
+		return PostBookmark400JSONResponse(newError("invalid_request", "invalid note id")), nil
+	}
+
+	bm, err := s.bookmarks.Add(ctx, noteID, uuidPtrToStringPtr(req.Body.FolderId))
 	if err != nil {
 		s.log.Error(
 			"PostBookmark: domain error",
-			"note_id", req.Body.NoteId.String(),
+			"note_id", req.Body.NoteId,
 			"err", err,
 		)
 		switch {
@@ -279,17 +284,13 @@ func toWireBookmark(bm bookmarks.Bookmark) (Bookmark, error) {
 	if err != nil {
 		return Bookmark{}, err
 	}
-	noteID, err := uuid.Parse(bm.NoteID)
-	if err != nil {
-		return Bookmark{}, err
-	}
 	folderID, err := stringPtrToUUIDPtr(bm.FolderID)
 	if err != nil {
 		return Bookmark{}, err
 	}
 	return Bookmark{
 		Id:       openapi_types.UUID(id),
-		NoteId:   openapi_types.UUID(noteID),
+		NoteId:   bm.NoteID,
 		FolderId: folderID,
 		Order:    bm.Order,
 	}, nil

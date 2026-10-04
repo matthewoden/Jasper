@@ -5,8 +5,6 @@ import (
 	"errors"
 	"regexp"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/config"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -91,7 +89,7 @@ func dailyNoteDetail(note notes.Note) NoteDetail {
 		tagSlice = []string{}
 	}
 	return NoteDetail{
-		Id:        openapi_types.UUID(note.ID),
+		Id:        note.ID.String(),
 		Path:      note.Path,
 		Content:   note.Content,
 		UpdatedAt: note.UpdatedAt,

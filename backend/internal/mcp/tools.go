@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
@@ -38,7 +37,7 @@ type ListNotesResult struct {
 
 // ReadNoteArgs accepts EITHER id OR path; id wins if both are set.
 type ReadNoteArgs struct {
-	ID   string `json:"id,omitempty" jsonschema:"note UUID (preferred for rename resilience)"`
+	ID   string `json:"id,omitempty" jsonschema:"note ULID (preferred for rename resilience)"`
 	Path string `json:"path,omitempty" jsonschema:"notes/-relative path (fallback if id unknown)"`
 }
 
@@ -79,7 +78,7 @@ type SearchNotesResult struct {
 
 // ReadAttachmentArgs — read_attachment takes note_id + filename.
 type ReadAttachmentArgs struct {
-	NoteID   string `json:"note_id" jsonschema:"UUID of the note that owns the attachment"`
+	NoteID   string `json:"note_id" jsonschema:"ULID of the note that owns the attachment"`
 	Filename string `json:"filename" jsonschema:"basename of the attachment file (must not contain path separators)"`
 }
 
@@ -108,8 +107,8 @@ type CreateNoteResult struct {
 // UpdateNoteArgs — update_note takes the path (or id), new body, and the
 // etag of the version being replaced, for stale-write detection.
 type UpdateNoteArgs struct {
-	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the UUID"`
-	ID      string `json:"id,omitempty" jsonschema:"UUID of the note (fallback if path not supplied)"`
+	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the ULID"`
+	ID      string `json:"id,omitempty" jsonschema:"ULID of the note (fallback if path not supplied)"`
 	Body    string `json:"body" jsonschema:"new markdown body (server prepends frontmatter scaffold if missing)"`
 	IfMatch string `json:"if_match,omitempty" jsonschema:"REQUIRED: etag from a prior read_note or update_note call, or '*' to force last-writer-wins; omitting or passing empty is rejected"`
 }
@@ -367,7 +366,7 @@ func (s *Server) registerUpdateNote() {
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args UpdateNoteArgs) (*mcpsdk.CallToolResult, UpdateNoteResult, error) {
 		notePath := args.Path
 		if notePath == "" && args.ID != "" {
-			id, err := uuid.Parse(args.ID)
+			id, err := notes.ParseID(args.ID)
 			if err != nil {
 				return nil, UpdateNoteResult{}, fmt.Errorf("update_note: invalid id: %w", err)
 			}
@@ -468,23 +467,23 @@ func (s *Server) registerDeleteNote() {
 	})
 }
 
-func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uuid.UUID, error) {
+func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (notes.ID, error) {
 	if idStr != "" {
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("invalid id %q: %w", idStr, err)
+			return notes.ID(""), fmt.Errorf("invalid id %q: %w", idStr, err)
 		}
 		return id, nil
 	}
 	if notePath == "" {
-		return uuid.Nil, errors.New("either id or path is required")
+		return notes.ID(""), errors.New("either id or path is required")
 	}
 	if s.notesProvider == nil {
-		return uuid.Nil, errors.New("notes provider not configured")
+		return notes.ID(""), errors.New("notes provider not configured")
 	}
 	summaries, err := s.notesProvider.List(ctx)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("lookup by path: %w", err)
+		return notes.ID(""), fmt.Errorf("lookup by path: %w", err)
 	}
 	target := canonNotePath(notePath)
 	for _, sm := range summaries {
@@ -492,7 +491,7 @@ func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uui
 			return sm.ID, nil
 		}
 	}
-	return uuid.Nil, fmt.Errorf("note not found at path %q", notePath)
+	return notes.ID(""), fmt.Errorf("note not found at path %q", notePath)
 }
 
 func splitNotePath(rel string) (parent, title string, err error) {

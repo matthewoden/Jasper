@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
@@ -35,7 +34,7 @@ func adminReindexFixture(t *testing.T, runner *migrate.Runner, idx notes.Index) 
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -302,7 +301,7 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
-		HandlerFromMux(si, rt)
+		Mount(si, rt)
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -421,14 +420,14 @@ func TestPostAdminReindex_DoesNotHydrateWhenRebuildFails(t *testing.T) {
 	store := fsstore.NewStore(notesDir)
 	failSvc := notes.NewService(store, idx, nil, logger)
 
-	stale := uuid.New()
+	stale := notes.NewID()
 	failSvc.Registry().Add(stale, "stale-marker.md")
 
 	srv := NewServerWithIndex(failSvc, r, r, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
-		HandlerFromMux(si, rt)
+		Mount(si, rt)
 	})
 	failTS := httptest.NewServer(mux)
 	defer failTS.Close()
@@ -494,7 +493,7 @@ func adminReindexFixtureWithBroadcaster(t *testing.T, runner *migrate.Runner, id
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }

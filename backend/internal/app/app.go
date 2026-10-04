@@ -198,7 +198,7 @@ func New(cfg Config) (*App, error) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(api.ConfigStrictBodyMiddleware)
 		r.Use(csrfOriginMiddleware(cfg.ListenAddr))
-		api.HandlerFromMux(si, r)
+		api.Mount(si, r)
 
 		r.Get("/files", apiServer.ServeFile)
 	})

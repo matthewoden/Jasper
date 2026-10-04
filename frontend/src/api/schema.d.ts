@@ -38,21 +38,21 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
         };
-        /** Read a note by UUID */
+        /** Read a note by ULID */
         get: operations["getNoteById"];
-        /** Replace the content of a note by UUID */
+        /** Replace the content of a note by ULID */
         put: operations["putNoteById"];
         post?: never;
         /**
-         * Delete a note by UUID (TREE-06)
-         * @description Delete the note identified by UUID. Removes the underlying `.md` file
+         * Delete a note by ULID (TREE-06)
+         * @description Delete the note identified by ULID. Removes the underlying `.md` file
          *     atomically and clears the SQLite index row in the same write transaction.
-         *     404 when the UUID is unknown; 500 when the FS / SQLite operation fails
+         *     404 when the ULID is unknown; 500 when the FS / SQLite operation fails
          *     and the two stores would be left inconsistent.
          */
         delete: operations["deleteNoteById"];
@@ -66,7 +66,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -323,7 +323,7 @@ export interface paths {
          *     user confirms the content-count copy. Path is
          *     passed as a query parameter so URL-encoding handles `/` separators
          *     cleanly — folders have no SQLite identity and so cannot be addressed by
-         *     UUID.
+         *     ULID.
          */
         delete: operations["deleteFolder"];
         options?: never;
@@ -454,7 +454,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -702,7 +702,7 @@ export interface paths {
         get: operations["getBookmarks"];
         put?: never;
         /**
-         * Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
+         * Bookmark a note by ULID, optionally into a folder (BOOK-01, BOOK-03)
          * @description Adds a new bookmark row for note_id. Rejects an unknown/forged
          *     note_id with 404 — validated against the notes registry, not
          *     trusted client input. Rejects an unknown folder_id with 400.
@@ -1202,7 +1202,7 @@ export interface paths {
          * Lookup a note by its relative path (deep-link fallback)
          * @description Deep-link fallback. Used by the `?path=<rel>` URL
          *     parameter when the canonical `/notes/{id}` form is not available
-         *     (e.g. someone shares a permalink across machines and the UUIDs
+         *     (e.g. someone shares a permalink across machines and the ULIDs
          *     differ but the path is stable). Server canonicalizes `path` via
          *     the same DATA-11 rules as the rest of the API.
          */
@@ -1220,10 +1220,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Note: {
-            /**
-             * Format: uuid
-             * @example 00000000-0000-4000-a000-000000000001
-             */
+            /** @example 00000000000000000000000001 */
             id: string;
             /**
              * @description Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
@@ -1244,7 +1241,6 @@ export interface components {
             content: string;
         };
         UpdateNoteResponse: {
-            /** Format: uuid */
             id: string;
             path: string;
             /** Format: date-time */
@@ -1260,7 +1256,6 @@ export interface components {
          *     survived.
          */
         MoveNoteResponse: {
-            /** Format: uuid */
             id: string;
             /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1287,7 +1282,6 @@ export interface components {
          */
         NoteETag: string;
         NoteSummary: {
-            /** Format: uuid */
             id: string;
             /**
              * @description Canonical relative path under notes/ (NFC + lowercase per DATA-11)
@@ -1316,7 +1310,6 @@ export interface components {
          *     such as GET /daily-notes/{date}.
          */
         NoteDetail: {
-            /** Format: uuid */
             id: string;
             /** @description Canonicalized relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1464,7 +1457,6 @@ export interface components {
              * @enum {string}
              */
             kind: "note";
-            /** Format: uuid */
             id: string;
             /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1641,7 +1633,7 @@ export interface components {
         Error: {
             /** @example not_found */
             code: string;
-            /** @example no note with id 00000000-0000-4000-a000-000000000001 */
+            /** @example no note with id 00000000000000000000000001 */
             message: string;
         };
         /** @description A single tag entry with the number of notes carrying it. */
@@ -1675,13 +1667,13 @@ export interface components {
             old_name: string;
             /** @description The tag name after the rename. */
             new_name: string;
-            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            /** @description ULIDs of notes whose frontmatter was rewritten. */
             touched_note_ids: string[];
         };
         TagDeleteResponse: {
             /** @description The tag name that was deleted. */
             old_name: string;
-            /** @description UUIDs of notes whose frontmatter was rewritten (tag removed). */
+            /** @description ULIDs of notes whose frontmatter was rewritten (tag removed). */
             touched_note_ids: string[];
         };
         AttachmentUploadResult: {
@@ -1706,10 +1698,7 @@ export interface components {
          *     produce their own excerpt, rendered as stacked lines within the card.
          */
         BacklinkRow: {
-            /**
-             * Format: uuid
-             * @description UUID of the note containing the `[[...]]` reference.
-             */
+            /** @description ULID of the note containing the `[[...]]` reference. */
             source_id: string;
             /** @description Title of the source note (first H1 or filename without .md). */
             source_title: string;
@@ -1735,10 +1724,7 @@ export interface components {
         };
         /** @description A single note-title search result for wiki-link autocomplete. */
         NoteSearchResult: {
-            /**
-             * Format: uuid
-             * @description UUID of the matching note.
-             */
+            /** @description ULID of the matching note. */
             id: string;
             /** @description Title of the matching note (first H1 or filename without .md). */
             title: string;
@@ -1774,7 +1760,7 @@ export interface components {
             old_name: string;
             /** @description The new tag name, or null when the tag was deleted. */
             new_name?: string | null;
-            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            /** @description ULIDs of notes whose frontmatter was rewritten. */
             touched_note_ids: string[];
         };
         /**
@@ -1787,7 +1773,7 @@ export interface components {
             old_title: string;
             /** @description The note title after the rename. */
             new_title: string;
-            /** @description UUIDs of notes whose content was rewritten. */
+            /** @description ULIDs of notes whose content was rewritten. */
             touched_note_ids: string[];
             /** @description True when the rewrite failed partway; the rename was rolled back and the client should surface the error banner. */
             error?: boolean;
@@ -1813,7 +1799,6 @@ export interface components {
             payload: unknown;
         };
         WSNoteCreatedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
             title: string;
@@ -1821,19 +1806,16 @@ export interface components {
             updated_at: string;
         };
         WSNoteUpdatedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
             /** Format: date-time */
             updated_at: string;
         };
         WSNoteDeletedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
         };
         WSNoteMovedPayload: {
-            /** Format: uuid */
             id: string;
             old_path: string;
             new_path: string;
@@ -1959,17 +1941,14 @@ export interface components {
             /** @enum {integer} */
             level: 1 | 2;
         };
-        /** @description A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID. */
+        /** @description A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's ULID. */
         Bookmark: {
             /**
              * Format: uuid
              * @description Opaque id of the bookmark row.
              */
             id: string;
-            /**
-             * Format: uuid
-             * @description UUID of the bookmarked note (survives note rename/move — BOOK-04).
-             */
+            /** @description ULID of the bookmarked note (survives note rename/move — BOOK-04). */
             note_id: string;
             /**
              * Format: uuid
@@ -2012,10 +1991,7 @@ export interface components {
             bookmarksSort?: "" | "manual" | "name-asc" | "name-desc" | "modified-desc" | "modified-asc" | "created-desc" | "created-asc";
         };
         BookmarkCreateRequest: {
-            /**
-             * Format: uuid
-             * @description UUID of the note to bookmark. Validated against the notes registry server-side.
-             */
+            /** @description ULID of the note to bookmark. Validated against the notes registry server-side. */
             note_id: string;
             /**
              * Format: uuid
@@ -2237,7 +2213,7 @@ export interface components {
     };
     responses: never;
     parameters: {
-        /** @description UUID of the note */
+        /** @description ULID of the note */
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
@@ -2322,7 +2298,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2338,7 +2314,7 @@ export interface operations {
                     "application/json": components["schemas"]["Note"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2374,7 +2350,7 @@ export interface operations {
                 "If-Match"?: string;
             };
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2403,7 +2379,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2437,7 +2413,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2451,7 +2427,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2476,7 +2452,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2505,7 +2481,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3358,7 +3334,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -3374,7 +3350,7 @@ export interface operations {
                     "application/json": components["schemas"]["BacklinksResponse"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;

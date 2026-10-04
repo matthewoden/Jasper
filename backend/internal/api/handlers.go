@@ -7,9 +7,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/google/uuid"
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/bookmarks"
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
@@ -167,7 +164,7 @@ func (s *Server) GetNoteById(
 	ctx context.Context,
 	request GetNoteByIdRequestObject,
 ) (GetNoteByIdResponseObject, error) {
-	note, err := s.notes.Get(ctx, uuid.UUID(request.Id))
+	note, err := s.notes.Get(ctx, notes.ID(request.Id))
 	if err != nil {
 		if errors.Is(err, notes.ErrNotFound) {
 			return GetNoteById404JSONResponse(newError("not_found", err.Error())), nil
@@ -175,13 +172,13 @@ func (s *Server) GetNoteById(
 
 		s.log.Error(
 			"GetNoteById: domain error",
-			"id", uuid.UUID(request.Id).String(),
+			"id", notes.ID(request.Id).String(),
 			"err", err,
 		)
 		return nil, errors.New("could not load note")
 	}
 	return GetNoteById200JSONResponse{
-		Id:        openapi_types.UUID(note.ID),
+		Id:        note.ID.String(),
 		Path:      note.Path,
 		Content:   note.Content,
 		UpdatedAt: note.UpdatedAt,
@@ -206,7 +203,7 @@ func (s *Server) PutNoteById(
 		ifMatch = *request.Params.IfMatch
 	}
 
-	note, err := s.notes.Update(ctx, uuid.UUID(request.Id), request.Body.Content, ifMatch)
+	note, err := s.notes.Update(ctx, notes.ID(request.Id), request.Body.Content, ifMatch)
 	if err != nil {
 		if errors.Is(err, notes.ErrNotFound) {
 			return PutNoteById404JSONResponse(newError("not_found", err.Error())), nil
@@ -215,7 +212,7 @@ func (s *Server) PutNoteById(
 		if errors.Is(err, notes.ErrStaleWrite) {
 			s.log.Error(
 				"PutNoteById: stale write detected",
-				"id", uuid.UUID(request.Id).String(),
+				"id", notes.ID(request.Id).String(),
 				"err", err,
 			)
 			var swInfo *notes.StaleWriteInfo
@@ -231,7 +228,7 @@ func (s *Server) PutNoteById(
 
 		s.log.Error(
 			"PutNoteById: domain error",
-			"id", uuid.UUID(request.Id).String(),
+			"id", notes.ID(request.Id).String(),
 			"err", err,
 		)
 		return PutNoteById500JSONResponse(newError("write_failed", "could not save note")), nil
@@ -241,7 +238,7 @@ func (s *Server) PutNoteById(
 	// is compared against. Deriving it from anything staler would 409 the first
 	// autosave after every load.
 	return PutNoteById200JSONResponse{
-		Id:        openapi_types.UUID(note.ID),
+		Id:        note.ID.String(),
 		Path:      note.Path,
 		UpdatedAt: note.UpdatedAt,
 		Etag:      notes.ETag(note.UpdatedAt),
