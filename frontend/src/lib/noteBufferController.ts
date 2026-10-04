@@ -388,11 +388,31 @@ class NoteBufferControllerImpl implements NoteBufferController {
     if (!ok) throw new Error("flush failed");
   }
 
+  private isClean(): boolean {
+    return !this.userHasEdited && this.debounceTimer === null && !this.inFlight;
+  }
+
+  private adoptServerNote(data: { content: string; etag: string; path?: string }): void {
+    this.content = data.content;
+    this.lastKnownETag = data.etag;
+    // Re-seed the H1-rename comparator (and
+    // the rename-comparator's path) from the JUST-adopted server
+    // content. Without this, lastH1Sent/lastNotePath keep pointing at
+    // this controller's stale pre-adopt values, so the next unrelated
+    // edit's performSave() sees a spurious currentH1 !== lastH1Sent
+    // mismatch and fires an unwanted postNoteMove against a path
+    // another session may have already renamed (409/case_collision).
+    this.lastH1Sent = extractH1FromContent(data.content);
+    if (data.path) this.lastNotePath = data.path;
+    this.notify();
+    for (const fn of Array.from(this.contentReplacedListeners)) {
+      fn(this.content);
+    }
+  }
+
   onNoteUpdated(p: WSNoteUpdatedPayload): void {
     if (p.id !== this.noteId) return;
-    const debouncePending = this.debounceTimer !== null;
-    const inFlightSave = this.inFlight;
-    if (!this.userHasEdited && !debouncePending && !inFlightSave) {
+    if (this.isClean()) {
       void (async () => {
         try {
           const { data, error } = await getNoteFresh(p.id);
@@ -401,21 +421,7 @@ class NoteBufferControllerImpl implements NoteBufferController {
             this.setConflict({ visible: true, currentUpdatedAt: p.updated_at });
             return;
           }
-          this.content = data.content;
-          this.lastKnownETag = data.etag;
-          // Re-seed the H1-rename comparator (and
-          // the rename-comparator's path) from the JUST-adopted server
-          // content. Without this, lastH1Sent/lastNotePath keep pointing at
-          // this controller's stale pre-adopt values, so the next unrelated
-          // edit's performSave() sees a spurious currentH1 !== lastH1Sent
-          // mismatch and fires an unwanted postNoteMove against a path
-          // another session may have already renamed (409/case_collision).
-          this.lastH1Sent = extractH1FromContent(data.content);
-          if (data.path) this.lastNotePath = data.path;
-          this.notify();
-          for (const fn of Array.from(this.contentReplacedListeners)) {
-            fn(this.content);
-          }
+          this.adoptServerNote(data);
         } catch {
           if (this.released) return;
           this.setConflict({ visible: true, currentUpdatedAt: p.updated_at });
@@ -424,6 +430,27 @@ class NoteBufferControllerImpl implements NoteBufferController {
       return;
     }
     this.setConflict({ visible: true, currentUpdatedAt: p.updated_at });
+  }
+
+  /**
+   * Re-reads the note when nothing local is at stake. A reconcile can rewrite
+   * a file with no note:updated behind it (it writes the id line), which would
+   * leave this tab's comparator stale and turn its next save into a conflict
+   * over nothing. A dirty tab is left alone: its comparator on the wire is
+   * what decides whether a real conflict exists.
+   */
+  revalidateIfClean(): void {
+    if (this.released || !this.isClean()) return;
+    void (async () => {
+      try {
+        const { data, error } = await getNoteFresh(this.noteId);
+        if (this.released || error || !data) return;
+        if (data.etag === this.lastKnownETag || !this.isClean()) return;
+        this.adoptServerNote(data);
+      } catch {
+        // The next save's comparator decides.
+      }
+    })();
   }
 
   onNoteDeleted(p: WSNoteDeletedPayload): void {
@@ -680,4 +707,9 @@ export async function releaseController(noteId: string): Promise<void> {
 /** Test-only escape hatch to reset module state between test files. */
 export function __resetAllControllersForTest(): void {
   controllers.clear();
+}
+
+/** After a reindex, every open note that has no local edits re-reads itself. */
+export function revalidateCleanControllers(): void {
+  for (const c of controllers.values()) c.revalidateIfClean();
 }

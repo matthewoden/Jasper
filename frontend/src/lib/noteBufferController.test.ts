@@ -27,6 +27,7 @@ import { getNoteFresh, updateNote } from "./notesApi";
 import { postNoteMove } from "./treeApi";
 import {
   __resetAllControllersForTest,
+  revalidateCleanControllers,
   getOrCreateController,
   releaseController,
 } from "./noteBufferController";
@@ -873,6 +874,49 @@ describe("a superseded save cannot re-raise a resolved conflict", () => {
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
 
+    expect(c.getConflict()).toBeNull();
+  });
+});
+
+describe("revalidateCleanControllers — after a reindex with no note:updated", () => {
+  it("adopts a newer server version when nothing local is pending", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+    getNoteFreshMock.mockResolvedValueOnce(
+      okGet("---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\n---\ninitial", "n1.md", "2026-01-03T00:00:00Z"),
+    );
+
+    revalidateCleanControllers();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(c.getContent()).toBe("---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\n---\ninitial");
+    expect(c.getConflict()).toBeNull();
+  });
+
+  it("changes nothing when the server version is the one already held", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+    getNoteFreshMock.mockResolvedValueOnce(okGet("initial", "n1.md", FIXTURE_ETAG));
+
+    revalidateCleanControllers();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(c.getContent()).toBe("initial");
+    expect(c.getConflict()).toBeNull();
+  });
+
+  it("leaves a dirty tab alone and raises no conflict", async () => {
+    const c = getOrCreateController("note-1", 2000);
+    c.hydrate("initial", "n1.md", FIXTURE_ETAG);
+    c.handleEditorChange("unsaved local edit");
+
+    revalidateCleanControllers();
+    await Promise.resolve();
+
+    expect(getNoteFreshMock).not.toHaveBeenCalled();
+    expect(c.getContent()).toBe("unsaved local edit");
     expect(c.getConflict()).toBeNull();
   });
 });
