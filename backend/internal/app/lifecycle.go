@@ -258,6 +258,9 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
 			return a.serveStartupError(ctx, "Frontmatter scaffold", fmt.Errorf("lifecycle: frontmatter scaffold migration: %w", err))
 		}
+		if err := InjectNoteIDsMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return a.serveStartupError(ctx, "Note ids", fmt.Errorf("lifecycle: note ids migration: %w", err))
+		}
 	}
 
 	if status.State != migrate.StateUnrecoverable {
@@ -459,6 +462,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	if status.State != migrate.StateUnrecoverable {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
 			return fmt.Errorf("initVaultSubsystemsOnly: frontmatter scaffold: %w", err)
+		}
+		if err := InjectNoteIDsMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return fmt.Errorf("initVaultSubsystemsOnly: note ids: %w", err)
 		}
 	}
 

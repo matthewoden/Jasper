@@ -47,6 +47,7 @@ Checks (in order):
   6. Migrations applied                          — fix: rerun jasper serve to apply
   7. Log file is writable                        — fix: chmod 0644 the log file
   8. Frontend bundle present in binary          — fix: rebuild via make build
+  9. Every note carries an id                    — fix: jasper migrate-ids
 
 Exit code: 0 if all green; 1 if any failure.
 
@@ -96,6 +97,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		checkLogWritable(dataDir),
 		checkFrontendEmbed(),
 		checkServerBind(cfg),
+		checkNoteIDs(dataDir),
 	}
 
 	anyFail := false
