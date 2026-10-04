@@ -39,10 +39,16 @@ for i in $(seq 1 "$COUNT"); do
     n=$(printf "%05d" "$i")
     kind=$((i % 100))
     path="$NOTES_DIR/note-$n.md"
+    # Every note carries the id line a migrated vault has; ids are
+    # deterministic so the vault is reproducible.
+    id="01PERF20 20 12 61 79 80 81 701 33 98 100 204 250 395 398 399 400printf "%020d" "")"
     if (( kind < 80 )); then
         # 80%: body only.
-        cat > "$path" <<EOF
-# Note $n
+        cat > "" <<EOF
+---
+id: 
+---
+# Note 
 
 This is synthetic note number $n. Lorem ipsum dolor sit amet, consectetur
 adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna
@@ -62,6 +68,7 @@ EOF
         done
         cat > "$path" <<EOF
 ---
+id: $id
 tags: [$tags]
 ---
 
@@ -76,6 +83,9 @@ EOF
         link_idx=$((((i - 2) % COUNT) + 1))
         link_n=$(printf "%05d" "$link_idx")
         cat > "$path" <<EOF
+---
+id: $id
+---
 # Note $n
 
 See also [[note-$link_n]] for context. Synthetic linked note that exercises

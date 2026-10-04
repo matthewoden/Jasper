@@ -54,9 +54,11 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **`.jasper/logs/jasper.log`** — the diagnostic surface. One per vault, opened on every vault open and closed on teardown, written alongside the console rather than instead of it. Everything that tells a user to check the log means this file, so anything that reports a log location resolves it through `vault.LogsDir`. See [ADR-0031](./docs/adr/0031-per-vault-logging.md).
 
-**Note** — a single `.md` file under the vault's `notes/`. Has a UUID for identity and a relative path for location. The UUID is what UI state references, so bookmarks and tabs survive rename and move.
+**Note** — a single `.md` file under the vault's `notes/`. Has a **ULID** for identity, written as the `id` key of its frontmatter and owned by the server, and a relative path for location. The id is what UI state and references hold, so bookmarks, tabs and `[[jasper:note/<id>]]` references survive rename, move and a rebuild of the index. See the amendment to [ADR-0032](./docs/adr/0032-bookmarks-carry-a-path-recovery-hint.md).
 
-**Registry** — the in-memory UUID ↔ relative-path map, hydrated from the index at boot. The bridge between "what the UI holds" and "what's on disk."
+**Registry** — the in-memory ULID ↔ relative-path map, hydrated from the index at boot. The bridge between "what the UI holds" and "what's on disk."
+
+**Tombstone** — what an item was when its index row went away: last path, last title, when, and for a blob replaced in place, which id took over. Written on every index delete and cleared when the id comes back (a restore from trash), so a reference to a deleted item can render as *deleted* with its last title rather than as unknown. Derived: a rebuild starts with none.
 
 **Index** — the per-vault SQLite database (`.jasper/app.db`). Holds note metadata, FTS5 search, tags, backlinks, and MCP grants. **Derived.** Never referred to as a source of truth, never queried outside the `index` package.
 
@@ -64,7 +66,7 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Attachment** — a non-markdown file stored in an `attachments/` directory beside the note — **one per parent folder, shared by every note in it**, not one per note (`attachmentsRelDir` = the note's parent + `/attachments`). Collisions auto-rename (`image-1.png`). The sharing is what bites: an attachment directory cannot simply travel with a note that moves out of its folder, because a sibling left behind may reference the same file. The reference is written into the note folder-relative (`![x](attachments/x.png)`) but *served* note-UUID-relative against the note's current path, so the two anchorings disagree the moment a note moves — which is why a moved note's attachments travel with it ([ADR-0034](./docs/adr/0034-attachments-travel-with-the-note.md)). The destination is **percent-encoded**, the alt text is not ([ADR-0035](./docs/adr/0035-attachment-references-are-percent-encoded.md)): an unencoded space is not a legal CommonMark destination, so an unencoded reference renders in Jasper and nowhere else.
 
-**Bookmark** — a pinned reference to a note, held by UUID in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
+**Bookmark** — a pinned reference to a note, held by note id (with the path as a recovery hint) in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
 
 **Trash** — `.trash/` inside the vault. Deletes are soft: move to `.trash/`, restore by moving back and refreshing. Excluded from every index surface. See [ADR-0015](./docs/adr/0015-filesystem-native-soft-delete.md).
 

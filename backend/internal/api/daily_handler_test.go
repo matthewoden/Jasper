@@ -56,7 +56,7 @@ func TestDailyNotesHandler(t *testing.T) {
 		}
 		content := string(data)
 
-		if !strings.HasPrefix(content, "---\ntags: []") {
+		if !strings.HasPrefix(content, "---\nid: ") || !strings.Contains(content, "\ntags: []\n---\n") {
 			t.Errorf("missing frontmatter scaffold; content: %q", content)
 		}
 
@@ -579,7 +579,7 @@ func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Inde
 		t.Fatalf("sqlite.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = pair.Close() })
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)

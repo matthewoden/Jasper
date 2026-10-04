@@ -72,7 +72,7 @@ func setupVaultAboutServer(t *testing.T) (*httptest.Server, *notes.Service, *mcp
 func applyVaultAboutTestMigrations(pair *sqlite.Pair) error {
 	for _, name := range []string{
 		"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql",
-		"004_mcp_grants.sql", "006_birthtime.sql",
+		"004_mcp_grants.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql",
 	} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {

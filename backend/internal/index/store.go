@@ -38,6 +38,11 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 		return fmt.Errorf("upsert collision check: %w", err)
 	}
 
+	// An id that comes back is no longer deleted.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tombstones WHERE id = ?`, rec.ID.String()); err != nil {
+		return fmt.Errorf("upsert clear tombstone: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO notes(id, path, title, mtime_unix, size_bytes, checksum_sha256, created_at, updated_at, body_fts, tag_names_fts, birthtime_unix)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -87,6 +92,9 @@ func (x *Indexer) Delete(ctx context.Context, id notes.ID) error {
 		return fmt.Errorf("delete begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := x.tombstoneNotes(ctx, tx, `id = ?`, id.String()); err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id.String()); err != nil {
 		return fmt.Errorf("delete exec: %w", err)
 	}
@@ -256,9 +264,13 @@ func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, e
 
 	var res sql.Result
 	if prefix == "" {
+		// A wholesale drop precedes a rebuild; nothing was deleted by the user.
 		res, err = tx.ExecContext(ctx, `DELETE FROM notes`)
 	} else {
 		escaped := escapeLike(prefix)
+		if err := x.tombstoneNotes(ctx, tx, `path = ? OR path LIKE ? || '/%' ESCAPE '\'`, prefix, escaped); err != nil {
+			return 0, fmt.Errorf("DeleteByPathPrefix: %w", err)
+		}
 		res, err = tx.ExecContext(ctx,
 			`DELETE FROM notes WHERE path = ? OR path LIKE ? || '/%' ESCAPE '\'`,
 			prefix, escaped)
@@ -688,4 +700,25 @@ func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) 
 		return nil, fmt.Errorf("existing rows: %w", err)
 	}
 	return out, nil
+}
+
+// deleteAtPath removes the row for id only while it still lives at path, so a
+// row an upsert has already moved to a new path is left alone. The row is
+// tombstoned first.
+func (x *Indexer) deleteAtPath(ctx context.Context, id notes.ID, path string) error {
+	tx, err := x.Pair.BeginImmediate(ctx)
+	if err != nil {
+		return fmt.Errorf("deleteAtPath begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := x.tombstoneNotes(ctx, tx, `id = ? AND path = ?`, id.String(), path); err != nil {
+		return fmt.Errorf("deleteAtPath: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ? AND path = ?`, id.String(), path); err != nil {
+		return fmt.Errorf("deleteAtPath exec: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("deleteAtPath commit: %w", err)
+	}
+	return nil
 }

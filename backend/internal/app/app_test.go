@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -1077,7 +1078,7 @@ func TestRun_FrontmatterMigrationRuns_BeforeReconcile(t *testing.T) {
 		<-runErr
 		t.Fatalf("readFile after Run: %v", err)
 	}
-	if !strings.HasPrefix(string(got), "---\ntags: []\n---\n\n") {
+	if !scaffoldedWithID.MatchString(string(got)) {
 		cancel()
 		<-runErr
 		t.Fatalf("file did not get frontmatter after Run: %q", got)
@@ -1130,7 +1131,7 @@ func TestRun_FrontmatterMigrationIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readFile after first boot: %v", err)
 	}
-	if !strings.HasPrefix(string(afterFirst), "---\ntags: []\n---\n\n") {
+	if !scaffoldedWithID.MatchString(string(afterFirst)) {
 		t.Fatalf("file did not get frontmatter on first boot: %q", afterFirst)
 	}
 
@@ -1356,3 +1357,6 @@ func TestApp_LiveRouter_RejectsReboundHost(t *testing.T) {
 		t.Errorf("Run returned error after cancel: %v", err)
 	}
 }
+
+// Both boot-time file migrations have run: the scaffold, then an id line.
+var scaffoldedWithID = regexp.MustCompile(`^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\n---\n\n`)

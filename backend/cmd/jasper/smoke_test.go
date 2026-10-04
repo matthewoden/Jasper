@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -281,7 +282,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	addr := pickFreePort(t)
 
 	overrideDir := t.TempDir()
-	// Baseline mirrors the full shipped migration set (through 006_birthtime)
+	// Baseline mirrors the full shipped migration set (through 008_tombstones)
 	// so the post-rollback schema matches a real deployment's
 	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
@@ -290,6 +291,8 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	copyFile(t, "../../migrations/004_mcp_grants.sql", filepath.Join(overrideDir, "004_mcp_grants.sql"))
 	copyFile(t, "../../migrations/005_backlink_multi_excerpt.sql", filepath.Join(overrideDir, "005_backlink_multi_excerpt.sql"))
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
+	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
+	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
 
 	env1 := []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir}
 	cmd, log := spawn(t, dataDir, addr, env1)
@@ -493,6 +496,8 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
 	copyFile(t, "../../migrations/003_fts.sql", filepath.Join(overrideDir, "003_fts.sql"))
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
+	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
+	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {
@@ -711,9 +716,9 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Fatalf("unmarshal note: %v; body=%s", err, body)
 	}
 
-	wantScaffoldPrefix := "---\ntags: []\n---"
-	if !strings.HasPrefix(note.Content, wantScaffoldPrefix) {
-		t.Errorf("new note content: got %q, want prefix %q (TAGS-EXT-01 scaffold)", note.Content, wantScaffoldPrefix)
+	wantScaffold := regexp.MustCompile(`^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\n---`)
+	if !wantScaffold.MatchString(note.Content) {
+		t.Errorf("new note content: got %q, want scaffold with id line (TAGS-EXT-01 scaffold)", note.Content)
 	}
 
 	status, body = httpGet(t, base+"/tree")

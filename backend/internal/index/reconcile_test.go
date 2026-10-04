@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -19,7 +20,26 @@ func newReconcileFixture(t *testing.T) (*Indexer, string) {
 	return idx, notesDir
 }
 
+// writeNote writes a note as a migrated vault holds it, with an id line, so a
+// reconcile over it has nothing to write back. writeNoteRaw leaves content as
+// given.
 func writeNote(t *testing.T, notesDir, rel, content string, mtime time.Time) {
+	t.Helper()
+	if _, found := markdown.ReadID([]byte(content)); !found {
+		id := notes.NewID()
+		if rel == notes.ScratchpadRelPath {
+			id = notes.ScratchpadID
+		}
+		withID, err := markdown.WithID([]byte(content), id.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		content = string(withID)
+	}
+	writeNoteRaw(t, notesDir, rel, content, mtime)
+}
+
+func writeNoteRaw(t *testing.T, notesDir, rel, content string, mtime time.Time) {
 	t.Helper()
 	full := filepath.Join(notesDir, rel)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {

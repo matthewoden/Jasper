@@ -1,6 +1,6 @@
 # ADR-0032 — Bookmarks carry a path recovery hint, because note identity is not durable
 
-**Status:** Accepted (v1.4)
+**Status:** Accepted (v1.4). **Amended 2026-10-04:** note identity is now durable; the hint stays.
 
 ## Context
 
@@ -48,3 +48,23 @@ Refreshing the hint on every successful resolve is load-bearing, not tidiness: w
 `POST /admin/reindex` re-mints every note id and all bookmarks survive with adopted ids; a rename still keeps its bookmark; a deleted note's bookmark still prunes; and a rebuild *after* a rename still recovers, which is the case the hint refresh exists for. Covered by unit tests in `backend/internal/bookmarks/recovery_test.go` and E2E `BOOK-05` in `frontend/e2e/phase27-uat.spec.ts`, both proven to fail against the pre-fix prune loop.
 
 `BOOK-04` covers a binary restart, which takes the *incremental* reconcile path and preserves ids — which is why it never caught this. The two paths need separate coverage.
+
+## Amendment (2026-10-04) — identity moved into the file
+
+The first rejected alternative above is now the decision. A note's id is a **ULID written as the first key of its frontmatter** (`id: 01ARZ3NDEKTSV4RRFFQ69G5FAV`), minted by the server when the note is created and read back by reconcile, so a rebuild from `notes/` restores every id. [ADR-0001](./0001-filesystem-is-the-source-of-truth.md) now holds for identity as well as for indexes.
+
+What forced it: universal item references ([plan](../plans/universal-item-references.md)). A reference such as `[[jasper:note/<id>]]` written into another system, or a bookmark, cannot be allowed to dangle because `app.db` was deleted. The path hint fixed one consumer; it could not fix identity.
+
+Against the three reasons this file gave for rejecting it:
+
+- *It writes Jasper's bookkeeping into every user file.* Accepted, and bounded. It is one line, inserted by a targeted byte-level edit (`markdown.WithID`) that never re-serialises the block, and the `id` key is the only key Jasper claims. The one bulk write happens at upgrade (`InjectNoteIDsMigration`, previewable with `jasper migrate-ids --dry-run`); afterwards only new notes and notes that lost their line are touched.
+- *It diverges from Obsidian* ([ADR-0019](./0019-obsidian-as-default-ux-reference.md)). A known divergence, recorded here. Obsidian ignores the key, so a vault still opens there unchanged.
+- *It contradicts the reset dialog's promise.* The promise holds for what the dialog does: a rebuild reads ids from the files and writes nothing. The upgrade is the one exception, and the release note says so.
+
+Consequences:
+
+- **The path hint stays.** It is what carries a bookmark across the upgrade: the UUIDs the index used to mint are not carried forward (migration 007 drops those rows), so a stored UUID recovers only by path. It also covers a note whose id line an external tool stripped.
+- **Ids belong to the server.** `Update` restores the note's known id whatever the client sent, and reports the rewrite in the response the way a tag rewrite is reported. An id edited *outside* the app is honoured as the file's truth: the previous id is tombstoned and the new one adopted.
+- **A copied note shares its original's id until reconcile settles it.** The path already indexed under the id keeps it; with no prior index, the earlier birthtime, then the lexically smaller path. The loser is given a fresh id on disk.
+- **Reconcile now writes to `notes/`**, the id line only. A note open in an editor when reconcile mints its id gets a stale etag, which is the conflict path [ADR-0011](./0011-manual-refresh-over-filesystem-watcher.md) already describes for a refresh.
+- **CRLF frontmatter is outside the write contract.** Such a note is indexed under an id only that index knows, never written, and `jasper doctor` reports it.
