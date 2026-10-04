@@ -166,3 +166,22 @@ func indexOf(haystack []string, needle string) int {
 func contains(haystack []string, needle string) bool {
 	return indexOf(haystack, needle) >= 0
 }
+
+// A view is derived like a table and must go before the tables it reads, or
+// the rebuild's re-migration fails on "view already exists".
+func TestDeriveDropStatements_ViewsDropBeforeTables(t *testing.T) {
+	fsys := fstest.MapFS{
+		"001_base.sql": {Data: []byte("CREATE TABLE schema_migrations (v TEXT);\nCREATE TABLE notes (id TEXT);")},
+		"002_view.sql": {Data: []byte("CREATE VIEW items AS SELECT id FROM notes;")},
+	}
+	stmts, err := deriveDropStatements(fsys)
+	if err != nil {
+		t.Fatalf("deriveDropStatements: %v", err)
+	}
+	if !contains(stmts, "DROP VIEW IF EXISTS items") {
+		t.Fatalf("no DROP VIEW for items in %v", stmts)
+	}
+	if indexOf(stmts, "DROP VIEW IF EXISTS items") >= indexOf(stmts, "DROP TABLE IF EXISTS notes") {
+		t.Errorf("view dropped after its table: %v", stmts)
+	}
+}

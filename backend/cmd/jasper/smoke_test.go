@@ -282,7 +282,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	addr := pickFreePort(t)
 
 	overrideDir := t.TempDir()
-	// Baseline mirrors the full shipped migration set (through 008_tombstones)
+	// Baseline mirrors the full shipped migration set (through 009_blobs)
 	// so the post-rollback schema matches a real deployment's
 	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
@@ -293,6 +293,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
 	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
 	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
+	copyFile(t, "../../migrations/009_blobs.sql", filepath.Join(overrideDir, "009_blobs.sql"))
 
 	env1 := []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir}
 	cmd, log := spawn(t, dataDir, addr, env1)
@@ -498,6 +499,7 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
 	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
 	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
+	copyFile(t, "../../migrations/009_blobs.sql", filepath.Join(overrideDir, "009_blobs.sql"))
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {

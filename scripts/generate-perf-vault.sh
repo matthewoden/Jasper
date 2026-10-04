@@ -41,14 +41,14 @@ for i in $(seq 1 "$COUNT"); do
     path="$NOTES_DIR/note-$n.md"
     # Every note carries the id line a migrated vault has; ids are
     # deterministic so the vault is reproducible.
-    id="01PERF20 20 12 61 79 80 81 701 33 98 100 204 250 395 398 399 400printf "%020d" "")"
+    id="01PERF$(printf "%020d" "$i")"
     if (( kind < 80 )); then
         # 80%: body only.
-        cat > "" <<EOF
+        cat > "$path" <<EOF
 ---
-id: 
+id: $id
 ---
-# Note 
+# Note $n
 
 This is synthetic note number $n. Lorem ipsum dolor sit amet, consectetur
 adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna
@@ -95,3 +95,23 @@ EOF
 done
 
 echo "Wrote $COUNT notes to $NOTES_DIR/"
+
+# Attachments: the cold-start gate also covers hashing every attachment once.
+# One attachments/ directory per note folder, as the app lays them out; the
+# vault is flat, so one directory holds them all. Sizes skew small with a few
+# large files, roughly what a vault of screenshots and PDFs looks like.
+ATTACH_DIR="$NOTES_DIR/attachments"
+mkdir -p "$ATTACH_DIR"
+find "$ATTACH_DIR" -maxdepth 1 -type f -delete 2>/dev/null || true
+ATTACH_COUNT=$(( COUNT / 10 ))
+for i in $(seq 1 "$ATTACH_COUNT"); do
+    n=$(printf "%05d" "$i")
+    if (( i % 50 == 0 )); then
+        size=$(( 4 * 1024 * 1024 ))   # 2%: a 4 MiB PDF or photo
+    else
+        size=$(( 48 * 1024 ))         # 98%: a 48 KiB screenshot
+    fi
+    # Deterministic and distinct per file: a unique header, then filler.
+    { printf "attachment-%s\n" "$n"; head -c "$size" /dev/zero; } > "$ATTACH_DIR/image-$n.png"
+done
+echo "Wrote $ATTACH_COUNT attachments to $ATTACH_DIR/"

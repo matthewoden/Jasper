@@ -5,34 +5,32 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Tombstone is what an item was when its index row went away.
+// Tombstone is what an item, note or blob, was when its index row went away.
 type Tombstone struct {
-	ID         notes.ID
+	ID         string
 	LastPath   string
 	LastTitle  string
 	DeletedAt  int64
-	ReplacedBy notes.ID
+	ReplacedBy string
 }
 
 // GetTombstone reports whether id was deleted and what it last was.
-func (x *Indexer) GetTombstone(ctx context.Context, id notes.ID) (Tombstone, bool, error) {
+func (x *Indexer) GetTombstone(ctx context.Context, id string) (Tombstone, bool, error) {
 	var t Tombstone
 	var idStr, replacedBy sql.NullString
 	err := x.Pair.Reader.QueryRowContext(ctx,
 		`SELECT id, last_path, last_title, deleted_at, replaced_by FROM tombstones WHERE id = ?`,
-		id.String()).Scan(&idStr, &t.LastPath, &t.LastTitle, &t.DeletedAt, &replacedBy)
+		id).Scan(&idStr, &t.LastPath, &t.LastTitle, &t.DeletedAt, &replacedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Tombstone{}, false, nil
 	}
 	if err != nil {
 		return Tombstone{}, false, fmt.Errorf("tombstone %s: %w", id, err)
 	}
-	t.ID = notes.ID(idStr.String)
-	t.ReplacedBy = notes.ID(replacedBy.String)
+	t.ID = idStr.String
+	t.ReplacedBy = replacedBy.String
 	return t, true, nil
 }
 

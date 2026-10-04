@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/perf-check.sh — 5k-note startup gate.
 #
-# Starts `bin/jasper serve --data-dir _perf-vault` and measures the
+# Starts `bin/jasper serve --vault _perf-vault` and measures the
 # wall-clock time to first successful /api/v1/admin/status response.
 # Fails if > 5 seconds.
 #
@@ -24,7 +24,7 @@ if [[ ! -d "$DATA" ]]; then
     mkdir -p "$DATA"
 fi
 LOG=$(mktemp)
-bin/jasper serve --data-dir "$DATA" --addr "127.0.0.1:${PORT}" > "$LOG" 2>&1 &
+bin/jasper serve --vault "$PWD/$DATA" --bind "127.0.0.1:${PORT}" > "$LOG" 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true; rm -f "$LOG"' EXIT
 

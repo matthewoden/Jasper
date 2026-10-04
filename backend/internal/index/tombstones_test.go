@@ -25,18 +25,18 @@ func TestDelete_WritesTombstone_UpsertClearsIt(t *testing.T) {
 	if err := idx.Delete(ctx, id); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	ts, ok, err := idx.GetTombstone(ctx, id)
+	ts, ok, err := idx.GetTombstone(ctx, id.String())
 	if err != nil || !ok {
 		t.Fatalf("GetTombstone = %+v, %v, %v", ts, ok, err)
 	}
-	if ts.ID != id || ts.LastPath != "notes/a.md" || ts.LastTitle != "Alpha" || ts.DeletedAt != 1730000000 || ts.ReplacedBy != "" {
+	if ts.ID != id.String() || ts.LastPath != "notes/a.md" || ts.LastTitle != "Alpha" || ts.DeletedAt != 1730000000 || ts.ReplacedBy != "" {
 		t.Errorf("tombstone = %+v", ts)
 	}
 
 	if err := idx.Upsert(ctx, notes.NoteRecord{ID: id, Path: "notes/a.md", Title: "Alpha", MTimeUnix: 2}); err != nil {
 		t.Fatalf("re-Upsert: %v", err)
 	}
-	if _, ok, _ := idx.GetTombstone(ctx, id); ok {
+	if _, ok, _ := idx.GetTombstone(ctx, id.String()); ok {
 		t.Errorf("tombstone survived the note's return")
 	}
 }
@@ -48,7 +48,7 @@ func TestDelete_UnknownIDLeavesNoTombstone(t *testing.T) {
 	if err := idx.Delete(context.Background(), id); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, ok, _ := idx.GetTombstone(context.Background(), id); ok {
+	if _, ok, _ := idx.GetTombstone(context.Background(), id.String()); ok {
 		t.Errorf("a row that never existed got a tombstone")
 	}
 }
@@ -63,17 +63,17 @@ func TestDeleteByPathPrefix_TombstonesFolder_NotWholesaleDrop(t *testing.T) {
 	if _, err := idx.DeleteByPathPrefix(ctx, "proj"); err != nil {
 		t.Fatalf("DeleteByPathPrefix: %v", err)
 	}
-	if ts, ok, _ := idx.GetTombstone(ctx, inFolder); !ok || ts.LastTitle != "In folder" {
+	if ts, ok, _ := idx.GetTombstone(ctx, inFolder.String()); !ok || ts.LastTitle != "In folder" {
 		t.Errorf("folder child not tombstoned: %+v %v", ts, ok)
 	}
-	if _, ok, _ := idx.GetTombstone(ctx, outside); ok {
+	if _, ok, _ := idx.GetTombstone(ctx, outside.String()); ok {
 		t.Errorf("note outside the folder was tombstoned")
 	}
 
 	if _, err := idx.DeleteByPathPrefix(ctx, ""); err != nil {
 		t.Fatalf("DeleteByPathPrefix(\"\"): %v", err)
 	}
-	if _, ok, _ := idx.GetTombstone(ctx, outside); ok {
+	if _, ok, _ := idx.GetTombstone(ctx, outside.String()); ok {
 		t.Errorf("a rebuild's wholesale drop wrote tombstones")
 	}
 }

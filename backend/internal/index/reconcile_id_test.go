@@ -176,7 +176,7 @@ func TestReconcile_ExternalIDEditWins(t *testing.T) {
 	if len(rows) != 1 || rows["a.md"].ID != newID {
 		t.Errorf("rows = %+v, want a.md under %s", rows, newID)
 	}
-	ts, ok, err := idx.GetTombstone(context.Background(), oldID)
+	ts, ok, err := idx.GetTombstone(context.Background(), oldID.String())
 	if err != nil || !ok {
 		t.Fatalf("tombstone for %s: %v, %v", oldID, ok, err)
 	}
@@ -206,7 +206,7 @@ func TestReconcile_ExternalRenameKeepsID(t *testing.T) {
 	if n != 1 || rows["b.md"].ID != id {
 		t.Errorf("n=%d rows=%+v, want b.md under %s", n, rows, id)
 	}
-	if _, ok, _ := idx.GetTombstone(context.Background(), id); ok {
+	if _, ok, _ := idx.GetTombstone(context.Background(), id.String()); ok {
 		t.Errorf("a moved note was tombstoned")
 	}
 }
@@ -231,7 +231,7 @@ func TestReconcile_DeleteTombstonesAndRestoreClears(t *testing.T) {
 	if rows := rowsByPath(t, idx); len(rows) != 0 {
 		t.Errorf("rows after delete = %+v", rows)
 	}
-	ts, ok, err := idx.GetTombstone(context.Background(), id)
+	ts, ok, err := idx.GetTombstone(context.Background(), id.String())
 	if err != nil || !ok || ts.LastPath != "sub/a.md" || ts.LastTitle != "Alpha" || ts.DeletedAt == 0 {
 		t.Fatalf("tombstone = %+v, %v, %v", ts, ok, err)
 	}
@@ -243,7 +243,7 @@ func TestReconcile_DeleteTombstonesAndRestoreClears(t *testing.T) {
 	if rows := rowsByPath(t, idx); rows["sub/a.md"].ID != id {
 		t.Errorf("restored note did not keep %s: %+v", id, rows)
 	}
-	if _, ok, _ := idx.GetTombstone(context.Background(), id); ok {
+	if _, ok, _ := idx.GetTombstone(context.Background(), id.String()); ok {
 		t.Errorf("tombstone survived the restore")
 	}
 }

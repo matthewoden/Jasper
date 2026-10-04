@@ -168,6 +168,10 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 		}
 	}
 
+	if err := x.reconcileBlobs(ctx, mode); err != nil {
+		return 0, fmt.Errorf("reconcile %s: %w", mode, err)
+	}
+
 	if mode == ModeFull {
 		return upserts, nil
 	}
