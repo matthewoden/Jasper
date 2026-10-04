@@ -65,6 +65,10 @@ var (
 	// ErrInvalidTagName is returned when a tag name violates the allowed charset
 	// ([a-z0-9_-]+). Both the service layer and the API handler check this.
 	ErrInvalidTagName = errors.New("notes: invalid tag name (allowed: [a-z0-9_-]+)")
+
+	// ErrIDTaken is returned by CreateWithID when the requested id already
+	// names a note.
+	ErrIDTaken = errors.New("notes: id already in use")
 )
 
 // StaleWriteInfo carries the current file mtime alongside ErrStaleWrite

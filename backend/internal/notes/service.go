@@ -137,6 +137,14 @@ func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch str
 	if content != "" && !markdown.HasFrontmatter([]byte(content)) {
 		content = "---\ntags: []\n---\n\n" + content
 	}
+	// The id belongs to the server: whatever the client did to the line, the
+	// note keeps the id it is known by. The rewrite comes back in the response
+	// like a tag rewrite does.
+	if withID, err := markdown.WithID([]byte(content), id.String()); err != nil {
+		s.log.Warn("notes.Update: id not written into content", "id", id.String(), "err", err)
+	} else {
+		content = string(withID)
+	}
 
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): write: %w", id, err)
@@ -246,7 +254,16 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 // displayTitle is sanitized at the call site to strip newlines + control
 // chars + collapse whitespace.
 func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title, body, displayTitle string) (NoteSummary, error) {
-	return s.createInternal(ctx, parentPath, title, body, displayTitle)
+	return s.createInternal(ctx, parentPath, title, body, displayTitle, "")
+}
+
+// CreateWithID is CreateWithBodyAndTitle with a caller-chosen id, for a
+// client that already refers to the note elsewhere. The id must be unused.
+func (s *Service) CreateWithID(ctx context.Context, parentPath, title, body, displayTitle string, id ID) (NoteSummary, error) {
+	if _, taken := s.registry.Lookup(id); taken {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", id, ErrIDTaken)
+	}
+	return s.createInternal(ctx, parentPath, title, body, displayTitle, id)
 }
 
 // CreateWithBody composes scaffold + body IN MEMORY and writes once, so there is
@@ -254,14 +271,17 @@ func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title,
 //
 // The body is appended VERBATIM — no server-side massaging beyond the scaffold.
 func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
-	return s.createInternal(ctx, parentPath, title, body, "")
+	return s.createInternal(ctx, parentPath, title, body, "", "")
 }
 
-func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string) (NoteSummary, error) {
+func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string, id ID) (NoteSummary, error) {
 	if err := validateNoteTitle(title); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create: %w", err)
 	}
 	relPath := buildNotePath(parentPath, title)
+	if id == "" {
+		id = NewID()
+	}
 
 	if err := s.files.CreateFile(relPath); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", relPath, err)
@@ -272,14 +292,11 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		displayTitle = displayTitleOverride
 	}
 	scaffold := markdown.NewNoteContent(displayTitle)
-	var scaffoldContent []byte
-	if body == "" {
-		scaffoldContent = scaffold
-	} else {
-		scaffoldContent = make([]byte, 0, len(scaffold)+len(body))
-		scaffoldContent = append(scaffoldContent, scaffold...)
-		scaffoldContent = append(scaffoldContent, body...)
-	}
+	scaffoldContent := make([]byte, 0, len(scaffold)+len(body))
+	scaffoldContent = append(scaffoldContent, scaffold...)
+	scaffoldContent = append(scaffoldContent, body...)
+	// The scaffold is LF, so the only refusal WithID knows cannot happen here.
+	scaffoldContent, _ = markdown.WithID(scaffoldContent, id.String())
 	canonPath := canonicalRelPath(relPath)
 	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
@@ -289,7 +306,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): scaffold write: %w", relPath, err)
 	}
 
-	id := NewID()
 	now := time.Now().UTC()
 
 	scaffoldTags := markdown.ExtractTags(scaffoldContent)

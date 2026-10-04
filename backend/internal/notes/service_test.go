@@ -286,8 +286,8 @@ func TestService_Update_Known(t *testing.T) {
 	if files.lastWritePath != ScratchpadRelPath {
 		t.Errorf("lastWritePath: got %q, want %q", files.lastWritePath, ScratchpadRelPath)
 	}
-	if string(files.lastWriteData) != content {
-		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, content)
+	if string(files.lastWriteData) != withScratchpadID(content) {
+		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, withScratchpadID(content))
 	}
 	if !note.UpdatedAt.Equal(now) {
 		t.Errorf("UpdatedAt: got %v, want %v", note.UpdatedAt, now)
@@ -308,7 +308,8 @@ func TestService_Update_Unknown(t *testing.T) {
 	}
 }
 
-// Test 5: empty content is a legal write (the textarea can be empty).
+// Test 5: empty content is a legal write (the textarea can be empty); the
+// note still keeps its id.
 func TestService_Update_EmptyContent(t *testing.T) {
 	files := &fakeFileStore{statTime: time.Now()}
 	svc := newSvc(t, files)
@@ -319,8 +320,8 @@ func TestService_Update_EmptyContent(t *testing.T) {
 	if files.writeCalls != 1 {
 		t.Errorf("writeCalls: got %d, want 1", files.writeCalls)
 	}
-	if len(files.lastWriteData) != 0 {
-		t.Errorf("lastWriteData: got %q, want empty", files.lastWriteData)
+	if want := "---\nid: " + string(ScratchpadID) + "\n---\n"; string(files.lastWriteData) != want {
+		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, want)
 	}
 }
 
@@ -419,8 +420,8 @@ func TestService_Update_CallsIndexUpsertAfterWrite(t *testing.T) {
 	if rec.MTimeUnix != now.Unix() {
 		t.Errorf("rec.MTimeUnix: got %d, want %d", rec.MTimeUnix, now.Unix())
 	}
-	if rec.SizeBytes != int64(len(content)) {
-		t.Errorf("rec.SizeBytes: got %d, want %d", rec.SizeBytes, len(content))
+	if rec.SizeBytes != int64(len(withScratchpadID(content))) {
+		t.Errorf("rec.SizeBytes: got %d, want %d", rec.SizeBytes, len(withScratchpadID(content)))
 	}
 	if rec.Checksum != "" {
 		t.Errorf("rec.Checksum: got %q, want empty (reserved field)", rec.Checksum)
@@ -1776,7 +1777,7 @@ func TestService_Update_AutoRestoresMissingFrontmatter(t *testing.T) {
 	}
 
 	written := string(files.lastWriteData)
-	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
+	if !strings.HasPrefix(written, "---\nid: "+string(ScratchpadID)+"\ntags: []\n---\n") {
 		t.Errorf("file written without frontmatter scaffold; got: %q", written[:min(80, len(written))])
 	}
 
@@ -1798,7 +1799,7 @@ func TestService_Update_PreservesExistingFrontmatter(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	written := string(files.lastWriteData)
-	if written != content {
+	if written != withScratchpadID(content) {
 		t.Errorf("content with existing frontmatter should be written verbatim; got %q", written)
 	}
 }
@@ -2433,7 +2434,7 @@ func TestService_Create_UsesNewNoteContentScaffold(t *testing.T) {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	written := string(data)
-	if !strings.HasPrefix(written, "---\ntags: []\n---\n") {
+	if !strings.HasPrefix(written, "---\nid: ") || !strings.Contains(written, "\ntags: []\n---\n") {
 		t.Errorf("created file missing frontmatter scaffold; got: %q", written[:min(80, len(written))])
 	}
 	if !strings.Contains(written, "# MyNote") {
@@ -2500,9 +2501,9 @@ func TestService_Update_BodyTagsNoChange(t *testing.T) {
 			files.writeCalls)
 	}
 
-	if string(files.lastWriteData) != content {
+	if string(files.lastWriteData) != withScratchpadID(content) {
 		t.Errorf("file content was changed unexpectedly:\n  want: %q\n   got: %q",
-			content, string(files.lastWriteData))
+			withScratchpadID(content), string(files.lastWriteData))
 	}
 }
 
@@ -2585,4 +2586,14 @@ func TestServiceUpdate_RefreshesTitleIndex(t *testing.T) {
 	if len(gotOld) != 0 {
 		t.Errorf("FindByTitle(old title) after Update: got %v, want empty (stale title removed)", gotOld)
 	}
+}
+
+// withScratchpadID is what Update writes for content handed to the scratchpad:
+// the id line the server forces, and otherwise the content as given.
+func withScratchpadID(content string) string {
+	out, err := markdown.WithID([]byte(content), ScratchpadID.String())
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
 }

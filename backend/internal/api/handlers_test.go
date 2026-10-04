@@ -203,8 +203,8 @@ func TestPutNoteById_OK(t *testing.T) {
 	if files.writeCalls != 1 {
 		t.Errorf("WriteAtomic was called %d times, want 1", files.writeCalls)
 	}
-	if string(files.lastWriteData) != content {
-		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, content)
+	if want := "---\nid: " + string(notes.ScratchpadID) + "\ntags: []\n---\n\n# changed"; string(files.lastWriteData) != want {
+		t.Errorf("lastWriteData: got %q, want %q", files.lastWriteData, want)
 	}
 	if files.lastWritePath != notes.ScratchpadRelPath {
 		t.Errorf("lastWritePath: got %q, want %q", files.lastWritePath, notes.ScratchpadRelPath)

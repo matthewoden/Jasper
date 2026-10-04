@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -588,6 +589,7 @@ func TestCreateNoteAtomic(t *testing.T) {
 			t.Fatalf("expected projects/atomic.md on disk: %v", readErr)
 		}
 
+		got = stripIDLine(got)
 		wantPrefix := "---\ntags: []\n---\n\n# atomic\n\n"
 		if !strings.HasPrefix(string(got), wantPrefix) {
 			t.Errorf("file missing canonical scaffold prefix.\n got=%q\n want prefix=%q", string(got), wantPrefix)
@@ -1098,4 +1100,10 @@ func TestTool_ETagRoundTripsThroughUpdate(t *testing.T) {
 	if res.IsError {
 		t.Errorf("update_note's own etag was rejected on the next write: %v", flattenContent(res))
 	}
+}
+
+// stripIDLine drops the server-minted id line so a scaffold can be compared
+// byte for byte.
+func stripIDLine(content []byte) []byte {
+	return regexp.MustCompile(`^---\nid: [0-9A-HJKMNP-TV-Z]{26}\n`).ReplaceAll(content, []byte("---\n"))
 }

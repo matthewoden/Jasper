@@ -94,6 +94,7 @@ type CreateNoteArgs struct {
 	Path  string `json:"path" jsonschema:"folder-relative path under notes/, e.g. projects/2026-roadmap.md (must end .md)"`
 	Body  string `json:"body,omitempty" jsonschema:"optional initial markdown body; if omitted, only the frontmatter scaffold + heading are written"`
 	Title string `json:"title,omitempty" jsonschema:"optional human-friendly H1 title; when provided the first heading is '# {title}' (filename stays slugified, derived from path)"`
+	ID    string `json:"id,omitempty" jsonschema:"optional note ULID to assign; rejected when malformed or already in use"`
 }
 
 // CreateNoteResult — id + path + version of the new note.
@@ -327,8 +328,20 @@ func (s *Server) registerCreateNote() {
 			}
 		}
 
-		summary, err := s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
+		var summary notes.NoteSummary
+		if args.ID != "" {
+			id, perr := notes.ParseID(args.ID)
+			if perr != nil {
+				return nil, CreateNoteResult{}, fmt.Errorf("invalid_id: %w", perr)
+			}
+			summary, err = s.notesSvc.CreateWithID(ctx, parent, title, args.Body, displayTitle, id)
+		} else {
+			summary, err = s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
+		}
 		if err != nil {
+			if errors.Is(err, notes.ErrIDTaken) {
+				return nil, CreateNoteResult{}, fmt.Errorf("id_taken: %w", err)
+			}
 			return nil, CreateNoteResult{}, mapCreateNoteErr(args.Path, err)
 		}
 		level, _ := s.acl.Resolve(ctx, args.Path)
