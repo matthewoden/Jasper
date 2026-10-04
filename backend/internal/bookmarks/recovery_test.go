@@ -165,3 +165,30 @@ func TestService_Add_RecordsPathHint(t *testing.T) {
 		t.Fatalf("persisted = %+v, want the hint written to disk", persisted.Bookmarks)
 	}
 }
+
+// The index used to mint UUIDs; a bookmark written then no longer parses as
+// an id, and must still recover by path rather than be pruned.
+func TestLoad_RecoversLegacyUUIDByPath(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdirJasper(t, dir)
+
+	newID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{newID: "notes/keep.md"})
+	doc := Bookmarks{
+		Bookmarks: []Bookmark{
+			{ID: "bm-1", NoteID: "00000000-0000-4000-a000-000000000001", Path: "notes/keep.md", Order: 0},
+			{ID: "bm-2", NoteID: "00000000-0000-4000-a000-000000000002", Path: "notes/gone.md", Order: 1},
+		},
+	}
+	if err := Save(dir, doc); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Bookmarks) != 1 || got.Bookmarks[0].ID != "bm-1" || got.Bookmarks[0].NoteID != newID.String() {
+		t.Fatalf("Load() bookmarks = %+v, want bm-1 adopted as %s and bm-2 pruned", got.Bookmarks, newID)
+	}
+}

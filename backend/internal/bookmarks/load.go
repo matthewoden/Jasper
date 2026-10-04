@@ -52,22 +52,20 @@ func Load(dataDir string, registry *notes.Registry, log *slog.Logger) (Bookmarks
 	var byPath map[string]notes.ID
 
 	for _, bm := range doc.Bookmarks {
-		id, parseErr := notes.ParseID(bm.NoteID)
-		if parseErr != nil {
-			changed = true
-			continue
-		}
-
-		if relPath, ok := registry.Lookup(id); ok {
-			// Keep the hint current, or a later rebuild resolves a path the
-			// note left behind — which is how a rename would quietly disarm
-			// the recovery below.
-			if bm.Path != relPath {
-				bm.Path = relPath
-				changed = true
+		// A stored id that no longer parses (the pre-ULID format) is treated
+		// like an unknown one: the path hint below is what recovers it.
+		if id, parseErr := notes.ParseID(bm.NoteID); parseErr == nil {
+			if relPath, ok := registry.Lookup(id); ok {
+				// Keep the hint current, or a later rebuild resolves a path
+				// the note left behind — which is how a rename would quietly
+				// disarm the recovery below.
+				if bm.Path != relPath {
+					bm.Path = relPath
+					changed = true
+				}
+				kept = append(kept, bm)
+				continue
 			}
-			kept = append(kept, bm)
-			continue
 		}
 
 		if bm.Path == "" {
