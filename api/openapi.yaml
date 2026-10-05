@@ -1099,6 +1099,31 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /notes/{id}/refs:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [backlinks]
+      operationId: getNoteRefs
+      summary: List the references a note makes
+      description: |
+        One row per distinct target, in document order of first occurrence,
+        in universal form: a foreign ref as written, a title link as
+        `jasper:note/<id>` once resolved or `jasper:title/<title>` until
+        then, an embed by id as `jasper:blob/<id>`.
+      responses:
+        "200":
+          description: The note's references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteRefsResponse"
+        "404":
+          description: Note not found (unknown ULID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /notes/search-titles:
     get:
       tags: [backlinks]
@@ -3057,6 +3082,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ItemSearchHit"
+    NoteRef:
+      type: object
+      required: [target_ref, display, embed, position]
+      properties:
+        target_ref:
+          type: string
+        display:
+          type: string
+          description: The alias the first occurrence shows, or empty.
+        embed:
+          type: boolean
+        position:
+          type: integer
+          description: Byte offset of the first occurrence; -1 for a frontmatter ref.
+    NoteRefsResponse:
+      type: object
+      required: [refs]
+      properties:
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteRef"
     WSLinksRewrittenPayload:
       type: object
       required: [old_title, new_title, touched_note_ids]

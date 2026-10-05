@@ -159,3 +159,63 @@ func TestCreateAttachment_ReturnsBlobID(t *testing.T) {
 		t.Errorf("stream by id returned %d bytes", len(streamed))
 	}
 }
+
+func TestGetNoteRefs(t *testing.T) {
+	srv := newSearchTestServer(t, []seedNote{
+		{Path: "target.md", Body: "# Target\n"},
+		{Path: "source.md", Body: "---\nrefs: [bt:task/9]\n---\n# Source\n\n[[Target]] [[ado:workitem/12345|the ticket]] [[ado:workitem/12345]] [[Nowhere]]\n"},
+	})
+	srv.hydrateRegistryFromIndex(context.Background())
+	idx := srv.index.(*index.Indexer)
+	if err := idx.ResolvePendingBacklinks(context.Background(), srv.notes.Registry()); err != nil {
+		t.Fatal(err)
+	}
+	ts := serveReal(t, srv)
+
+	ids := map[string]string{}
+	resp, _ := http.Get(ts.URL + "/api/v1/tree")
+	treeBody, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	var tree struct {
+		Root []struct {
+			Kind string `json:"kind"`
+			ID   string `json:"id"`
+			Path string `json:"path"`
+		} `json:"root"`
+	}
+	_ = json.Unmarshal(treeBody, &tree)
+	for _, n := range tree.Root {
+		if n.Kind == "note" {
+			ids[n.Path] = n.ID
+		}
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/notes/" + ids["source.md"] + "/refs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("refs: %d %s", resp.StatusCode, body)
+	}
+	var got NoteRefsResponse
+	_ = json.Unmarshal(body, &got)
+	var targets []string
+	for _, r := range got.Refs {
+		targets = append(targets, r.TargetRef+"|"+r.Display)
+	}
+	want := []string{"bt:task/9|", "jasper:note/" + ids["target.md"] + "|", "ado:workitem/12345|the ticket", "jasper:title/Nowhere|"}
+	if strings.Join(targets, ",") != strings.Join(want, ",") {
+		t.Errorf("refs = %v, want %v", targets, want)
+	}
+	if got.Refs[0].Position != -1 || got.Refs[1].Position < 0 {
+		t.Errorf("positions = %+v", got.Refs)
+	}
+
+	resp, _ = http.Get(ts.URL + "/api/v1/notes/01ARZ3NDEKTSV4RRFFQ69G5FAV/refs")
+	_ = resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("unknown note: %d", resp.StatusCode)
+	}
+}

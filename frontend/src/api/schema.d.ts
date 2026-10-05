@@ -571,6 +571,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notes/{id}/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ULID of the note */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the references a note makes
+         * @description One row per distinct target, in document order of first occurrence,
+         *     in universal form: a foreign ref as written, a title link as
+         *     `jasper:note/<id>` once resolved or `jasper:title/<title>` until
+         *     then, an embed by id as `jasper:blob/<id>`.
+         */
+        get: operations["getNoteRefs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/search-titles": {
         parameters: {
             query?: never;
@@ -1926,6 +1952,17 @@ export interface components {
         };
         ItemSearchResponse: {
             items: components["schemas"]["ItemSearchHit"][];
+        };
+        NoteRef: {
+            target_ref: string;
+            /** @description The alias the first occurrence shows, or empty. */
+            display: string;
+            embed: boolean;
+            /** @description Byte offset of the first occurrence; -1 for a frontmatter ref. */
+            position: number;
+        };
+        NoteRefsResponse: {
+            refs: components["schemas"]["NoteRef"][];
         };
         /**
          * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
@@ -3625,6 +3662,38 @@ export interface operations {
                 };
             };
             /** @description No live path holds this blob */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getNoteRefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ULID of the note */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The note's references */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteRefsResponse"];
+                };
+            };
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;

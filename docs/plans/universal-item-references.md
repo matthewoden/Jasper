@@ -341,3 +341,19 @@ Acceptance criterion 14 lands here.
 - **Retyping UUIDs to ULIDs touches ~40 backend sites and ~25 OpenAPI sites.** It is mechanical but broad. Do it as story 1.1 on its own, ahead of any behavior change, so the diff can be reviewed as a pure retype.
 - **Cold hashing of large attachment sets** could break the 5 s startup gate on a full rebuild. Measure it in 1.6. If needed, hash in the background and serve blob ids as `UNKNOWN` until the hash completes.
 - **The federation design (N1) is unsettled**, and is the most likely cause of phase 3 rework. That is why the spike comes first.
+
+---
+
+## 12. Measurements (2026-10-04)
+
+Taken on the owner's Mac mini with `make perf-check` (cold start to first `/admin/status`), after `make perf-vault`:
+
+| Vault | Cold start | Warm start |
+|---|---|---|
+| 5,000 notes, no refs, 500 attachments (65 MB) | ~2 s | immediate |
+| 5,000 notes × 20 refs (100k `refs` rows), 500 attachments | ~3 s | immediate |
+| 10,000 notes × 20 refs (200k rows), 1,000 attachments | ~6 s | ~1 s |
+
+The 5 s gate is specified for fewer than 5,000 notes and holds with references and attachment hashing added. The 10k × 20 figure is the full-rebuild baseline for story 2.9; it is the cost of indexing twice the specified vault, not a regression to chase. `backlinks(target_ref)` over 200k rows answers in well under a millisecond (`TestRefBacklinks_200kRows_Under10ms`).
+
+The N1 spike (`@apollo/composition` 2.14.4): two subgraphs each declaring `interface Item @key` fail to compose; one owner with `@interfaceObject` contributors composes; a value interface with per-subgraph keyed entities composes. Option (b) is taken.

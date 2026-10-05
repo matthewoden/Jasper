@@ -96,6 +96,23 @@ done
 
 echo "Wrote $COUNT notes to $NOTES_DIR/"
 
+# Optional third argument: references per note. With REFS > 0 every note
+# also carries that many [[ado:workitem/N]] links, spread over a pool ten
+# times the note count, for the backlinks-at-volume gate.
+REFS="${3:-0}"
+if (( REFS > 0 )); then
+    for i in $(seq 1 "$COUNT"); do
+        n=$(printf "%05d" "$i")
+        {
+            echo
+            for r in $(seq 1 "$REFS"); do
+                echo "Tracks [[ado:workitem/$(( (i * 7 + r * 13) % (COUNT * 10) + 1 ))]]."
+            done
+        } >> "$NOTES_DIR/note-$n.md"
+    done
+    echo "Added $REFS references to each of $COUNT notes"
+fi
+
 # Attachments: the cold-start gate also covers hashing every attachment once.
 # One attachments/ directory per note folder, as the app lays them out; the
 # vault is flat, so one directory holds them all. Sizes skew small with a few

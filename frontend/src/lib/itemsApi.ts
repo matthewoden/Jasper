@@ -118,3 +118,25 @@ export async function searchItems(q: string, limit = 10): Promise<ItemSearchHit[
   }
   return data.items;
 }
+
+export type NoteRef = components["schemas"]["NoteRef"];
+
+async function getNoteRefs(noteId: string): Promise<NoteRef[]> {
+  const { data, error } = await client.GET("/notes/{id}/refs", { params: { path: { id: noteId } } });
+  if (error || !data) {
+    throw new Error("getNoteRefs: " + JSON.stringify(error ?? "no data"));
+  }
+  return data.refs;
+}
+
+/** The references a note makes, keyed by note id; a save that changes them invalidates. */
+export const noteRefsResource = createKeyedResource("noteRefs", getNoteRefs, {
+  mode: "cached",
+  invalidatedBy: ["refs:changed", "note:updated", "note:deleted", "reindex:complete"],
+});
+
+/** The namespace of a universal ref (`ado` for `ado:workitem/1`), or "" for a title. */
+export function refNamespace(ref: string): string {
+  const colon = ref.indexOf(":");
+  return colon > 0 ? ref.slice(0, colon) : "";
+}
