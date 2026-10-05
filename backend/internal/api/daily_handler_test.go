@@ -334,8 +334,8 @@ func (f *fakeIndexForDaily) SyncTags(_ context.Context, _ notes.ID, _ []string) 
 	return nil
 }
 
-func (f *fakeIndexForDaily) SyncBacklinks(_ context.Context, _ notes.ID, _ string, _ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte) error {
-	return nil
+func (f *fakeIndexForDaily) SyncBacklinks(_ context.Context, _ notes.ID, _ string, _ []markdown.Ref, _ *notes.Registry, _ []byte) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *fakeIndexForDaily) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -579,7 +579,7 @@ func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Inde
 		t.Fatalf("sqlite.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = pair.Close() })
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql", "010_refs.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)
@@ -688,4 +688,12 @@ func TestGetDailyNote_ResolvableByWikilinkTitle(t *testing.T) {
 	if !found {
 		t.Errorf("Registry.FindByTitle(%q) did not resolve to %s; matches=%+v", "2026-06-03", got201.Id, matches)
 	}
+}
+
+func (*fakeIndexForDaily) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*fakeIndexForDaily) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

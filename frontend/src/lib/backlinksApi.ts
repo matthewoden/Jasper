@@ -57,6 +57,7 @@ async function getNoteBacklinks(noteId: string): Promise<BacklinkRow[]> {
  *   - note:updated    — a save anywhere could change [[...]] content
  *   - note:created    — a new note might link to the current one
  *   - links:rewritten — a rename propagated link text changes
+ *   - refs:changed    — a save changed which targets a note references
  * tags:rewritten is intentionally EXCLUDED: tag rewrites do not affect
  * [[wiki-link]] content and would over-trigger fetches.
  */
@@ -65,6 +66,6 @@ export const backlinksResource = createKeyedResource(
   getNoteBacklinks,
   {
     mode: "cached",
-    invalidatedBy: ["note:updated", "note:created", "links:rewritten"],
+    invalidatedBy: ["note:updated", "note:created", "links:rewritten", "refs:changed"],
   },
 );

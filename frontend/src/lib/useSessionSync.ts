@@ -171,6 +171,9 @@ export function useSessionSync(
           case "tags:rewritten":
             publish(env.event);
             break;
+          case "refs:changed":
+            publish("refs:changed");
+            break;
           case "links:rewritten":
             publish("links:rewritten");
             handlersRef.current.onLinksRewritten?.(env.payload as WSLinksRewrittenPayload);

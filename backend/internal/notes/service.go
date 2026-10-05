@@ -212,8 +212,8 @@ func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch str
 
 	s.registry.AddRecord(id, relPath, strings.ToLower(freshTitle))
 
-	refs := markdown.ExtractWikilinks([]byte(content))
-	if err := s.index.SyncBacklinks(ctx, id, relPath, refs, s.registry, []byte(content)); err != nil {
+	delta, err := s.index.SyncBacklinks(ctx, id, relPath, markdown.ExtractRefs([]byte(content)), s.registry, []byte(content))
+	if err != nil {
 		s.log.Error("notes.Update: backlinks sync failed (file safe; index heals on reconcile)",
 			"id", id.String(), "err", err)
 	}
@@ -228,6 +228,13 @@ func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch str
 		s.broadcaster.Broadcast(EventTagsUpdated, map[string]any{
 			"note_id": id.String(),
 		}, SessionIDFromContext(ctx))
+		if len(delta.Added) > 0 || len(delta.Removed) > 0 {
+			s.broadcaster.Broadcast(EventRefsChanged, map[string]any{
+				"source_id": id.String(),
+				"added":     nonNil(delta.Added),
+				"removed":   nonNil(delta.Removed),
+			}, SessionIDFromContext(ctx))
+		}
 	}
 
 	return Note{
@@ -348,6 +355,10 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 	}
 	if err := s.index.SyncTags(ctx, id, createCanonical); err != nil {
 		s.log.Error("notes.Create: tags sync failed (file safe; index heals on reconcile)",
+			"path", canonPath, "err", err)
+	}
+	if _, err := s.index.SyncBacklinks(ctx, id, canonPath, markdown.ExtractRefs(scaffoldContent), s.registry, scaffoldContent); err != nil {
+		s.log.Error("notes.Create: backlinks sync failed (file safe; index heals on reconcile)",
 			"path", canonPath, "err", err)
 	}
 
@@ -984,9 +995,17 @@ func (nopIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return []T
 func (nopIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
 func (nopIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
-	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *Registry, _ []byte,
+) (RefsDelta, error) {
+	return RefsDelta{}, nil
+}
+
+func (nopIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, error) {
+	return []RefBacklink{}, nil
+}
+
+func (nopIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+	return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: id}, nil
 }
 
 // nopIndex no-ops for cross-vault rewrite methods.
@@ -1028,4 +1047,23 @@ func unionTags(a, b []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// nonNil keeps an empty list on the wire as [] rather than null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// ResolveTitle answers which note a title link lands on, with the same
+// same-folder-then-alphabetical rule the index applies. Pass "" for
+// sourceFolder when there is no source.
+func (s *Service) ResolveTitle(title, sourceFolder string) (ID, bool) {
+	candidates := s.registry.FindByTitle(strings.ToLower(title), sourceFolder)
+	if len(candidates) == 0 {
+		return "", false
+	}
+	return candidates[0].ID, true
 }

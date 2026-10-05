@@ -1,13 +1,5 @@
 package markdown
 
-import (
-	"github.com/yuin/goldmark"
-	goldmarkAst "github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
-	"go.abhg.dev/goldmark/frontmatter"
-	"go.abhg.dev/goldmark/wikilink"
-)
-
 // WikiLinkRef is one occurrence of a [[Title]] or [[Title|Alias]] in note
 // content. Target is the raw title text (no [[…]] markers, no fragment).
 // Fragment is the optional #Section suffix; empty string if absent.
@@ -22,41 +14,16 @@ type WikiLinkRef struct {
 	Fragment string
 }
 
-// ExtractWikilinks returns every wikilink in source order, duplicates included —
-// the caller deduplicates.
-//
-// Code spans, fenced blocks and frontmatter are excluded for free by goldmark's
-// own parsing, not by anything here.
+// ExtractWikilinks returns every title link in source order, duplicates
+// included — the caller deduplicates. A ref-shaped target (IsRefTarget) is
+// a reference, not a title, and is left to ExtractRefs.
 func ExtractWikilinks(content []byte) []WikiLinkRef {
-	if len(content) == 0 {
-		return nil
-	}
-
-	md := goldmark.New(
-		goldmark.WithExtensions(
-			&frontmatter.Extender{},
-			&wikilink.Extender{},
-		),
-	)
-
-	reader := text.NewReader(content)
-	doc := md.Parser().Parse(reader)
-
 	var refs []WikiLinkRef
-	_ = goldmarkAst.Walk(doc, func(n goldmarkAst.Node, entering bool) (goldmarkAst.WalkStatus, error) {
-		if !entering {
-			return goldmarkAst.WalkContinue, nil
+	for _, r := range ExtractRefs(content) {
+		if r.Position < 0 || IsRefTarget(r.Target) {
+			continue
 		}
-		wl, ok := n.(*wikilink.Node)
-		if !ok {
-			return goldmarkAst.WalkContinue, nil
-		}
-		refs = append(refs, WikiLinkRef{
-			Target:   string(wl.Target),
-			Fragment: string(wl.Fragment),
-		})
-		return goldmarkAst.WalkContinue, nil
-	})
-
+		refs = append(refs, WikiLinkRef{Target: r.Target, Fragment: r.Fragment})
+	}
 	return refs
 }

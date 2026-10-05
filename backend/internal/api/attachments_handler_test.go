@@ -48,9 +48,9 @@ func (f *fakeIndexForAttachments) SyncTags(_ context.Context, _ notes.ID, _ []st
 }
 
 func (f *fakeIndexForAttachments) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *fakeIndexForAttachments) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -369,4 +369,12 @@ func TestAttachmentsSecurity(t *testing.T) {
 			t.Fatalf("expected GetAttachment404JSONResponse, got %T", resp)
 		}
 	})
+}
+
+func (*fakeIndexForAttachments) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*fakeIndexForAttachments) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

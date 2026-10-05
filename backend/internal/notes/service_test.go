@@ -95,6 +95,7 @@ func (f *fakeFileStore) TrashDir(relPath string) (string, error) {
 }
 
 type fakeIndex struct {
+	refsDelta        RefsDelta
 	upsertCalls      int
 	lastUpsertRecord NoteRecord
 	upsertErr        error
@@ -139,9 +140,9 @@ func (f *fakeIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return
 func (f *fakeIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
 func (f *fakeIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
-	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *Registry, _ []byte,
+) (RefsDelta, error) {
+	return f.refsDelta, nil
 }
 
 // Cross-vault rewrite stubs for fakeIndex.
@@ -637,9 +638,9 @@ func (s *stubIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return
 func (s *stubIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
 func (s *stubIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
-	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *Registry, _ []byte,
+) (RefsDelta, error) {
+	return RefsDelta{}, nil
 }
 
 // stubIndex stubs for cross-vault rewrite methods.
@@ -2596,4 +2597,20 @@ func withScratchpadID(content string) string {
 		panic(err)
 	}
 	return string(out)
+}
+
+func (*fakeIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, error) {
+	return []RefBacklink{}, nil
+}
+
+func (*fakeIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+	return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: id}, nil
+}
+
+func (*stubIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, error) {
+	return []RefBacklink{}, nil
+}
+
+func (*stubIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+	return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: id}, nil
 }

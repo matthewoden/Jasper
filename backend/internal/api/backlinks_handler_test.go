@@ -62,9 +62,9 @@ func (f *blIdx) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 }
 func (f *blIdx) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
 func (f *blIdx) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *blIdx) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -450,4 +450,12 @@ func TestGetNotesSearchTitles_ST6_ResultsSortedByRecency(t *testing.T) {
 	if result.Results[0].Title != "Recent" {
 		t.Errorf("ST6: expected first result 'Recent' (highest mtime), got %q", result.Results[0].Title)
 	}
+}
+
+func (*blIdx) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*blIdx) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

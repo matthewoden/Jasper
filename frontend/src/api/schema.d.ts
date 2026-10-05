@@ -477,6 +477,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/refs/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List notes that reference a target, native or foreign
+         * @description Backlinks for any universal ref: a foreign id such as
+         *     `ado:workitem/12345`, a note as `jasper:note/<ulid>` (which also
+         *     covers title links that resolve to it), an unresolved title as
+         *     `jasper:title/<title>`, or a blob as `jasper:blob/<id>`. One row per
+         *     source note. Excerpts are not included; the linked-mentions panel
+         *     keeps reading `/notes/{id}/backlinks` for those.
+         */
+        get: operations["getRefBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a batch of refs to their current state
+         * @description For each id, what it is and whether it still exists. Native ids
+         *     (`jasper:note/...`, a bare ULID, `jasper:blob/...`, `sha256-...`)
+         *     resolve against the index and the tombstones; `jasper:title/...`
+         *     resolves through the registry; any other well-formed ref is foreign
+         *     and comes back as a raw stub with status UNKNOWN. Order matches the
+         *     request. Previews are batched here so an editor pass costs one call.
+         */
+        post: operations["postItemsBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/search-titles": {
         parameters: {
             query?: never;
@@ -1763,6 +1813,59 @@ export interface components {
             /** @description ULIDs of notes whose frontmatter was rewritten. */
             touched_note_ids: string[];
         };
+        /** @description One note that references the requested target. */
+        RefBacklinkRow: {
+            source_id: string;
+            source_title: string;
+            source_path: string;
+            /** @description The alias the first occurrence shows, or empty. */
+            display: string;
+            /** @description True when the first occurrence is an embed (`![[...]]`). */
+            embed: boolean;
+        };
+        RefBacklinksResponse: {
+            backlinks: components["schemas"]["RefBacklinkRow"][];
+        };
+        ItemsBatchRequest: {
+            ids: string[];
+        };
+        /**
+         * @description What a ref points at right now. A DELETED item carries its last
+         *     known title and path from the tombstone; an UNKNOWN one carries the
+         *     raw ref as its title.
+         */
+        Item: {
+            /** @description The id as requested. */
+            id: string;
+            /** @enum {string} */
+            kind: "note" | "blob" | "foreign";
+            /** @enum {string} */
+            status: "OK" | "UNKNOWN" | "DELETED";
+            title: string;
+            /** @description Current (or, when DELETED, last) vault-relative path. Absent for foreign ids. */
+            path?: string;
+            /**
+             * Format: date-time
+             * @description Last modification (or, when DELETED, deletion time).
+             */
+            updated_at?: string;
+            /** @description The first stretch of a note's body text, plain, at most 200 characters. */
+            excerpt?: string;
+            /** @description For a DELETED blob whose bytes changed in place, the blob id that took over the path. */
+            replaced_by?: string;
+        };
+        ItemsBatchResponse: {
+            items: components["schemas"]["Item"][];
+        };
+        /**
+         * @description Broadcast payload for `refs:changed`: the set of targets a note
+         *     references changed on save. Lists hold universal refs.
+         */
+        WSRefsChangedPayload: {
+            source_id: string;
+            added: string[];
+            removed: string[];
+        };
         /**
          * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
          *     renamed and its wiki-link references are rewritten vault-wide (LINKS-07).
@@ -1786,7 +1889,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "workspace:changed" | "vault.switching" | "vault.switched";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "refs:changed" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "workspace:changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -3352,6 +3455,62 @@ export interface operations {
             };
             /** @description Note not found (unknown ULID) */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRefBacklinks: {
+        parameters: {
+            query: {
+                /** @description The target ref, exactly as it appears in `[[...]]`. */
+                id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Source notes referencing the target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefBacklinksResponse"];
+                };
+            };
+        };
+    };
+    postItemsBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemsBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description One item per requested id, in request order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsBatchResponse"];
+                };
+            };
+            /** @description Malformed request (missing ids, or more than 200) */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

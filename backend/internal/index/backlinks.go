@@ -3,10 +3,12 @@ package index
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,20 +22,21 @@ import (
 // Deprecated: use notes.BacklinkRow directly.
 type BacklinkRow = notes.BacklinkRow
 
-// SyncBacklinks rewrites every backlinks row for sourceID in one BEGIN
-// IMMEDIATE transaction. Resolution biases toward the source's own folder; a
-// nil registry leaves every link pending.
+// SyncBacklinks rewrites every backlinks row and every refs row for sourceID
+// in one BEGIN IMMEDIATE transaction. Title links resolve with a bias toward
+// the source's own folder and feed both tables; ref-shaped targets feed refs
+// only. A nil registry leaves every title link pending.
 //
-// One row per excerpt LINE — migration 005 dropped the
+// backlinks holds one row per excerpt LINE — migration 005 dropped the
 // UNIQUE(source_id, target_title) collapse specifically to allow that.
 func (x *Indexer) SyncBacklinks(
 	ctx context.Context,
 	sourceID notes.ID,
 	sourcePath string,
-	refs []markdown.WikiLinkRef,
+	refs []markdown.Ref,
 	registry *notes.Registry,
 	content []byte,
-) error {
+) (notes.RefsDelta, error) {
 	sourceFolder := filepath.Dir(sourcePath)
 
 	type pendingRow struct {
@@ -43,40 +46,60 @@ func (x *Indexer) SyncBacklinks(
 	}
 	grouped := make(map[string]*pendingRow, len(refs))
 	order := make([]string, 0, len(refs))
+	resolved := make([]string, len(refs))
 
-	for _, r := range refs {
-		key := strings.ToLower(r.Target)
-		if _, ok := grouped[key]; ok {
+	for i, r := range refs {
+		if markdown.IsRefTarget(r.Target) {
+			resolved[i] = r.Target
 			continue
 		}
-
-		var tid *notes.ID
-		if registry != nil {
-			candidates := registry.FindByTitle(key, sourceFolder)
-			if len(candidates) > 0 {
-				cid := candidates[0].ID
-				tid = &cid
+		if r.Position < 0 {
+			continue
+		}
+		key := strings.ToLower(r.Target)
+		row, seen := grouped[key]
+		if !seen {
+			var tid *notes.ID
+			if registry != nil {
+				candidates := registry.FindByTitle(key, sourceFolder)
+				if len(candidates) > 0 {
+					cid := candidates[0].ID
+					tid = &cid
+				}
 			}
+			row = &pendingRow{
+				targetTitle: r.Target,
+				targetID:    tid,
+				excerpts:    buildExcerpts(content, r.Target),
+			}
+			grouped[key] = row
+			order = append(order, key)
 		}
-
-		row := &pendingRow{
-			targetTitle: r.Target,
-			targetID:    tid,
-			excerpts:    buildExcerpts(content, r.Target),
+		if row.targetID != nil {
+			resolved[i] = notes.RefForNote(*row.targetID)
+		} else {
+			resolved[i] = notes.RefForTitle(r.Target)
 		}
-		grouped[key] = row
-		order = append(order, key)
 	}
 
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
-		return fmt.Errorf("syncbacklinks begin: %w", err)
+		return notes.RefsDelta{}, fmt.Errorf("syncbacklinks begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	before, err := distinctTargets(ctx, tx, sourceID)
+	if err != nil {
+		return notes.RefsDelta{}, err
+	}
+
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM backlinks WHERE source_id = ?`, sourceID.String()); err != nil {
-		return fmt.Errorf("syncbacklinks clear: %w", err)
+		return notes.RefsDelta{}, fmt.Errorf("syncbacklinks clear: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM refs WHERE source_id = ?`, sourceID.String()); err != nil {
+		return notes.RefsDelta{}, fmt.Errorf("syncrefs clear: %w", err)
 	}
 
 	for _, key := range order {
@@ -98,15 +121,59 @@ func (x *Indexer) SyncBacklinks(
 				`INSERT INTO backlinks(source_id, target_id, target_title, excerpt)
 				 VALUES(?, ?, ?, ?)`,
 				sourceID.String(), tidStr, row.targetTitle, excerpt); err != nil {
-				return fmt.Errorf("syncbacklinks insert %q: %w", row.targetTitle, err)
+				return notes.RefsDelta{}, fmt.Errorf("syncbacklinks insert %q: %w", row.targetTitle, err)
 			}
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("syncbacklinks commit: %w", err)
+	after := make(map[string]bool, len(refs))
+	for i, r := range refs {
+		if resolved[i] == "" {
+			continue
+		}
+		after[resolved[i]] = true
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO refs(source_id, target_ref, display, position, embed) VALUES(?, ?, ?, ?, ?)`,
+			sourceID.String(), resolved[i], r.Display, r.Position, r.Embed); err != nil {
+			return notes.RefsDelta{}, fmt.Errorf("syncrefs insert %q: %w", resolved[i], err)
+		}
 	}
-	return nil
+
+	if err := tx.Commit(); err != nil {
+		return notes.RefsDelta{}, fmt.Errorf("syncbacklinks commit: %w", err)
+	}
+
+	var delta notes.RefsDelta
+	for t := range after {
+		if !before[t] {
+			delta.Added = append(delta.Added, t)
+		}
+	}
+	for t := range before {
+		if !after[t] {
+			delta.Removed = append(delta.Removed, t)
+		}
+	}
+	sort.Strings(delta.Added)
+	sort.Strings(delta.Removed)
+	return delta, nil
+}
+
+func distinctTargets(ctx context.Context, tx *sql.Tx, sourceID notes.ID) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT target_ref FROM refs WHERE source_id = ?`, sourceID.String())
+	if err != nil {
+		return nil, fmt.Errorf("syncrefs prior: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("syncrefs prior scan: %w", err)
+		}
+		out[t] = true
+	}
+	return out, rows.Err()
 }
 
 // GetBacklinks returns the resolved backlinks for targetID, sorted by source
@@ -232,6 +299,13 @@ func (x *Indexer) UpdateBacklinksTargetTitle(
 	if err != nil {
 		return fmt.Errorf("updatebltitle update: %w", err)
 	}
+	// A resolved link's ref names the id, which a rename keeps; only the
+	// pending form carries the title.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE refs SET target_ref = ? WHERE target_ref = ?`,
+		notes.RefForTitle(newTitle), notes.RefForTitle(oldTitle)); err != nil {
+		return fmt.Errorf("updatebltitle refs: %w", err)
+	}
 	return tx.Commit()
 }
 
@@ -284,6 +358,11 @@ func (x *Indexer) ResolvePendingBacklinks(ctx context.Context, registry *notes.R
 			 WHERE target_id IS NULL AND target_title = ? AND source_id = ?`,
 			tid.String(), p.targetTitle, p.sourceID); err != nil {
 			x.Log.Warn("resolve pending: update failed", "title", p.targetTitle, "err", err)
+		}
+		if _, err := x.Pair.Writer.ExecContext(ctx,
+			`UPDATE refs SET target_ref = ? WHERE source_id = ? AND target_ref = ?`,
+			notes.RefForNote(tid), p.sourceID, notes.RefForTitle(p.targetTitle)); err != nil {
+			x.Log.Warn("resolve pending: refs update failed", "title", p.targetTitle, "err", err)
 		}
 	}
 	return nil

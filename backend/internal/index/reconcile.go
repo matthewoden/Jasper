@@ -284,8 +284,7 @@ func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id notes.ID, path
 		x.Log.Warn("reconcile: tag sync failed", "id", id, "err", err)
 	}
 
-	refs := markdown.ExtractWikilinks(content)
-	if err := x.SyncBacklinks(ctx, id, path, refs, registry, content); err != nil {
+	if _, err := x.SyncBacklinks(ctx, id, path, markdown.ExtractRefs(content), registry, content); err != nil {
 		x.Log.Warn("reconcile: backlink sync failed", "id", id, "err", err)
 	}
 }

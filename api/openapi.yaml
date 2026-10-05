@@ -22,6 +22,7 @@ tags:
   - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
   - { name: tags, description: "Tag browser, rename, delete (TAGS-03, TAGS-04, TAGS-06, TAGS-07)" }
   - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
+  - { name: items, description: "Items: anything a reference can point at — a note, a blob, or a foreign id — looked up by universal ref" }
   - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (SHARE-01)" }
   - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (MCP-01)" }
   - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by ULID, group into virtual folders (BOOK-01, BOOK-03, BOOK-04)" }
@@ -986,6 +987,65 @@ paths:
                 $ref: "#/components/schemas/BacklinksResponse"
         "404":
           description: Note not found (unknown ULID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /refs/backlinks:
+    get:
+      tags: [backlinks]
+      operationId: getRefBacklinks
+      summary: List notes that reference a target, native or foreign
+      description: |
+        Backlinks for any universal ref: a foreign id such as
+        `ado:workitem/12345`, a note as `jasper:note/<ulid>` (which also
+        covers title links that resolve to it), an unresolved title as
+        `jasper:title/<title>`, or a blob as `jasper:blob/<id>`. One row per
+        source note. Excerpts are not included; the linked-mentions panel
+        keeps reading `/notes/{id}/backlinks` for those.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: The target ref, exactly as it appears in `[[...]]`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        "200":
+          description: Source notes referencing the target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefBacklinksResponse"
+  /items/batch:
+    post:
+      tags: [items]
+      operationId: postItemsBatch
+      summary: Resolve a batch of refs to their current state
+      description: |
+        For each id, what it is and whether it still exists. Native ids
+        (`jasper:note/...`, a bare ULID, `jasper:blob/...`, `sha256-...`)
+        resolve against the index and the tombstones; `jasper:title/...`
+        resolves through the registry; any other well-formed ref is foreign
+        and comes back as a raw stub with status UNKNOWN. Order matches the
+        request. Previews are batched here so an editor pass costs one call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemsBatchRequest"
+      responses:
+        "200":
+          description: One item per requested id, in request order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemsBatchResponse"
+        "400":
+          description: Malformed request (missing ids, or more than 200)
           content:
             application/json:
               schema:
@@ -2822,6 +2882,100 @@ components:
             type: string
             pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
           description: ULIDs of notes whose frontmatter was rewritten.
+    RefBacklinkRow:
+      type: object
+      required: [source_id, source_title, source_path, display, embed]
+      description: One note that references the requested target.
+      properties:
+        source_id:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+        source_title:
+          type: string
+        source_path:
+          type: string
+        display:
+          type: string
+          description: The alias the first occurrence shows, or empty.
+        embed:
+          type: boolean
+          description: True when the first occurrence is an embed (`![[...]]`).
+    RefBacklinksResponse:
+      type: object
+      required: [backlinks]
+      properties:
+        backlinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RefBacklinkRow"
+    ItemsBatchRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 0
+          maxItems: 200
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2048
+    Item:
+      type: object
+      required: [id, kind, status, title]
+      description: |
+        What a ref points at right now. A DELETED item carries its last
+        known title and path from the tombstone; an UNKNOWN one carries the
+        raw ref as its title.
+      properties:
+        id:
+          type: string
+          description: The id as requested.
+        kind:
+          type: string
+          enum: [note, blob, foreign]
+        status:
+          type: string
+          enum: [OK, UNKNOWN, DELETED]
+        title:
+          type: string
+        path:
+          type: string
+          description: Current (or, when DELETED, last) vault-relative path. Absent for foreign ids.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last modification (or, when DELETED, deletion time).
+        excerpt:
+          type: string
+          description: The first stretch of a note's body text, plain, at most 200 characters.
+        replaced_by:
+          type: string
+          description: For a DELETED blob whose bytes changed in place, the blob id that took over the path.
+    ItemsBatchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+    WSRefsChangedPayload:
+      type: object
+      required: [source_id, added, removed]
+      description: |
+        Broadcast payload for `refs:changed`: the set of targets a note
+        references changed on save. Lists hold universal refs.
+      properties:
+        source_id:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+        added:
+          type: array
+          items: { type: string }
+        removed:
+          type: array
+          items: { type: string }
     WSLinksRewrittenPayload:
       type: object
       required: [old_title, new_title, touched_note_ids]
@@ -2871,6 +3025,7 @@ components:
             - "tags:updated"
             - "tags:rewritten"
             - "links:rewritten"
+            - "refs:changed"
             - "reindex:started"
             - "reindex:complete"
             - "migration:status"

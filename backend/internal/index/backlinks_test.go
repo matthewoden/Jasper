@@ -26,10 +26,10 @@ func TestSyncBacklinks_ResolvedTarget(t *testing.T) {
 		{ID: fooID, Path: "notes/foo.md", Title: "foo"},
 	})
 
-	refs := []markdown.WikiLinkRef{{Target: "Foo"}}
+	refs := []markdown.Ref{{Target: "Foo"}}
 	content := []byte("Linking to [[Foo]] here.\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -66,10 +66,10 @@ func TestSyncBacklinks_PendingTarget(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(nil)
 
-	refs := []markdown.WikiLinkRef{{Target: "Missing"}}
+	refs := []markdown.Ref{{Target: "Missing"}}
 	content := []byte("Link to [[Missing]] here.\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -104,14 +104,14 @@ func TestSyncBacklinks_MultipleOccurrencesCollapse(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate([]notes.NoteSummary{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
 
-	refs := []markdown.WikiLinkRef{
+	refs := []markdown.Ref{
 		{Target: "Foo"},
 		{Target: "Foo"},
 		{Target: "Foo"},
 	}
 	content := []byte("[[Foo]] again [[Foo]] and [[Foo]].\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -141,14 +141,14 @@ func TestSyncBacklinks_MultipleLines_ProducesOneExcerptPerLine(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate([]notes.NoteSummary{{ID: fooID, Path: "notes/foo.md", Title: "foo"}})
 
-	refs := []markdown.WikiLinkRef{
+	refs := []markdown.Ref{
 		{Target: "Foo"},
 		{Target: "Foo"},
 		{Target: "Foo"},
 	}
 	content := []byte("See [[Foo]] here.\nAnd [[Foo]] again.\nFinally [[Foo]].\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -186,15 +186,15 @@ func TestSyncBacklinks_Replacement(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(nil)
 
-	refs1 := []markdown.WikiLinkRef{{Target: "A"}, {Target: "B"}}
+	refs1 := []markdown.Ref{{Target: "A"}, {Target: "B"}}
 	content1 := []byte("[[A]] and [[B]]\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs1, reg, content1); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs1, reg, content1); err != nil {
 		t.Fatal(err)
 	}
 
-	refs2 := []markdown.WikiLinkRef{{Target: "B"}, {Target: "C"}}
+	refs2 := []markdown.Ref{{Target: "B"}, {Target: "C"}}
 	content2 := []byte("[[B]] and [[C]]\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs2, reg, content2); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs2, reg, content2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,12 +231,12 @@ func TestSyncBacklinks_EmptyRefs(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(nil)
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md",
-		[]markdown.WikiLinkRef{{Target: "X"}}, reg, []byte("[[X]]\n")); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md",
+		[]markdown.Ref{{Target: "X"}}, reg, []byte("[[X]]\n")); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", nil, reg, nil); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", nil, reg, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -269,10 +269,10 @@ func TestSyncBacklinks_AmbiguousResolution(t *testing.T) {
 		{ID: fooB, Path: "notes/b/foo.md", Title: "foo"},
 	})
 
-	refs := []markdown.WikiLinkRef{{Target: "Foo"}}
+	refs := []markdown.Ref{{Target: "Foo"}}
 	content := []byte("See [[Foo]].\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/b/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/b/source.md", refs, reg, content); err != nil {
 		t.Fatal(err)
 	}
 
@@ -299,10 +299,10 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(nil)
 
-	refs := []markdown.WikiLinkRef{{Target: "Foo"}}
+	refs := []markdown.Ref{{Target: "Foo"}}
 	content := []byte("prefix [[Foo]] suffix\nother line\n")
 
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,7 +327,7 @@ func TestSyncBacklinks_ExcerptHTML(t *testing.T) {
 	}
 
 	content2 := []byte(`<script>alert("xss")</script> [[Foo]] </script>` + "\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content2); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content2); err != nil {
 		t.Fatal(err)
 	}
 	var excerpt2 string
@@ -378,9 +378,9 @@ func TestGetBacklinks_ReturnsRowsSortedByRecency(t *testing.T) {
 	})
 
 	for _, src := range []notes.ID{src1, src2, src3} {
-		refs := []markdown.WikiLinkRef{{Target: "target"}}
+		refs := []markdown.Ref{{Target: "target"}}
 		content := []byte("See [[target]] here.\n")
-		if err := idx.SyncBacklinks(ctx, src, "notes/src.md", refs, reg, content); err != nil {
+		if _, err := idx.SyncBacklinks(ctx, src, "notes/src.md", refs, reg, content); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -417,9 +417,9 @@ func TestGetBacklinks_PendingExcluded(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(nil)
 
-	refs := []markdown.WikiLinkRef{{Target: "target"}}
+	refs := []markdown.Ref{{Target: "target"}}
 	content := []byte("See [[target]] here.\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatal(err)
 	}
 
@@ -760,9 +760,9 @@ func TestSyncBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 	reg := &notes.Registry{}
 	reg.Hydrate(summaries)
 
-	refs := []markdown.WikiLinkRef{{Target: "Target"}}
+	refs := []markdown.Ref{{Target: "Target"}}
 	content := []byte("Linking [[Target]] here.\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, reg, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -798,9 +798,9 @@ func TestResolvePendingBacklinks_ResolvesAfterHydrateFromIndex(t *testing.T) {
 		t.Fatalf("seed source: %v", err)
 	}
 
-	refs := []markdown.WikiLinkRef{{Target: "Target"}}
+	refs := []markdown.Ref{{Target: "Target"}}
 	content := []byte("Linking [[Target]] here.\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, nil, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/source.md", refs, nil, content); err != nil {
 		t.Fatalf("SyncBacklinks with nil registry: %v", err)
 	}
 
@@ -851,9 +851,9 @@ func TestResolvePendingBacklinks_Basic(t *testing.T) {
 	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
 	targetID := newNoteID(t, idx, "notes/b.md", 1700000002)
 
-	refs := []markdown.WikiLinkRef{{Target: "Note B"}}
+	refs := []markdown.Ref{{Target: "Note B"}}
 	content := []byte("# Note A\nThis note links to [[Note B]].\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
 		t.Fatalf("SyncBacklinks with nil registry: %v", err)
 	}
 
@@ -906,9 +906,9 @@ func TestResolvePendingBacklinks_NilRegistry(t *testing.T) {
 	ctx := context.Background()
 
 	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
-	refs := []markdown.WikiLinkRef{{Target: "Ghost"}}
+	refs := []markdown.Ref{{Target: "Ghost"}}
 	content := []byte("Link to [[Ghost]].\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 
@@ -937,9 +937,9 @@ func TestResolvePendingBacklinks_UnresolvableStaysPending(t *testing.T) {
 	ctx := context.Background()
 
 	sourceID := newNoteID(t, idx, "notes/a.md", 1700000001)
-	refs := []markdown.WikiLinkRef{{Target: "Nonexistent Note"}}
+	refs := []markdown.Ref{{Target: "Nonexistent Note"}}
 	content := []byte("Link to [[Nonexistent Note]].\n")
-	if err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
+	if _, err := idx.SyncBacklinks(ctx, sourceID, "notes/a.md", refs, nil, content); err != nil {
 		t.Fatalf("SyncBacklinks: %v", err)
 	}
 

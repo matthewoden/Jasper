@@ -75,9 +75,9 @@ func (f *tagFakeIndex) MovePathPrefix(_ context.Context, _, _ string) (int, erro
 func (f *tagFakeIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { return 0, nil }
 func (f *tagFakeIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error    { return nil }
 func (f *tagFakeIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *tagFakeIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -527,4 +527,12 @@ func TestGetTagNotes_NilVsEmpty(t *testing.T) {
 	if len(arr) != 1 {
 		t.Errorf("notes len: got %d, want 1", len(arr))
 	}
+}
+
+func (*tagFakeIndex) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*tagFakeIndex) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

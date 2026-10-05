@@ -50,9 +50,9 @@ func (f *fakeIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 func (f *fakeIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
 
 func (f *fakeIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *fakeIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -352,9 +352,9 @@ func (r *realIndex) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 }
 func (r *realIndex) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
 func (r *realIndex) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (r *realIndex) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
@@ -1185,4 +1185,20 @@ func TestPostNoteMove_SelfLinkingNote_ReturnsPostRewriteComparator(t *testing.T)
 	if want := notes.ETag(info.ModTime()); moved.Etag != want {
 		t.Errorf("etag = %q, want %q (the file's mtime after its own rewrite)", moved.Etag, want)
 	}
+}
+
+func (*fakeIndex) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*fakeIndex) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
+}
+
+func (*realIndex) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*realIndex) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

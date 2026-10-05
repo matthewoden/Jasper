@@ -124,10 +124,20 @@ type Index interface {
 	// Passing nil or empty slice removes all tags for the note.
 	SyncTags(ctx context.Context, noteID ID, tags []string) error
 
-	// SyncBacklinks resolves [[Title]] refs, deduplicates, and rewrites
-	// all backlinks rows for sourceID atomically.
+	// SyncBacklinks rewrites every backlinks and refs row for sourceID in one
+	// transaction: title links resolve through the registry and feed both
+	// tables, ref-shaped targets feed refs only. Returns which targets the
+	// note gained and lost.
 	SyncBacklinks(ctx context.Context, sourceID ID, sourcePath string,
-		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
+		refs []markdown.Ref, registry *Registry, content []byte) (RefsDelta, error)
+
+	// RefBacklinks returns one row per note referencing targetRef, newest
+	// source first. Returns a non-nil empty slice when there are none.
+	RefBacklinks(ctx context.Context, targetRef string) ([]RefBacklink, error)
+
+	// LookupItem resolves a native id (note or blob, bare or jasper:-prefixed)
+	// to its current state, consulting tombstones for what went away.
+	LookupItem(ctx context.Context, id string) (ItemInfo, error)
 
 	// NotesByTag returns one NoteSummary per note carrying the named tag,
 	// sorted by mtime descending. Returns a non-nil empty slice when no
@@ -242,3 +252,52 @@ type NoteSummary struct {
 	UpdatedAt time.Time
 	CreatedAt time.Time
 }
+
+// RefsDelta is what a links sync changed in a note's set of targets, as
+// universal refs, sorted.
+type RefsDelta struct {
+	Added   []string
+	Removed []string
+}
+
+// RefBacklink is one note that references a target.
+type RefBacklink struct {
+	SourceID    ID
+	SourceTitle string
+	SourcePath  string
+	Display     string
+	Embed       bool
+}
+
+// Item kinds and statuses, as the items API and the GraphQL schema spell them.
+const (
+	ItemKindNote    = "note"
+	ItemKindBlob    = "blob"
+	ItemKindForeign = "foreign"
+
+	ItemStatusOK      = "OK"
+	ItemStatusUnknown = "UNKNOWN"
+	ItemStatusDeleted = "DELETED"
+)
+
+// ItemInfo is what an id points at right now. A deleted item carries its
+// last title and path from the tombstone.
+type ItemInfo struct {
+	ID         string
+	Kind       string
+	Status     string
+	Title      string
+	Path       string
+	UpdatedAt  time.Time
+	Excerpt    string
+	ReplacedBy string
+}
+
+// RefForNote is the universal ref of a note id.
+func RefForNote(id ID) string { return "jasper:note/" + id.String() }
+
+// RefForTitle is the universal ref of a title link that does not resolve.
+func RefForTitle(title string) string { return "jasper:title/" + title }
+
+// RefForBlob is the universal ref of a blob id.
+func RefForBlob(id string) string { return "jasper:blob/" + id }

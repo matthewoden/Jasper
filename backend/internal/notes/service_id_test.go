@@ -119,3 +119,46 @@ func TestService_Update_ForcesKnownID(t *testing.T) {
 		})
 	}
 }
+
+// Criterion 6: a save that changes which targets a note references says so,
+// after the index write, and a save that changes nothing stays quiet.
+func TestService_Update_BroadcastsRefsChanged(t *testing.T) {
+	t.Parallel()
+	files := &fakeFileStore{statTime: time.Now()}
+	idx := &fakeIndex{refsDelta: RefsDelta{Added: []string{"ado:workitem/1"}, Removed: nil}}
+	bc := &fakeBroadcaster{}
+	svc := newSvcWithBroadcaster(t, files, idx, bc)
+
+	if _, err := svc.Update(context.Background(), ScratchpadID, "[[ado:workitem/1]]", ""); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	for _, c := range bc.calls {
+		if c.event == EventRefsChanged {
+			got, _ = c.payload.(map[string]any)
+		}
+	}
+	if got == nil {
+		t.Fatalf("no refs:changed among %+v", bc.calls)
+	}
+	if got["source_id"] != ScratchpadID.String() {
+		t.Errorf("source_id = %v", got["source_id"])
+	}
+	if added, _ := got["added"].([]string); len(added) != 1 || added[0] != "ado:workitem/1" {
+		t.Errorf("added = %v", got["added"])
+	}
+	if removed, _ := got["removed"].([]string); removed == nil || len(removed) != 0 {
+		t.Errorf("removed = %#v, want an empty list on the wire", got["removed"])
+	}
+
+	bc.calls = nil
+	idx.refsDelta = RefsDelta{}
+	if _, err := svc.Update(context.Background(), ScratchpadID, "[[ado:workitem/1]]", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range bc.calls {
+		if c.event == EventRefsChanged {
+			t.Errorf("refs:changed broadcast with nothing changed")
+		}
+	}
+}

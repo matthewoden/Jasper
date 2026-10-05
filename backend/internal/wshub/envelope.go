@@ -56,6 +56,7 @@ const (
 	EventReindexStarted  = "reindex:started"
 	EventReindexComplete = "reindex:complete"
 	EventMigrationStatus = "migration:status"
+	EventRefsChanged     = "refs:changed"
 
 	// EventMcpGrantChanged is broadcast by the /mcp/grants CRUD handlers
 	// whenever a grant is created, upgraded, or revoked. Callers MUST

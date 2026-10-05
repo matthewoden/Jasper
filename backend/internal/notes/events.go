@@ -26,4 +26,5 @@ const (
 	EventMigrationStatus = "migration:status"
 	EventTagsRewritten   = "tags:rewritten"  // cross-vault tag rename/delete batch event
 	EventLinksRewritten  = "links:rewritten" // cross-vault wiki-link rename batch event
+	EventRefsChanged     = "refs:changed"    // a note's set of references changed
 )
