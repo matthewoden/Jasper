@@ -21,6 +21,14 @@ type SearchProvider interface {
 	Search(ctx context.Context, q string, limit int) ([]SearchHit, error)
 }
 
+// RefsProvider answers which targets a note references and who references
+// a target. Optional: without it read_note and search_notes carry no refs
+// and the backlinks tool reports that it is not configured.
+type RefsProvider interface {
+	RefsOf(ctx context.Context, id notes.ID) ([]string, error)
+	Backlinks(ctx context.Context, target string) ([]notes.RefBacklink, error)
+}
+
 // AttachmentProvider is the small adapter the MCP server uses to read
 // attachment bytes. Wraps the same 5-rule path pipeline that
 // api.GetAttachment uses; concrete impl lives in adapters.go.
@@ -46,6 +54,7 @@ type Server struct {
 	notesProvider NotesProvider
 	searchSvc     SearchProvider
 	attachSvc     AttachmentProvider
+	refsSvc       RefsProvider
 	acl           *ACL
 	broadcaster   Broadcaster
 	log           *slog.Logger
@@ -87,3 +96,6 @@ func NewServer(
 // SDK returns the underlying SDK server — used by listener.go to
 // construct the StreamableHTTPHandler getServer closure.
 func (s *Server) SDK() *mcpsdk.Server { return s.sdk }
+
+// SetRefsProvider wires the reference index in after construction.
+func (s *Server) SetRefsProvider(p RefsProvider) { s.refsSvc = p }

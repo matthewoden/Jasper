@@ -13,6 +13,7 @@ import (
 )
 
 var expectedToolNames = []string{
+	"backlinks",
 	"create_note",
 	"delete_note",
 	"list_grants",

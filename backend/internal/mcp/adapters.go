@@ -136,3 +136,28 @@ func sniffMime(filename string, data []byte) string {
 	}
 	return http.DetectContentType(data)
 }
+
+// RefsOfFunc answers which targets a note references.
+type RefsOfFunc func(ctx context.Context, id notes.ID) ([]string, error)
+
+// BacklinksFunc answers who references a target.
+type BacklinksFunc func(ctx context.Context, target string) ([]notes.RefBacklink, error)
+
+type refsAdapterImpl struct {
+	refsOf    RefsOfFunc
+	backlinks BacklinksFunc
+}
+
+// NewRefsAdapter builds a RefsProvider from two functions, so the MCP
+// package keeps its distance from internal/index.
+func NewRefsAdapter(refsOf RefsOfFunc, backlinks BacklinksFunc) RefsProvider {
+	return &refsAdapterImpl{refsOf: refsOf, backlinks: backlinks}
+}
+
+func (r *refsAdapterImpl) RefsOf(ctx context.Context, id notes.ID) ([]string, error) {
+	return r.refsOf(ctx, id)
+}
+
+func (r *refsAdapterImpl) Backlinks(ctx context.Context, target string) ([]notes.RefBacklink, error) {
+	return r.backlinks(ctx, target)
+}

@@ -47,12 +47,13 @@ type ReadNoteArgs struct {
 // same thing here as on the REST surface deliberately: one word for one
 // concept across both write paths.
 type ReadNoteResult struct {
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	UpdatedAt string `json:"updated_at"`
-	Etag      string `json:"etag"`
+	ID        string   `json:"id"`
+	Path      string   `json:"path"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	UpdatedAt string   `json:"updated_at"`
+	Etag      string   `json:"etag"`
+	Refs      []string `json:"refs"`
 }
 
 // SearchNotesArgs — search_notes takes an FTS5 query + optional limit.
@@ -65,10 +66,11 @@ type SearchNotesArgs struct {
 // <mark>...</mark> snippet that the index produces (the index escapes
 // user content; only the <mark> tags are unescaped).
 type SearchHit struct {
-	ID          string `json:"id"`
-	Path        string `json:"path"`
-	Title       string `json:"title"`
-	ExcerptHTML string `json:"excerpt_html"`
+	ID          string   `json:"id"`
+	Path        string   `json:"path"`
+	Title       string   `json:"title"`
+	ExcerptHTML string   `json:"excerpt_html"`
+	Refs        []string `json:"refs,omitempty"`
 }
 
 // SearchNotesResult envelope.
@@ -175,6 +177,7 @@ func (s *Server) registerTools() {
 	s.registerReadNote()
 	s.registerSearchNotes()
 	s.registerReadAttachment()
+	s.registerBacklinks()
 	s.registerListGrants()
 	s.registerCreateNote()
 	s.registerUpdateNote()
@@ -231,7 +234,7 @@ func (s *Server) registerListNotes() {
 func (s *Server) registerReadNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "read_note",
-		Description: "Read a note by id (preferred) or path. Returns the markdown body, title, updated_at, and the etag to pass as if_match when updating it.",
+		Description: "Read a note by ULID (preferred) or path. Returns the markdown body, title, updated_at, the etag to pass as if_match when updating it, and refs: every target the note references as a universal ref (jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref such as ado:workitem/123 as written).",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args ReadNoteArgs) (*mcpsdk.CallToolResult, ReadNoteResult, error) {
 		id, err := s.resolveNoteID(ctx, args.ID, args.Path)
 		if err != nil {
@@ -249,6 +252,7 @@ func (s *Server) registerReadNote() {
 			Body:      n.Content,
 			UpdatedAt: notes.ETag(n.UpdatedAt),
 			Etag:      notes.ETag(n.UpdatedAt),
+			Refs:      s.refsOf(ctx, id),
 		}, nil
 	})
 }
@@ -256,7 +260,7 @@ func (s *Server) registerReadNote() {
 func (s *Server) registerSearchNotes() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "search_notes",
-		Description: "Run an FTS5 search across the vault. Returns ranked hits with id, path, title, and an excerpt_html containing <mark> tags around match terms.",
+		Description: "Run an FTS5 search across the vault. Returns ranked hits with id (the note ULID), path, title, refs (the universal refs the note makes), and an excerpt_html containing <mark> tags around match terms.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args SearchNotesArgs) (*mcpsdk.CallToolResult, SearchNotesResult, error) {
 		if s.searchSvc == nil {
 			return nil, SearchNotesResult{}, errors.New("search_notes: search provider not configured")
@@ -274,6 +278,11 @@ func (s *Server) registerSearchNotes() {
 		}
 		if hits == nil {
 			hits = []SearchHit{}
+		}
+		for i := range hits {
+			if id, perr := notes.ParseID(hits[i].ID); perr == nil {
+				hits[i].Refs = s.refsOf(ctx, id)
+			}
 		}
 		return nil, SearchNotesResult{Hits: hits}, nil
 	})
@@ -564,4 +573,80 @@ func canonNotePath(rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.TrimPrefix(rel, "/")
 	return strings.ToLower(path.Clean(rel))
+}
+
+// BacklinksArgs — backlinks takes any ref: a note ULID, jasper:note/<ulid>,
+// jasper:blob/<id>, jasper:title/<title>, or a foreign ref as written.
+type BacklinksArgs struct {
+	ID string `json:"id" jsonschema:"the target: a note ULID, a universal ref such as jasper:note/<ulid> or jasper:blob/<id>, or a foreign ref such as ado:workitem/123"`
+}
+
+// BacklinkInfo — one note that references the target.
+type BacklinkInfo struct {
+	ID      string `json:"id"`
+	Path    string `json:"path"`
+	Title   string `json:"title"`
+	Display string `json:"display,omitempty"`
+	Embed   bool   `json:"embed"`
+}
+
+// BacklinksResult — the target as resolved plus its referencing notes.
+type BacklinksResult struct {
+	Target    string         `json:"target"`
+	Backlinks []BacklinkInfo `json:"backlinks"`
+}
+
+func (s *Server) refsOf(ctx context.Context, id notes.ID) []string {
+	if s.refsSvc == nil {
+		return []string{}
+	}
+	refs, err := s.refsSvc.RefsOf(ctx, id)
+	if err != nil {
+		s.log.Warn("mcp: refs lookup failed", "id", id, "err", err)
+		return []string{}
+	}
+	if refs == nil {
+		refs = []string{}
+	}
+	return refs
+}
+
+func (s *Server) registerBacklinks() {
+	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
+		Name: "backlinks",
+		Description: "List the notes that reference a target. The target may be a note ULID, a universal ref " +
+			"(jasper:note/<ulid>, jasper:blob/<id>, jasper:title/<title>), or a foreign ref such as ado:workitem/123, " +
+			"so an agent can ask which notes mention a work item. Read-only; no grant needed.",
+	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args BacklinksArgs) (*mcpsdk.CallToolResult, BacklinksResult, error) {
+		if s.refsSvc == nil {
+			return nil, BacklinksResult{}, errors.New("backlinks: reference index not configured")
+		}
+		target := strings.TrimSpace(args.ID)
+		if target == "" {
+			return nil, BacklinksResult{}, errors.New("backlinks: id is required")
+		}
+		switch {
+		case strings.HasPrefix(target, "jasper:title/"):
+			if id, ok := s.notesSvc.ResolveTitle(strings.TrimPrefix(target, "jasper:title/"), ""); ok {
+				target = notes.RefForNote(id)
+			}
+		case strings.HasPrefix(target, "sha256-"):
+			target = notes.RefForBlob(target)
+		case !strings.Contains(target, ":"):
+			id, err := notes.ParseID(target)
+			if err != nil {
+				return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
+			}
+			target = notes.RefForNote(id)
+		}
+		rows, err := s.refsSvc.Backlinks(ctx, target)
+		if err != nil {
+			return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
+		}
+		out := make([]BacklinkInfo, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, BacklinkInfo{ID: r.SourceID.String(), Path: r.SourcePath, Title: r.SourceTitle, Display: r.Display, Embed: r.Embed})
+		}
+		return nil, BacklinksResult{Target: target, Backlinks: out}, nil
+	})
 }
