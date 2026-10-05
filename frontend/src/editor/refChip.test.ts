@@ -184,6 +184,28 @@ describe("ref chips in the editor", () => {
     expect(document.querySelector('[data-testid="ref-hover-card"]')).toBeNull();
   });
 
+  it("offers a replaced blob's new version and rewrites every occurrence on click", () => {
+    const oldRef = "jasper:blob/sha256-old";
+    cache.set(oldRef, { id: oldRef, kind: "blob", status: "DELETED", title: "shot.png", replaced_by: "sha256-new" });
+    const view = makeView(`![[${oldRef}]] and [[${oldRef}|again]]\nend`);
+    views.push(view);
+    const chip = chips(view).find((c) => c.raw === oldRef)!;
+    const dom = chip.toDOM(view);
+    const badge = dom.querySelector<HTMLButtonElement>('[data-testid="ref-chip-replaced"]');
+    expect(badge).not.toBeNull();
+    badge!.click();
+    expect(view.state.doc.toString()).toBe("![[jasper:blob/sha256-new]] and [[jasper:blob/sha256-new|again]]\nend");
+  });
+
+  it("shows no replaced badge on a deleted blob with no successor", () => {
+    const ref = "jasper:blob/sha256-gone";
+    cache.set(ref, { id: ref, kind: "blob", status: "DELETED", title: "gone.png" });
+    const view = makeView(`[[${ref}]]\nend`);
+    views.push(view);
+    const dom = chips(view)[0].toDOM(view);
+    expect(dom.querySelector('[data-testid="ref-chip-replaced"]')).toBeNull();
+  });
+
   it("resolves a click target for a note ref and none for a foreign one", () => {
     const ref = "jasper:note/" + NOTE_ID;
     const view = makeView(`[[${ref}]] [[ado:workitem/1]]\n`, 0);
