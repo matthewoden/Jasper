@@ -81,10 +81,21 @@ func TestReconcile_RebuildRestoresIDs(t *testing.T) {
 	mtime := time.Unix(1700000000, 0)
 	writeNoteRaw(t, notesDir, "a.md", "# Alpha\n", mtime)
 	writeNoteRaw(t, notesDir, "sub/b.md", "---\ntags: [x]\n---\n# Bravo\n", mtime)
+	writeAttachment(t, notesDir, "attachments/shared.png", []byte("\x89PNG shared"), mtime)
+	writeAttachment(t, notesDir, "sub/attachments/shared-copy.png", []byte("\x89PNG shared"), mtime)
+	writeAttachment(t, notesDir, "attachments/solo.pdf", []byte("%PDF-1.4 solo"), mtime)
+	blobPaths := []string{"attachments/shared.png", "sub/attachments/shared-copy.png", "attachments/solo.pdf"}
 	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	first := rowsByPath(t, idx)
+	firstBlobs := map[string]string{}
+	for _, p := range blobPaths {
+		firstBlobs[p] = blobAt(t, idx, p).ID
+	}
+	if firstBlobs["attachments/shared.png"] == firstBlobs["attachments/solo.pdf"] {
+		t.Fatalf("distinct bytes share blob id %s", firstBlobs["attachments/solo.pdf"])
+	}
 
 	fresh, _ := newTestIndexer(t)
 	fresh.NotesDir = notesDir
@@ -95,6 +106,11 @@ func TestReconcile_RebuildRestoresIDs(t *testing.T) {
 	for path, row := range first {
 		if second[path].ID != row.ID {
 			t.Errorf("%s: id %s before rebuild, %s after", path, row.ID, second[path].ID)
+		}
+	}
+	for _, p := range blobPaths {
+		if got := blobAt(t, fresh, p).ID; got != firstBlobs[p] {
+			t.Errorf("%s: blob id %s before rebuild, %s after", p, firstBlobs[p], got)
 		}
 	}
 }
