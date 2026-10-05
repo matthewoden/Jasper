@@ -335,3 +335,50 @@ func TestAssignIDs_TieBreak(t *testing.T) {
 		}
 	})
 }
+
+// A save that lands between the walk's read and the id write wins.
+func TestReconcile_WriteIDKeepsConcurrentSave(t *testing.T) {
+	t.Parallel()
+	const savedID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	cases := []struct {
+		name  string
+		saved string
+		want  func(id notes.ID) string
+	}{
+		{
+			name:  "save carries an id",
+			saved: "---\nid: " + savedID + "\n---\n# Saved\n",
+			want:  func(notes.ID) string { return "---\nid: " + savedID + "\n---\n# Saved\n" },
+		},
+		{
+			name:  "save carries no id",
+			saved: "# Saved\n\nnew body\n",
+			want:  func(id notes.ID) string { return "---\nid: " + id.String() + "\n---\n# Saved\n\nnew body\n" },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			idx, notesDir := newReconcileFixture(t)
+			writeNoteRaw(t, notesDir, "a.md", "# Alpha\n", time.Unix(1700000000, 0))
+			idx.afterWalk = func() {
+				writeNoteRaw(t, notesDir, "a.md", tc.saved, time.Unix(1700000100, 0))
+			}
+
+			if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+				t.Fatalf("Reconcile: %v", err)
+			}
+			id := fileID(t, notesDir, "a.md")
+			if got, want := readNote(t, notesDir, "a.md"), tc.want(id); got != want {
+				t.Errorf("file after reconcile\n got: %q\nwant: %q", got, want)
+			}
+			row := rowsByPath(t, idx)["a.md"]
+			if row.ID != id {
+				t.Errorf("index id %s, file id %s", row.ID, id)
+			}
+			if row.Title != "Saved" {
+				t.Errorf("indexed title %q, want the saved content's", row.Title)
+			}
+		})
+	}
+}

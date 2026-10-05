@@ -40,6 +40,8 @@ type Indexer struct {
 	Log      *slog.Logger
 
 	nowUnix func() int64
+	// afterWalk runs between reconcile's read pass and its id writes; tests only.
+	afterWalk func()
 }
 
 // New constructs an Indexer. Pass the *sqlite.Pair returned by

@@ -1,6 +1,7 @@
 package index
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -113,6 +114,9 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 	}
 
 	assignIDs(claims, existing, seen)
+	if x.afterWalk != nil {
+		x.afterWalk()
+	}
 
 	upserts := 0
 	for _, c := range claims {
@@ -243,7 +247,25 @@ func assignIDs(claims []*claim, existing map[string]existingRow, seen map[string
 // writeID puts the settled id into the file. A refusal (CRLF frontmatter)
 // leaves the file alone and indexes the note under an id only this index
 // knows; the next rebuild will mint another.
+//
+// The file is re-read first so a save that landed since the walk is kept, not
+// overwritten. That leaves a read-to-rename window; closing it would need the
+// service's per-note lock, which is keyed by the id this file doesn't have yet.
 func (x *Indexer) writeID(c *claim) {
+	if fresh, err := os.ReadFile(c.meta.AbsPath); err == nil && !bytes.Equal(fresh, c.content) {
+		x.Log.Info("indexer: note changed since the walk; using its new content", "path", c.meta.CanonicalRelPath)
+		c.content = fresh
+		c.meta.Size = int64(len(fresh))
+		if info, err := os.Stat(c.meta.AbsPath); err == nil {
+			c.meta.MTimeUnix = info.ModTime().Unix()
+		}
+		if raw, found := markdown.ReadID(fresh); found {
+			if id, perr := notes.ParseID(raw); perr == nil {
+				c.id, c.fileID = id, id
+				return
+			}
+		}
+	}
 	updated, err := markdown.WithID(c.content, c.id.String())
 	if err != nil {
 		x.Log.Warn("indexer: not writing id into note", "path", c.meta.CanonicalRelPath, "err", err)
