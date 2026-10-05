@@ -94,6 +94,8 @@ import {
   inlineTagCompletionSource,
   setInlineTagSnapshot,
 } from "../editor/inlineTagAutocomplete";
+import { mentionCompletionSource } from "../editor/mentionAutocomplete";
+import { blobEmbedPlugin } from "../editor/blobEmbedPlugin";
 import { useTagBrowser } from "../lib/useTagBrowser";
 import { useTreeStore } from "../lib/useTreeStore";
 import { useFileTree } from "../lib/useFileTree";
@@ -434,9 +436,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
             externalImagePlugin, // external image security gate
             imageAttachmentPlugin(noteIdRef), // renders ![alt](attachments/…) below line
             fileChipPlugin(noteIdRef), // renders [name](attachments/…) chip below line
+            blobEmbedPlugin, // renders ![[jasper:blob/…|name.png]] below line
             dropPosField,         // StateField: current drag position (null = hidden)
             dropIndicatorPlugin,  // ViewPlugin: dragover/dragleave/drop listeners
-            autocompletion({ override: [wikilinkCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
+            autocompletion({ override: [wikilinkCompletionSource, mentionCompletionSource, tagCompletionSource, inlineTagCompletionSource] }),
             saveKeymap(() => cbRef.current.onSaveRequested?.()), // BEFORE defaultKeymap so Cmd+S takes precedence
             findBarKeymap( // Cmd+F / Cmd+Opt+F open the pane's Find/Replace bar
               () => cbRef.current.onOpenFind?.(),

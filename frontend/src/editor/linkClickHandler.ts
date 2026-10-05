@@ -15,7 +15,8 @@ import type { SyntaxNode } from "@lezer/common";
 import { isExternalLikeUrl, ensureProtocol } from "./linkUrl";
 import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
 import { WIKILINK_RE } from "./wikilinkPlugin";
-import { isRefTarget, noteIdOfRef } from "./refChip";
+import { blobIdOfRef, isRefTarget, noteIdOfRef } from "./refChip";
+import { blobUrl } from "./blobEmbedPlugin";
 import { postNotes } from "../lib/treeApi";
 
 
@@ -163,8 +164,16 @@ export const linkClickHandler = EditorView.domEventHandlers({
       return true;
     }
 
-    // A foreign reference has nowhere to go yet; a title still gets created.
-    if (wikiLink.isRef) return false;
+    // A blob opens in a new tab; a foreign reference has nowhere to go yet.
+    if (wikiLink.isRef) {
+      const blobId = blobIdOfRef(wikiLink.rawTitle);
+      if (blobId) {
+        window.open(blobUrl(blobId), "_blank", "noopener,noreferrer");
+        event.preventDefault();
+        return true;
+      }
+      return false;
+    }
 
     if (!wikiLink.isResolved) {
       const sourceFolder = cbs.getCurrentSourceFolder();

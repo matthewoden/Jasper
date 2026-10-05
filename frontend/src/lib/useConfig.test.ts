@@ -40,6 +40,7 @@ const sampleConfig = {
     autosaveMs: 2000,
     showProperties: true,
     autoPair: true,
+    idNoteLinks: false,
     foldGutter: true,
     lineNumbers: false,
     lineWidth: 700,

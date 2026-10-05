@@ -172,6 +172,7 @@ func toWireConfig(c config.Config) Config {
 	readingFont := ConfigReadingFont(c.ReadingFont)
 	showProperties := c.Editor.ShowProperties
 	autoPair := c.Editor.AutoPair
+	idNoteLinks := c.Editor.IDNoteLinks
 	foldGutter := c.Editor.FoldGutter
 	lineNumbers := c.Editor.LineNumbers
 	lineWidth := c.Editor.LineWidth
@@ -190,6 +191,7 @@ func toWireConfig(c config.Config) Config {
 			AutosaveMs     int     `json:"autosaveMs"`
 			FoldGutter     *bool   `json:"foldGutter,omitempty"`
 			FontSize       int     `json:"fontSize"`
+			IdNoteLinks    *bool   `json:"idNoteLinks,omitempty"` //nolint:revive // generated field name
 			LineHeight     float64 `json:"lineHeight"`
 			LineNumbers    *bool   `json:"lineNumbers,omitempty"`
 			LineWidth      *int    `json:"lineWidth,omitempty"`
@@ -199,6 +201,7 @@ func toWireConfig(c config.Config) Config {
 			AutosaveMs:     c.Editor.AutosaveMs,
 			FoldGutter:     &foldGutter,
 			FontSize:       c.Editor.FontSize,
+			IdNoteLinks:    &idNoteLinks,
 			LineHeight:     c.Editor.LineHeight,
 			LineNumbers:    &lineNumbers,
 			LineWidth:      &lineWidth,
@@ -224,6 +227,7 @@ func fromWireConfig(w Config) config.Config {
 			LineHeight:     w.Editor.LineHeight,
 			ShowProperties: defaults.Editor.ShowProperties,
 			AutoPair:       defaults.Editor.AutoPair,
+			IDNoteLinks:    defaults.Editor.IDNoteLinks,
 			FoldGutter:     defaults.Editor.FoldGutter,
 			LineNumbers:    defaults.Editor.LineNumbers,
 			LineWidth:      defaults.Editor.LineWidth,
@@ -237,6 +241,9 @@ func fromWireConfig(w Config) config.Config {
 	}
 	if w.Editor.AutoPair != nil {
 		out.Editor.AutoPair = *w.Editor.AutoPair
+	}
+	if w.Editor.IdNoteLinks != nil {
+		out.Editor.IDNoteLinks = *w.Editor.IdNoteLinks
 	}
 	if w.Editor.FoldGutter != nil {
 		out.Editor.FoldGutter = *w.Editor.FoldGutter

@@ -71,7 +71,7 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	return NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
+	return NewServerWithIndex(svc, nil, nil, idx, nil, logger, root)
 }
 
 func TestSearchHandler(t *testing.T) {

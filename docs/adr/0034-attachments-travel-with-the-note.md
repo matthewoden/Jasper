@@ -1,6 +1,6 @@
 # ADR-0034 — Attachments travel with a moved note; references are not rewritten
 
-**Status:** Accepted (v1.4)
+**Status:** Accepted (v1.4). **Amended 2026-10-04:** new uploads are referenced by content id.
 
 ## Context
 
@@ -50,3 +50,18 @@ Copying rather than moving a shared attachment duplicates bytes. Accepted delibe
 ## Verification
 
 Regression tests in `backend/internal/api/attachments_move_test.go` cover the reproduction (200 before, 200 after, file at the destination, reference text untouched), the shared-sibling copy, the colliding-name rename with the occupant left intact, and an in-place rename touching nothing. The first three were proven to fail with the relocation call disabled. Unit tests in `backend/internal/notes/attachments_test.go` cover undo-on-failure against an in-memory store that fails one specific `MoveFile`, plus move-vs-copy selection and the already-dangling skip; `backend/internal/markdown/attachments_test.go` covers extraction, including code fences, frontmatter and percent-decoding.
+
+## Amendment (2026-10-04) — new uploads are referenced by id
+
+The first rejected alternative is now, in part, the decision. An upload is inserted as an embed by **content id** — `![[jasper:blob/sha256-…|shot.png]]` for an image, `[[jasper:blob/sha256-…|report.pdf]]` otherwise — where it used to be a folder-relative path. The file still lands in `attachments/` beside the note, exactly as before.
+
+Why the reversal: universal item references ([ADR-0010](./0010-title-only-wiki-links.md), amended the same day) give every item an identity that outlives its location, and an attachment that can only be named by where it sits is the one item left out. A blob's id is its bytes (`sha256-<16 hex>`), so the reference holds through any move, through a sibling's copy, and through a rebuild of the index; the relocation logic above becomes irrelevant to it, because an embed by id does not care where the file is.
+
+The cost this file called "the product" is real and accepted: **an id embed renders nowhere but Jasper.** Obsidian shows a broken embed, GitHub shows the literal text. A portable fallback beside the id (a hidden path, an HTML comment) was considered and rejected as clutter in every note. Existing path embeds are left exactly as they are, and the move-and-copy relocation above still serves them.
+
+Consequences:
+
+- **Two reference forms coexist.** `![name](attachments/name.png)` relocates on move; `![[jasper:blob/…|name]]` does not need to. Both render.
+- **The id is minted at upload.** The upload handler adopts the file into the blob index straight away, so the reference can name it before the next reconcile.
+- **A file edited in place becomes a new blob.** The old id is tombstoned with `replaced_by`, the embed renders as *replaced*, and a one-click action rewrites the reference to the new id as an ordinary save. Nothing rewrites notes on its own; see the plan's N4.
+- **An orphaned blob file renders as missing** rather than silently vanishing, as a path embed does.

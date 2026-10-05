@@ -63,12 +63,7 @@ export function useAttachmentUpload(
 
       try {
         const res = await uploadAttachment(noteId, file);
-        // Destination encoded, alt text left human-readable.
-        const dest = encodeAttachmentPath(res.path);
-        const refMd = res.is_image
-          ? `![${res.filename}](${dest})`
-          : `[${res.filename}](${dest})`;
-        insertMarkdown(view, refMd, pos);
+        insertMarkdown(view, attachmentReference(res), pos);
       } catch (e) {
         if (e instanceof AttachmentTooLargeError) {
           toast({
@@ -164,4 +159,24 @@ export function useAttachmentUpload(
     dragHandlers: { onDragEnter, onDragLeave, onDragOver, onDrop },
     pasteHandler,
   };
+}
+
+/**
+ * The markdown written for an upload. With a blob id the reference names the
+ * bytes, so it survives any move; the file still lands in attachments/.
+ * Without one (an index that could not adopt it) the path form is used:
+ * destination encoded, alt text left human-readable.
+ */
+export function attachmentReference(res: {
+  filename: string;
+  path: string;
+  is_image: boolean;
+  blob_id?: string;
+}): string {
+  if (res.blob_id) {
+    const ref = `jasper:blob/${res.blob_id}|${res.filename}`;
+    return res.is_image ? `![[${ref}]]` : `[[${ref}]]`;
+  }
+  const dest = encodeAttachmentPath(res.path);
+  return res.is_image ? `![${res.filename}](${dest})` : `[${res.filename}](${dest})`;
 }

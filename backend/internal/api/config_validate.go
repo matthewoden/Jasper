@@ -150,6 +150,7 @@ type strictConfigValidator struct {
 		AutosaveMs     int     `json:"autosaveMs"`
 		ShowProperties *bool   `json:"showProperties,omitempty"`
 		AutoPair       *bool   `json:"autoPair,omitempty"`
+		IDNoteLinks    *bool   `json:"idNoteLinks,omitempty"`
 		FoldGutter     *bool   `json:"foldGutter,omitempty"`
 		LineNumbers    *bool   `json:"lineNumbers,omitempty"`
 		LineWidth      *int    `json:"lineWidth,omitempty"`
@@ -189,6 +190,7 @@ type strictConfigPatchValidator struct {
 		AutosaveMs     *int     `json:"autosaveMs,omitempty"`
 		ShowProperties *bool    `json:"showProperties,omitempty"`
 		AutoPair       *bool    `json:"autoPair,omitempty"`
+		IDNoteLinks    *bool    `json:"idNoteLinks,omitempty"`
 		FoldGutter     *bool    `json:"foldGutter,omitempty"`
 		LineNumbers    *bool    `json:"lineNumbers,omitempty"`
 		LineWidth      *int     `json:"lineWidth,omitempty"`

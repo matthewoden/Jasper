@@ -232,6 +232,17 @@ export const jasperEditorTheme = EditorView.theme(
     ".cm-ref-chip-deleted .cm-ref-chip-label": { textDecoration: "line-through" },
     ".cm-ref-chip-foreign": { fontFamily: "var(--font-mono, monospace)", fontSize: "0.85em" },
     "&[data-cmd-held] .cm-ref-chip[data-target-id]": { cursor: "pointer" },
+    ".cm-ref-chip-replaced": {
+      marginLeft: "4px",
+      padding: "0 4px",
+      border: "1px solid var(--color-destructive)",
+      borderRadius: "3px",
+      background: "transparent",
+      color: "var(--color-destructive)",
+      font: "inherit",
+      fontSize: "0.85em",
+      cursor: "pointer",
+    },
     ".cm-tag-clickable": {
       color: "var(--color-accent)",
       cursor: "pointer",

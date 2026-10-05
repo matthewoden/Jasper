@@ -1050,6 +1050,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /items/search:
+    get:
+      tags: [items]
+      operationId: getItemsSearch
+      summary: Search notes and blobs by name for the @ picker
+      description: |
+        Notes match on title, blobs on file name, both case-insensitively.
+        Results carry the universal ref to insert. Empty `q` lists the most
+        recently modified notes.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 200 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Matching items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemSearchResponse"
+  /blobs/{blobId}:
+    get:
+      tags: [items]
+      operationId: getBlob
+      summary: Stream a blob by its content id
+      description: |
+        Serves the first live path holding these bytes, through the same
+        hardened path resolution as the attachments route. The client sniffs
+        the type from the name it shows.
+      parameters:
+        - name: blobId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^sha256-[0-9a-f]{16,64}$' }
+      responses:
+        "200":
+          description: Binary stream
+          content:
+            application/octet-stream: {}
+        "404":
+          description: No live path holds this blob
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /notes/search-titles:
     get:
       tags: [backlinks]
@@ -2508,6 +2557,12 @@ components:
               # EDIT-01 — auto-close brackets/quotes in CM6.
               type: boolean
               default: true
+            idNoteLinks:
+              # The @ picker inserts [[jasper:note/<id>|Title]] instead of
+              # [[Title]]: the link survives a rename without a rewrite, at
+              # the cost of an id in the prose. Off by default.
+              type: boolean
+              default: false
             foldGutter:
               # EDIT-03 — heading/list code-folding gutter.
               type: boolean
@@ -2645,6 +2700,8 @@ components:
               type: boolean
             autoPair:
               type: boolean
+            idNoteLinks:
+              type: boolean
             foldGutter:
               type: boolean
             lineNumbers:
@@ -2777,6 +2834,7 @@ components:
         category:     { type: string, enum: [image, pdf, video, audio, archive, other] }
         is_image:     { type: boolean }
         size_bytes:   { type: integer, format: int64 }
+        blob_id:      { type: string, description: "The content id the index gave the upload, for an embed by id (jasper:blob/<id>)." }
     BacklinkRow:
       type: object
       required: [source_id, source_title, source_path, excerpts]
@@ -2976,6 +3034,29 @@ components:
         removed:
           type: array
           items: { type: string }
+    ItemSearchHit:
+      type: object
+      required: [ref, kind, title, path]
+      properties:
+        ref:
+          type: string
+          description: The universal ref to insert (`jasper:note/<id>` or `jasper:blob/<id>`).
+        kind:
+          type: string
+          enum: [note, blob]
+        title:
+          type: string
+          description: Note title, or the blob's file name.
+        path:
+          type: string
+    ItemSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemSearchHit"
     WSLinksRewrittenPayload:
       type: object
       required: [old_title, new_title, touched_note_ids]

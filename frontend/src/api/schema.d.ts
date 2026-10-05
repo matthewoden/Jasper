@@ -527,6 +527,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/items/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search notes and blobs by name for the @ picker
+         * @description Notes match on title, blobs on file name, both case-insensitively.
+         *     Results carry the universal ref to insert. Empty `q` lists the most
+         *     recently modified notes.
+         */
+        get: operations["getItemsSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blobs/{blobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream a blob by its content id
+         * @description Serves the first live path holding these bytes, through the same
+         *     hardened path resolution as the attachments route. The client sniffs
+         *     the type from the name it shows.
+         */
+        get: operations["getBlob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes/search-titles": {
         parameters: {
             query?: never;
@@ -1585,6 +1629,8 @@ export interface components {
                 showProperties: boolean;
                 /** @default true */
                 autoPair: boolean;
+                /** @default false */
+                idNoteLinks: boolean;
                 /** @default true */
                 foldGutter: boolean;
                 /** @default false */
@@ -1658,6 +1704,7 @@ export interface components {
                 autosaveMs?: number;
                 showProperties?: boolean;
                 autoPair?: boolean;
+                idNoteLinks?: boolean;
                 foldGutter?: boolean;
                 lineNumbers?: boolean;
                 lineWidth?: number;
@@ -1738,6 +1785,8 @@ export interface components {
             is_image: boolean;
             /** Format: int64 */
             size_bytes: number;
+            /** @description The content id the index gave the upload, for an embed by id (jasper:blob/<id>). */
+            blob_id?: string;
         };
         /**
          * @description A single backlink entry: a note that contains one or more `[[...]]`
@@ -1865,6 +1914,18 @@ export interface components {
             source_id: string;
             added: string[];
             removed: string[];
+        };
+        ItemSearchHit: {
+            /** @description The universal ref to insert (`jasper:note/<id>` or `jasper:blob/<id>`). */
+            ref: string;
+            /** @enum {string} */
+            kind: "note" | "blob";
+            /** @description Note title, or the blob's file name. */
+            title: string;
+            path: string;
+        };
+        ItemSearchResponse: {
+            items: components["schemas"]["ItemSearchHit"][];
         };
         /**
          * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
@@ -3511,6 +3572,60 @@ export interface operations {
             };
             /** @description Malformed request (missing ids, or more than 200) */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getItemsSearch: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemSearchResponse"];
+                };
+            };
+        };
+    };
+    getBlob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binary stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description No live path holds this blob */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

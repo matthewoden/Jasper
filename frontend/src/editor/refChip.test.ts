@@ -130,7 +130,7 @@ describe("ref chips in the editor", () => {
     expect(got[0].raw).toBe("ado:workitem/1");
     expect(got[0].display).toBe("ticket");
     expect(got[0].model.state).toBe("foreign");
-    const dom = got[0].toDOM();
+    const dom = got[0].toDOM(view);
     expect(dom.dataset.state).toBe("foreign");
     expect(dom.querySelector(".cm-ref-chip-label")?.textContent).toBe("ticket");
   });
@@ -159,7 +159,7 @@ describe("ref chips in the editor", () => {
     const after = chips(view);
     expect(after.map((c) => c.model.state)).toEqual(["ok", "ok"]);
     expect(after[0].model.label).toBe("Alpha");
-    expect(after[0].toDOM().dataset.targetId).toBe(NOTE_ID);
+    expect(after[0].toDOM(view).dataset.targetId).toBe(NOTE_ID);
   });
 
   it("keeps raw markup on the cursor's line", () => {
@@ -173,7 +173,7 @@ describe("ref chips in the editor", () => {
     cache.set(ref, { id: ref, kind: "note", status: "OK", title: "Alpha", updated_at: "2026-10-04T12:00:00Z", excerpt: "Alpha body" });
     const view = makeView(`[[${ref}]]\n`);
     views.push(view);
-    const dom = chips(view)[0].toDOM();
+    const dom = chips(view)[0].toDOM(view);
     document.body.appendChild(dom);
     dom.dispatchEvent(new Event("mouseenter"));
     const card = document.querySelector('[data-testid="ref-hover-card"]');

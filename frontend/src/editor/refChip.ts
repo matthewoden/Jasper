@@ -47,6 +47,28 @@ export function noteIdOfRef(raw: string): string | null {
   return p.namespace === "jasper" && p.kind === "note" ? p.id : null;
 }
 
+/** The blob id a ref names, when it is a native blob ref. */
+export function blobIdOfRef(raw: string): string | null {
+  const p = parseRef(raw);
+  return p.namespace === "jasper" && p.kind === "blob" ? p.id : null;
+}
+
+/**
+ * Rewrites every reference to oldRef in the document so it names newRef.
+ * The user's one-click fix for a replaced blob: an ordinary edit, saved like
+ * any other, so the server's etag check still applies.
+ */
+export function replaceRefInDoc(view: EditorView, oldRef: string, newRef: string): void {
+  const text = view.state.doc.toString();
+  const changes: { from: number; to: number; insert: string }[] = [];
+  let at = text.indexOf(oldRef);
+  while (at >= 0) {
+    changes.push({ from: at, to: at + oldRef.length, insert: newRef });
+    at = text.indexOf(oldRef, at + oldRef.length);
+  }
+  if (changes.length > 0) view.dispatch({ changes, userEvent: "input" });
+}
+
 /** Dispatched once a batch of previews has landed, so chips can re-render. */
 export const refItemsResolved = StateEffect.define<void>();
 
@@ -105,7 +127,7 @@ export class RefChipWidget extends WidgetType {
     super();
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const span = document.createElement("span");
     span.className = `cm-ref-chip cm-ref-chip-${this.model.state}`;
     span.dataset.ref = this.raw;
@@ -126,6 +148,23 @@ export class RefChipWidget extends WidgetType {
     span.appendChild(label);
 
     const item = this.model.item;
+    // A blob whose bytes changed in place: say so, and offer the new id.
+    if (item?.status === "DELETED" && item.replaced_by) {
+      const newRef = `jasper:blob/${item.replaced_by}`;
+      const badge = document.createElement("button");
+      badge.type = "button";
+      badge.className = "cm-ref-chip-replaced";
+      badge.dataset.testid = "ref-chip-replaced";
+      badge.textContent = "replaced · use new version";
+      badge.title = `Point this reference at ${newRef}`;
+      badge.addEventListener("mousedown", (e) => e.preventDefault());
+      badge.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        replaceRefInDoc(view, this.raw, newRef);
+      });
+      span.appendChild(badge);
+    }
     if (item) {
       let card: HTMLElement | null = null;
       span.addEventListener("mouseenter", () => {

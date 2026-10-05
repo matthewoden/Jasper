@@ -107,3 +107,14 @@ export const __testing__ = {
     inFlight.clear();
   },
 };
+
+export type ItemSearchHit = components["schemas"]["ItemSearchHit"];
+
+/** Notes by title and blobs by file name, for the @ picker. Not cached: a picker query is live. */
+export async function searchItems(q: string, limit = 10): Promise<ItemSearchHit[]> {
+  const { data, error } = await client.GET("/items/search", { params: { query: { q, limit } } });
+  if (error || !data) {
+    throw new Error("searchItems: " + JSON.stringify(error ?? "no data"));
+  }
+  return data.items;
+}
