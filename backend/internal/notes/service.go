@@ -265,9 +265,18 @@ func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title,
 }
 
 // CreateWithID is CreateWithBodyAndTitle with a caller-chosen id, for a
-// client that already refers to the note elsewhere. The id must be unused.
+// client that already refers to the note elsewhere. The id must never have
+// been used: reusing a deleted note's id would silently repoint its refs.
 func (s *Service) CreateWithID(ctx context.Context, parentPath, title, body, displayTitle string, id ID) (NoteSummary, error) {
+	defer s.writeLocks.lock(id)()
 	if _, taken := s.registry.Lookup(id); taken {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", id, ErrIDTaken)
+	}
+	info, err := s.index.LookupItem(ctx, id.String())
+	if err != nil {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): lookup: %w", id, err)
+	}
+	if info.Status == ItemStatusDeleted {
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", id, ErrIDTaken)
 	}
 	return s.createInternal(ctx, parentPath, title, body, displayTitle, id)

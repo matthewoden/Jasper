@@ -505,8 +505,9 @@ func TestService_NewService_NilIndex_FallsBackToNopIndex(t *testing.T) {
 type stubIndex struct {
 	mu sync.RWMutex
 
-	byPath map[string]NoteRecord
-	byID   map[ID]NoteRecord
+	byPath     map[string]NoteRecord
+	byID       map[ID]NoteRecord
+	tombstones map[ID]bool
 
 	upsertErr             error
 	deleteErr             error
@@ -520,8 +521,9 @@ type stubIndex struct {
 
 func newStubIndex() *stubIndex {
 	return &stubIndex{
-		byPath: make(map[string]NoteRecord),
-		byID:   make(map[ID]NoteRecord),
+		byPath:     make(map[string]NoteRecord),
+		byID:       make(map[ID]NoteRecord),
+		tombstones: make(map[ID]bool),
 	}
 }
 
@@ -541,6 +543,7 @@ func (s *stubIndex) Upsert(_ context.Context, rec NoteRecord) error {
 	}
 	s.byPath[rec.Path] = rec
 	s.byID[rec.ID] = rec
+	delete(s.tombstones, rec.ID)
 	return nil
 }
 
@@ -553,6 +556,7 @@ func (s *stubIndex) Delete(_ context.Context, id ID) error {
 	if rec, ok := s.byID[id]; ok {
 		delete(s.byPath, rec.Path)
 		delete(s.byID, id)
+		s.tombstones[id] = true
 	}
 	return nil
 }
@@ -2611,6 +2615,11 @@ func (*stubIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, erro
 	return []RefBacklink{}, nil
 }
 
-func (*stubIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+func (s *stubIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.tombstones[ID(id)] {
+		return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusDeleted, Title: id}, nil
+	}
 	return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: id}, nil
 }

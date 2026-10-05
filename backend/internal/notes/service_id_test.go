@@ -3,8 +3,10 @@ package notes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,6 +69,70 @@ func TestService_CreateWithID(t *testing.T) {
 	}
 	if fileExists(t, root, "another.md") {
 		t.Errorf("a rejected create left a file behind")
+	}
+}
+
+func TestService_CreateWithID_RejectsTombstonedID(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	gone, err := svc.Create(context.Background(), "", "Gone")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := svc.Delete(context.Background(), gone.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	_, err = svc.CreateWithID(context.Background(), "", "Usurper", "", "", gone.ID)
+	if !errors.Is(err, ErrIDTaken) {
+		t.Errorf("CreateWithID with a deleted note's id = %v, want ErrIDTaken", err)
+	}
+	if fileExists(t, root, "usurper.md") {
+		t.Errorf("a rejected create left a file behind")
+	}
+}
+
+func TestService_CreateWithID_ConcurrentSameID(t *testing.T) {
+	t.Parallel()
+	svc, root, _ := newRealFSSvc(t)
+	id := NewID()
+
+	const n = 8
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = svc.CreateWithID(context.Background(), "", fmt.Sprintf("Racer %d", i), "", "", id)
+		}()
+	}
+	wg.Wait()
+
+	won := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			won++
+		case !errors.Is(err, ErrIDTaken):
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+	if won != 1 {
+		t.Errorf("%d creates succeeded, want 1", won)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carrying := 0
+	for _, e := range entries {
+		if !e.IsDir() && readIDFromDisk(t, root, e.Name()) == id {
+			carrying++
+		}
+	}
+	if carrying != 1 {
+		t.Errorf("%d files carry the id, want 1", carrying)
 	}
 }
 
