@@ -15,6 +15,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { isExternalLikeUrl, ensureProtocol } from "./linkUrl";
 import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
 import { WIKILINK_RE } from "./wikilinkPlugin";
+import { isRefTarget, noteIdOfRef } from "./refChip";
 import { postNotes } from "../lib/treeApi";
 
 
@@ -61,6 +62,8 @@ export interface WikiLinkAtPos {
   rawTitle: string;
   isResolved: boolean;
   targetId: string | null;
+  /** True for a [[ns:kind/id]] reference; targetId is then the note it names, if any. */
+  isRef: boolean;
 }
 
 /**
@@ -84,7 +87,11 @@ export function findWikiLinkAt(
     const start = m.index;
     const end = start + m[0].length;
     if (offset >= start && offset <= end) {
-      const rawTitle = m[1];
+      const rawTitle = m[1].trim();
+      if (isRefTarget(rawTitle)) {
+        const targetId = noteIdOfRef(rawTitle);
+        return { rawTitle, isResolved: targetId !== null, targetId, isRef: true };
+      }
       const { titles, idMap } = getResolvedTitlesSnapshot();
       const lower = rawTitle.normalize("NFC").toLowerCase();
       const resolved = titles.has(lower);
@@ -92,6 +99,7 @@ export function findWikiLinkAt(
         rawTitle,
         isResolved: resolved,
         targetId: idMap?.get(lower) ?? null,
+        isRef: false,
       };
     }
   }
@@ -154,6 +162,9 @@ export const linkClickHandler = EditorView.domEventHandlers({
       event.preventDefault();
       return true;
     }
+
+    // A foreign reference has nowhere to go yet; a title still gets created.
+    if (wikiLink.isRef) return false;
 
     if (!wikiLink.isResolved) {
       const sourceFolder = cbs.getCurrentSourceFolder();
