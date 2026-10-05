@@ -68,6 +68,10 @@ export const jasperEditorTheme = EditorView.theme(
       paddingLeft: "16px",
       color: "var(--color-muted)",
     },
+    ".cm-line.cm-frontmatter-id": {
+      opacity: "0.6",
+      cursor: "default",
+    },
     ".cm-codeblock": {
       backgroundColor: "var(--color-surface)",
       borderLeft: "1px solid var(--color-border)",

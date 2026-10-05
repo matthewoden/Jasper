@@ -641,3 +641,63 @@ describe("countTagsInFrontmatter — helper preserved", () => {
     expect(countTagsInFrontmatter("foo: bar\nbaz: qux")).toBe(0);
   });
 });
+
+
+describe("frontmatterHidePlugin — read-only id line", () => {
+  const DOC = "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\ntags: []\n---\n# Title\n";
+  const idFrom = DOC.indexOf("id:");
+  const idTo = DOC.indexOf("\n", idFrom);
+  const tagsFrom = DOC.indexOf("tags:");
+  const views: EditorView[] = [];
+
+  afterEach(() => {
+    for (const v of views) v.destroy();
+    views.length = 0;
+  });
+
+  function rawView(): EditorView {
+    const view = makeView(DOC);
+    views.push(view);
+    view.dispatch({ effects: toggleFrontmatterVisibility.of(undefined) });
+    return view;
+  }
+
+  it("drops a user edit inside the id line", () => {
+    const view = rawView();
+    view.dispatch({ changes: { from: idTo - 2, to: idTo, insert: "XX" }, userEvent: "input.type" });
+    view.dispatch({ changes: { from: idFrom, to: idTo + 1 }, userEvent: "delete" });
+    view.dispatch({ changes: { from: idTo, insert: "Z" }, userEvent: "input.type" });
+    expect(view.state.doc.toString()).toBe(DOC);
+  });
+
+  it("lets an edit on the next line through", () => {
+    const view = rawView();
+    view.dispatch({ changes: { from: tagsFrom, insert: "x" }, userEvent: "input.type" });
+    expect(view.state.doc.toString()).toBe(DOC.replace("tags:", "xtags:"));
+  });
+
+  it("lets Enter at the end of the id line open a new line", () => {
+    const view = rawView();
+    view.dispatch({ changes: { from: idTo, insert: "\n" }, userEvent: "input" });
+    expect(view.state.doc.toString()).toBe(DOC.replace("FAV\n", "FAV\n\n"));
+  });
+
+  it("lets the whole frontmatter block be deleted", () => {
+    const view = rawView();
+    const end = DOC.indexOf("# Title");
+    view.dispatch({ changes: { from: 0, to: end }, userEvent: "delete" });
+    expect(view.state.doc.toString()).toBe("# Title\n");
+  });
+
+  it("lets a programmatic rewrite of the id line through", () => {
+    const view = rawView();
+    view.dispatch({ changes: { from: idFrom + 4, to: idTo, insert: "01BX5ZZKBKACTAV9WEVGEMMVRZ" } });
+    expect(view.state.doc.toString()).toContain("id: 01BX5ZZKBKACTAV9WEVGEMMVRZ");
+  });
+
+  it("marks the id line with its own muted class", () => {
+    const view = rawView();
+    const idLine = view.contentDOM.querySelectorAll(".cm-line")[1];
+    expect(idLine.classList.contains("cm-frontmatter-id")).toBe(true);
+  });
+});
