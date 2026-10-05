@@ -165,7 +165,7 @@ func TestPostItemsBatch_TitleResolvesThroughRegistry(t *testing.T) {
 func setupBLServerWithService(t *testing.T, idx notes.Index) (*httptest.Server, *notes.Service) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := notes.NewService(&fakeFileStore{}, nil, nil, logger)
+	svc := notes.NewService(&fakeFileStore{}, idx, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()

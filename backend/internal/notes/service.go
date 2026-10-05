@@ -1067,3 +1067,23 @@ func (s *Service) ResolveTitle(title, sourceFolder string) (ID, bool) {
 	}
 	return candidates[0].ID, true
 }
+
+// LookupItem resolves any ref to what it points at. A title ref goes
+// through the registry; a native id through the index, tombstones included;
+// any other well-formed ref is foreign and comes back as a raw stub.
+func (s *Service) LookupItem(ctx context.Context, id string) (ItemInfo, error) {
+	switch {
+	case strings.HasPrefix(id, "jasper:title/"):
+		title := strings.TrimPrefix(id, "jasper:title/")
+		if noteID, ok := s.ResolveTitle(title, ""); ok {
+			info, err := s.index.LookupItem(ctx, noteID.String())
+			info.ID = id
+			return info, err
+		}
+		return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: title}, nil
+	case strings.HasPrefix(id, "jasper:") || strings.HasPrefix(id, "sha256-") || !markdown.IsRefTarget(id):
+		return s.index.LookupItem(ctx, id)
+	default:
+		return ItemInfo{ID: id, Kind: ItemKindForeign, Status: ItemStatusUnknown, Title: id}, nil
+	}
+}

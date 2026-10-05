@@ -70,6 +70,8 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Ref** — a reference a note makes, in the universal grammar `ns:kind/id` (`ado:workitem/12345`, `jasper:note/<id>`, `jasper:blob/<id>`; `file:` carries no kind). A title link is a ref too once the index resolves it: `jasper:note/<id>`, or `jasper:title/<title>` while unresolved. A ref cannot be mistaken for a title because titles cannot contain `/`. The `refs` table holds one row per occurrence; backlinks for any target are a lookup on it. See the amendment to [ADR-0010](./docs/adr/0010-title-only-wiki-links.md).
 
+**Subgraph** — Jasper as another system reads it: the GraphQL schema at `api/graphql/schema.graphqls`, served at `/graphql` on the main listener as an Apollo Federation 2.3 subgraph, reads only. `Item` is a value interface; `Note` and `Blob` are the keyed entities. Generated and drift-checked like the OpenAPI contract; see the amendment to [ADR-0006](./docs/adr/0006-openapi-as-the-bilateral-contract.md).
+
 **Bookmark** — a pinned reference to a note, held by note id (with the path as a recovery hint) in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
 
 **Trash** — `.trash/` inside the vault. Deletes are soft: move to `.trash/`, restore by moving back and refreshing. Excluded from every index surface. See [ADR-0015](./docs/adr/0015-filesystem-native-soft-delete.md).

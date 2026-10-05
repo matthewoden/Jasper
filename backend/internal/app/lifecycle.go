@@ -21,6 +21,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/firstrun"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/graphql"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -287,7 +288,9 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
+	// The subgraph's subscription reads the same broadcasts the browser does.
+	events := graphql.NewEvents(hub)
+	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
 		// Refuse to serve rather than come up with an empty registry: the
@@ -334,6 +337,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
+	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(a.graphqlResolver(notesSvc, events), graphqlOriginHosts(a.cfg.ListenAddr)))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
@@ -491,7 +495,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
+	// The subgraph's subscription reads the same broadcasts the browser does.
+	events := graphql.NewEvents(hub)
+	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
 		if summaries, err := a.indexer.List(ctx); err == nil {
@@ -523,6 +529,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
+	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(a.graphqlResolver(notesSvc, events), graphqlOriginHosts(a.cfg.ListenAddr)))
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
@@ -631,6 +638,20 @@ func (a *App) startMCP(
 	attachProv := mcp.NewAttachmentAdapter(notesSvc, dataDir)
 
 	mcpServer := mcp.NewServer(notesSvc, notesProv, searchProv, attachProv, acl, hub, a.cfg.Logger)
+	mcpServer.SetRefsProvider(mcp.NewRefsAdapter(
+		func(ctx context.Context, id notes.ID) ([]string, error) {
+			rows, err := a.indexer.RefsBySource(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]string, 0, len(rows))
+			for _, r := range rows {
+				out = append(out, r.TargetRef)
+			}
+			return out, nil
+		},
+		a.indexer.RefBacklinks,
+	))
 
 	srv, err := mcp.StartMCPListener(ctx, mcpServer, bindAddr, a.cfg.Logger)
 	if err != nil {
@@ -719,4 +740,27 @@ func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
 
 	a.cfg.DataDir = absCanonical
 	return a.initVaultSubsystemsOnly(ctx)
+}
+
+// graphqlResolver wires the subgraph to this vault's service and index. A
+// nil indexer is left out rather than wrapped, so the resolver sees no index
+// instead of a typed nil.
+func (a *App) graphqlResolver(notesSvc *notes.Service, events *graphql.Events) *graphql.Resolver {
+	r := &graphql.Resolver{Notes: notesSvc, Events: events, Log: a.cfg.Logger}
+	if a.indexer != nil {
+		r.Index = a.indexer
+		r.Blobs = a.indexer
+	}
+	return r
+}
+
+// graphqlOriginHosts is the host[:port] form of allowedOrigins, which the
+// websocket accept checks the Origin header against.
+func graphqlOriginHosts(listenAddr string) []string {
+	origins := allowedOrigins(listenAddr)
+	hosts := make([]string, 0, len(origins))
+	for _, o := range origins {
+		hosts = append(hosts, strings.TrimPrefix(o, "http://"))
+	}
+	return hosts
 }

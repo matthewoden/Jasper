@@ -102,7 +102,7 @@ func setupBLServer(t *testing.T, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, nil, logger)
+	svc := notes.NewService(files, idx, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()

@@ -1,0 +1,129 @@
+# Jasper's federation contract: how another system reads Jasper by id.
+#
+# Item is a value interface, not an entity interface: each subgraph keys its
+# own concrete types and implements Item on them, so no subgraph has to own
+# every implementation (Apollo Federation 2.3 requires exactly that of an
+# interface carrying @key). Cross-system lookup goes through Query.item,
+# routed by the ref's namespace.
+#
+# Reads only. Writes go through REST and MCP, which accept the same ids.
+
+extend schema
+  @link(
+    url: "https://specs.apollo.dev/federation/v2.3"
+    import: ["@key", "@shareable"]
+  )
+
+"""
+RFC 3339 timestamp, UTC.
+"""
+scalar DateTime
+
+enum ItemStatus {
+  OK
+  UNKNOWN
+  DELETED
+}
+
+enum ItemKind {
+  NOTE
+  BLOB
+  FOREIGN
+}
+
+"""
+Anything a reference can point at. The id is the universal ref
+(jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref as written).
+"""
+interface Item {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  "Current title; for a DELETED item, the last one known."
+  title: String!
+  "Last modification; for a DELETED item, the deletion time."
+  updatedAt: DateTime
+}
+
+type Note implements Item @key(fields: "id") {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+  "Vault-relative path; for a DELETED note, the last one."
+  path: String
+  "The markdown as on disk. Null when the note is not OK."
+  body: String
+  "The first stretch of body text, at most 200 characters."
+  excerpt: String
+  "Every target this note references, in universal form."
+  refs: [String!]!
+  "Notes referencing this one, by title or by id."
+  backlinks: [Backlink!]!
+}
+
+type Blob implements Item @key(fields: "id") {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+  mime: String
+  size: Int
+  "Live paths holding these bytes."
+  paths: [String!]!
+  "For a DELETED blob whose bytes changed in place, the id that took over."
+  replacedBy: ID
+}
+
+"""
+A reference into another system, returned as written. Jasper can say who
+references it, not what it is.
+"""
+type ForeignRef implements Item {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+  namespace: String!
+}
+
+type Backlink {
+  source: Note!
+  "The alias the first occurrence shows, or empty."
+  display: String!
+  embed: Boolean!
+}
+
+type Query {
+  "Resolve one ref: a universal ref, a bare note or blob id, or jasper:title/<title>."
+  item(id: ID!): Item
+  "Resolve several refs at once; order matches the request, missing as null."
+  items(ids: [ID!]!): [Item]!
+  "Who references a target, native or foreign."
+  backlinks(id: ID!): [Backlink!]!
+  "Notes by title and body, blobs by file name."
+  searchItems(q: String!, limit: Int = 20): [Item!]!
+}
+
+enum ItemChangeKind {
+  CREATED
+  UPDATED
+  DELETED
+  MOVED
+  REFS_CHANGED
+}
+
+type ItemChange {
+  "The universal ref of the item that changed."
+  id: ID!
+  change: ItemChangeKind!
+  at: DateTime!
+}
+
+type Subscription {
+  "Every change to a note the server broadcasts, as it happens."
+  itemChanged: ItemChange!
+}

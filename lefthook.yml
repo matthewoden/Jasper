@@ -1,5 +1,7 @@
 pre-commit:
-  parallel: true
+  # Serial: gen-check regenerates the gqlgen files while running, and a
+  # linter reading them mid-rewrite reports every generated file as hand-written.
+  parallel: false
   commands:
     gen-check:
       run: make gen-check

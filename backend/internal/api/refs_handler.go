@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -47,7 +46,7 @@ func (s *Server) PostItemsBatch(
 	}
 	items := make([]Item, 0, len(req.Body.Ids))
 	for _, raw := range req.Body.Ids {
-		info, err := s.lookupItem(ctx, strings.TrimSpace(raw))
+		info, err := s.notes.LookupItem(ctx, strings.TrimSpace(raw))
 		if err != nil {
 			s.log.Error("PostItemsBatch: lookup failed", "id", raw, "err", err)
 			return nil, errors.New("could not resolve items")
@@ -55,26 +54,6 @@ func (s *Server) PostItemsBatch(
 		items = append(items, toWireItem(info))
 	}
 	return PostItemsBatch200JSONResponse{Items: items}, nil
-}
-
-// lookupItem routes an id by shape: a title ref resolves through the
-// registry first, a native id through the index, and any other well-formed
-// ref is foreign and comes back as a raw stub.
-func (s *Server) lookupItem(ctx context.Context, id string) (notes.ItemInfo, error) {
-	switch {
-	case strings.HasPrefix(id, "jasper:title/"):
-		title := strings.TrimPrefix(id, "jasper:title/")
-		if noteID, ok := s.notes.ResolveTitle(title, ""); ok {
-			info, err := s.index.LookupItem(ctx, noteID.String())
-			info.ID = id
-			return info, err
-		}
-		return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: title}, nil
-	case strings.HasPrefix(id, "jasper:") || strings.HasPrefix(id, "sha256-") || !markdown.IsRefTarget(id):
-		return s.index.LookupItem(ctx, id)
-	default:
-		return notes.ItemInfo{ID: id, Kind: notes.ItemKindForeign, Status: notes.ItemStatusUnknown, Title: id}, nil
-	}
 }
 
 func toWireItem(info notes.ItemInfo) Item {
