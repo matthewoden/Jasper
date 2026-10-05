@@ -228,13 +228,7 @@ func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch str
 		s.broadcaster.Broadcast(EventTagsUpdated, map[string]any{
 			"note_id": id.String(),
 		}, SessionIDFromContext(ctx))
-		if len(delta.Added) > 0 || len(delta.Removed) > 0 {
-			s.broadcaster.Broadcast(EventRefsChanged, map[string]any{
-				"source_id": id.String(),
-				"added":     nonNil(delta.Added),
-				"removed":   nonNil(delta.Removed),
-			}, SessionIDFromContext(ctx))
-		}
+		BroadcastRefsChanged(s.broadcaster, RefsDeltaFor{ID: id, Delta: delta}, SessionIDFromContext(ctx))
 	}
 
 	return Note{
@@ -366,7 +360,8 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		s.log.Error("notes.Create: tags sync failed (file safe; index heals on reconcile)",
 			"path", canonPath, "err", err)
 	}
-	if _, err := s.index.SyncBacklinks(ctx, id, canonPath, markdown.ExtractRefs(scaffoldContent), s.registry, scaffoldContent); err != nil {
+	delta, err := s.index.SyncBacklinks(ctx, id, canonPath, markdown.ExtractRefs(scaffoldContent), s.registry, scaffoldContent)
+	if err != nil {
 		s.log.Error("notes.Create: backlinks sync failed (file safe; index heals on reconcile)",
 			"path", canonPath, "err", err)
 	}
@@ -377,6 +372,7 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		"title":      rec.Title,
 		"updated_at": now.UTC().Format(time.RFC3339Nano),
 	}, SessionIDFromContext(ctx))
+	BroadcastRefsChanged(s.broadcaster, RefsDeltaFor{ID: id, Delta: delta}, SessionIDFromContext(ctx))
 
 	return NoteSummary{
 		ID:        id,

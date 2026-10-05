@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
@@ -184,6 +185,43 @@ func TestService_Update_ForcesKnownID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestService_Create_BroadcastsRefsChanged(t *testing.T) {
+	t.Parallel()
+	bc := &fakeBroadcaster{}
+	idx := &refsDeltaIndex{stubIndex: newStubIndex(), delta: RefsDelta{Added: []string{"ado:workitem/1"}}}
+	svc := newSvcWithBroadcaster(t, fsstore.NewStore(t.TempDir()), idx, bc)
+
+	created, err := svc.CreateWithBody(context.Background(), "", "Linker", "[[ado:workitem/1]]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]any
+	for _, c := range bc.calls {
+		if c.event == EventRefsChanged {
+			p, _ := c.payload.(map[string]any)
+			got = append(got, p)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("refs:changed broadcasts = %d among %+v, want 1", len(got), bc.calls)
+	}
+	if got[0]["source_id"] != created.ID.String() {
+		t.Errorf("source_id = %v, want %s", got[0]["source_id"], created.ID)
+	}
+	if added, _ := got[0]["added"].([]string); len(added) != 1 || added[0] != "ado:workitem/1" {
+		t.Errorf("added = %v", got[0]["added"])
+	}
+}
+
+type refsDeltaIndex struct {
+	*stubIndex
+	delta RefsDelta
+}
+
+func (r *refsDeltaIndex) SyncBacklinks(context.Context, ID, string, []markdown.Ref, *Registry, []byte) (RefsDelta, error) {
+	return r.delta, nil
 }
 
 // Criterion 6: a save that changes which targets a note references says so,

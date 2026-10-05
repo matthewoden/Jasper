@@ -13,15 +13,22 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
+// ReconcileResult is what a reconcile pass did.
+type ReconcileResult struct {
+	// N is the count of indexed notes afterwards for incremental, and the
+	// count upserted for full.
+	N int
+	// Deltas lists every note whose references the pass changed. The indexer
+	// has no broadcaster; callers announce these.
+	Deltas []notes.RefsDeltaFor
+}
+
 // Reconcile runs at startup and from the admin reindex endpoint.
-//
-// Returns the count of indexed notes after the reconciliation completes
-// (post-deletes for incremental; total upserted for full).
 //
 // Reconcile is a thin wrapper over ReconcileWithRegistry that passes nil
 // for the registry — all wiki-link targets are treated as pending in that
 // case.
-func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (int, error) {
+func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (ReconcileResult, error) {
 	return x.ReconcileWithRegistry(ctx, mode, nil)
 }
 
@@ -33,16 +40,16 @@ func (x *Indexer) Reconcile(ctx context.Context, mode Mode) (int, error) {
 // registry is the title→note registry used for ambiguity resolution in
 // SyncBacklinks. Pass nil to treat every wiki-link target as pending (safe —
 // pending rows are updated when the registry is available).
-func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry *notes.Registry) (int, error) {
+func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry *notes.Registry) (ReconcileResult, error) {
 	if mode != ModeFull && mode != ModeIncremental {
-		return 0, fmt.Errorf("indexer: unknown mode %q", mode)
+		return ReconcileResult{}, fmt.Errorf("indexer: unknown mode %q", mode)
 	}
-	n, err := x.reconcile(ctx, mode, registry)
+	res, err := x.reconcile(ctx, mode, registry)
 
 	if repairErr := x.checkAndRepairFTSDivergence(ctx); repairErr != nil {
 		x.Log.Error("FTS5 divergence repair failed (non-fatal)", "err", repairErr)
 	}
-	return n, err
+	return res, err
 }
 
 // claim is one .md file the pass read, and the id it ends up indexed under.
@@ -59,10 +66,10 @@ type claim struct {
 // are missing or lost and upsert. Ids are settled before any upsert because
 // Upsert is keyed on id and would silently move a row to whichever copy came
 // last.
-func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Registry) (int, error) {
+func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Registry) (ReconcileResult, error) {
 	existing, err := x.existing(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("reconcile %s: load existing: %w", mode, err)
+		return ReconcileResult{}, fmt.Errorf("reconcile %s: load existing: %w", mode, err)
 	}
 	seen := make(map[string]bool, len(existing))
 	var claims []*claim
@@ -110,7 +117,7 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 		return nil
 	})
 	if walkErr != nil {
-		return 0, fmt.Errorf("reconcile %s: walk: %w", mode, walkErr)
+		return ReconcileResult{}, fmt.Errorf("reconcile %s: walk: %w", mode, walkErr)
 	}
 
 	assignIDs(claims, existing, seen)
@@ -118,7 +125,7 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 		x.afterWalk()
 	}
 
-	upserts := 0
+	var res ReconcileResult
 	for _, c := range claims {
 		if c.id != c.fileID {
 			x.writeID(c)
@@ -126,7 +133,7 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 
 		if cur, ok := existing[c.meta.CanonicalRelPath]; ok && cur.ID != c.id {
 			if err := x.deleteAtPath(ctx, cur.ID, c.meta.CanonicalRelPath); err != nil {
-				return 0, fmt.Errorf("reconcile %s: retire %s at %s: %w", mode, cur.ID, c.meta.CanonicalRelPath, err)
+				return ReconcileResult{}, fmt.Errorf("reconcile %s: retire %s at %s: %w", mode, cur.ID, c.meta.CanonicalRelPath, err)
 			}
 		}
 
@@ -150,11 +157,13 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 					"path", c.meta.CanonicalRelPath, "err", err)
 				continue
 			}
-			return 0, fmt.Errorf("upsert %s: %w", c.meta.CanonicalRelPath, err)
+			return ReconcileResult{}, fmt.Errorf("upsert %s: %w", c.meta.CanonicalRelPath, err)
 		}
-		upserts++
+		res.N++
 
-		x.syncDerivedDataWithTags(ctx, rec.ID, rec.Path, c.content, tags, registry)
+		if delta := x.syncDerivedDataWithTags(ctx, rec.ID, rec.Path, c.content, tags, registry); !delta.Empty() {
+			res.Deltas = append(res.Deltas, notes.RefsDeltaFor{ID: rec.ID, Delta: delta})
+		}
 	}
 
 	// A vanished path whose id now lives at a seen path was moved, not
@@ -168,22 +177,21 @@ func (x *Indexer) reconcile(ctx context.Context, mode Mode, registry *notes.Regi
 			continue
 		}
 		if err := x.deleteAtPath(ctx, row.ID, relPath); err != nil {
-			return 0, fmt.Errorf("reconcile %s: delete %s: %w", mode, relPath, err)
+			return ReconcileResult{}, fmt.Errorf("reconcile %s: delete %s: %w", mode, relPath, err)
 		}
 	}
 
 	if err := x.reconcileBlobs(ctx, mode); err != nil {
-		return 0, fmt.Errorf("reconcile %s: %w", mode, err)
+		return ReconcileResult{}, fmt.Errorf("reconcile %s: %w", mode, err)
 	}
 
 	if mode == ModeFull {
-		return upserts, nil
+		return res, nil
 	}
-	var n int
-	if err := x.Pair.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM notes`).Scan(&n); err != nil {
-		return 0, fmt.Errorf("reconcile incremental: count: %w", err)
+	if err := x.Pair.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM notes`).Scan(&res.N); err != nil {
+		return ReconcileResult{}, fmt.Errorf("reconcile incremental: count: %w", err)
 	}
-	return n, nil
+	return res, nil
 }
 
 // assignIDs settles every claim's id. An id held by an unchanged, still-present
@@ -301,12 +309,14 @@ func unionTags(a, b []string) []string {
 	return out
 }
 
-func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id notes.ID, path string, content []byte, tags []string, registry *notes.Registry) {
+func (x *Indexer) syncDerivedDataWithTags(ctx context.Context, id notes.ID, path string, content []byte, tags []string, registry *notes.Registry) notes.RefsDelta {
 	if err := x.SyncTags(ctx, id, tags); err != nil {
 		x.Log.Warn("reconcile: tag sync failed", "id", id, "err", err)
 	}
 
-	if _, err := x.SyncBacklinks(ctx, id, path, markdown.ExtractRefs(content), registry, content); err != nil {
+	delta, err := x.SyncBacklinks(ctx, id, path, markdown.ExtractRefs(content), registry, content)
+	if err != nil {
 		x.Log.Warn("reconcile: backlink sync failed", "id", id, "err", err)
 	}
+	return delta
 }

@@ -284,6 +284,11 @@ func writeFixtureNotes(notesDir string, files map[string]string) error {
 
 func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service, string, *index.Indexer) {
 	t.Helper()
+	return adminReindexHydrateFixtureWith(t, nil)
+}
+
+func adminReindexHydrateFixtureWith(t *testing.T, bc notes.Broadcaster) (*httptest.Server, *notes.Service, string, *index.Indexer) {
+	t.Helper()
 	r, pair, dir := newRealRunner(t)
 	notesDir := filepath.Join(dir, "notes")
 	if err := os.MkdirAll(notesDir, 0o755); err != nil {
@@ -293,11 +298,12 @@ func adminReindexHydrateFixture(t *testing.T) (*httptest.Server, *notes.Service,
 	idx := index.New(pair, notesDir, logger)
 
 	r.Path2Rebuild = func(ctx context.Context) (int, error) {
-		return idx.Reconcile(ctx, index.ModeFull)
+		res, err := idx.Reconcile(ctx, index.ModeFull)
+		return res.N, err
 	}
 	store := fsstore.NewStore(notesDir)
-	svc := notes.NewService(store, idx, nil, logger)
-	srv := NewServerWithIndex(svc, r, r, idx, nil, logger, "")
+	svc := notes.NewService(store, idx, bc, logger)
+	srv := NewServerWithIndex(svc, r, r, idx, bc, logger, "")
 	si := NewStrictHandler(srv, nil)
 	mux := chi.NewRouter()
 	mux.Route("/api/v1", func(rt chi.Router) {
@@ -398,6 +404,41 @@ func TestPostAdminReindex_HydratesRegistryAfterIncremental(t *testing.T) {
 	}
 	if !sawExternal {
 		t.Fatalf("post-incremental: indexer.List did not include external.md; rows=%v", summaries)
+	}
+}
+
+func TestPostAdminReindex_IncrementalBroadcastsRefsDeltas(t *testing.T) {
+	t.Parallel()
+	bc := &recordingBroadcaster{}
+	ts, _, notesDir, idx := adminReindexHydrateFixtureWith(t, bc)
+	if err := writeFixtureNotes(notesDir, map[string]string{
+		"external.md": "# External\n\n[[ado:workitem/3]]\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, body := mustReindexPost(t, ts, `{"mode":"incremental"}`)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	rec, err := idx.LookupByPath(context.Background(), "external.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	var got []recordedEvent
+	for _, e := range bc.events {
+		if e.eventType == notes.EventRefsChanged {
+			got = append(got, e)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("refs:changed broadcasts = %+v, want 1", got)
+	}
+	payload, _ := got[0].payload.(map[string]any)
+	if payload["source_id"] != rec.ID.String() || got[0].sessionID != "" {
+		t.Errorf("broadcast = %+v, want source %s and no origin session", got[0], rec.ID)
 	}
 }
 

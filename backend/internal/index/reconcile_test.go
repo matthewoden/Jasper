@@ -64,11 +64,11 @@ func TestReconcileFull_PopulatesAllFiles(t *testing.T) {
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
 	writeNote(t, notesDir, "sub/c.md", "# Charlie", mtime)
 
-	n, err := idx.Reconcile(context.Background(), ModeFull)
+	res, err := idx.Reconcile(context.Background(), ModeFull)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 3 {
+	if n := res.N; n != 3 {
 		t.Errorf("upserts: got %d, want 3", n)
 	}
 	got, _ := idx.List(context.Background())
@@ -101,11 +101,11 @@ func TestReconcileIncremental_NewFile(t *testing.T) {
 	}
 
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
-	n, err := idx.Reconcile(context.Background(), ModeIncremental)
+	res, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 2 {
+	if n := res.N; n != 2 {
 		t.Errorf("count: got %d, want 2", n)
 	}
 }
@@ -125,11 +125,11 @@ func TestReconcileIncremental_DeletedFile(t *testing.T) {
 	if err := os.Remove(filepath.Join(notesDir, "a.md")); err != nil {
 		t.Fatal(err)
 	}
-	n, err := idx.Reconcile(context.Background(), ModeIncremental)
+	res, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 0 {
+	if n := res.N; n != 0 {
 		t.Errorf("count after delete: got %d, want 0", n)
 	}
 	got, _ := idx.List(context.Background())

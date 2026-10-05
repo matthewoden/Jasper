@@ -224,7 +224,8 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	}
 
 	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
-		return a.indexer.Reconcile(ctx, index.ModeFull)
+		res, err := a.indexer.Reconcile(ctx, index.ModeFull)
+		return res.N, err
 	}
 
 	status, runErr := a.runner.Run(ctx)
@@ -273,12 +274,14 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		}
 	}
 
+	var reconciled index.ReconcileResult
 	if status.State != migrate.StateUnrecoverable {
-		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
+		res, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("startup incremental reindex failed (non-fatal)", "err", err)
 		} else {
-			a.cfg.Logger.Info("startup incremental reindex done", "notes_indexed", n)
+			reconciled = res
+			a.cfg.Logger.Info("startup incremental reindex done", "notes_indexed", res.N)
 		}
 	}
 
@@ -290,6 +293,9 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	files := fsstore.NewStore(notesDir)
 	// The subgraph's subscription reads the same broadcasts the browser does.
 	events := graphql.NewEvents(hub)
+	for _, d := range reconciled.Deltas {
+		notes.BroadcastRefsChanged(events, d, "")
+	}
 	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
@@ -452,7 +458,8 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		a.runner.Migrations = a.cfg.MigrationsOverride
 	}
 	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
-		return a.indexer.Reconcile(ctx, index.ModeFull)
+		res, err := a.indexer.Reconcile(ctx, index.ModeFull)
+		return res.N, err
 	}
 
 	status, runErr := a.runner.Run(ctx)
@@ -480,12 +487,14 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		}
 	}
 
+	var reconciled index.ReconcileResult
 	if status.State != migrate.StateUnrecoverable {
-		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
+		res, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("switch: incremental reindex failed (non-fatal)", "err", err)
 		} else {
-			a.cfg.Logger.Info("switch: incremental reindex done", "notes_indexed", n)
+			reconciled = res
+			a.cfg.Logger.Info("switch: incremental reindex done", "notes_indexed", res.N)
 		}
 	}
 
@@ -497,6 +506,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	files := fsstore.NewStore(notesDir)
 	// The subgraph's subscription reads the same broadcasts the browser does.
 	events := graphql.NewEvents(hub)
+	for _, d := range reconciled.Deltas {
+		notes.BroadcastRefsChanged(events, d, "")
+	}
 	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {

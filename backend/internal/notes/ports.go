@@ -260,6 +260,15 @@ type RefsDelta struct {
 	Removed []string
 }
 
+// Empty reports whether the sync changed nothing.
+func (d RefsDelta) Empty() bool { return len(d.Added) == 0 && len(d.Removed) == 0 }
+
+// RefsDeltaFor is a RefsDelta and the note it happened to.
+type RefsDeltaFor struct {
+	ID    ID
+	Delta RefsDelta
+}
+
 // RefBacklink is one note that references a target.
 type RefBacklink struct {
 	SourceID    ID

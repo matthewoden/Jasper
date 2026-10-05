@@ -198,12 +198,12 @@ func TestReconcile_ExternalRenameKeepsID(t *testing.T) {
 	if err := os.Rename(filepath.Join(notesDir, "a.md"), filepath.Join(notesDir, "b.md")); err != nil {
 		t.Fatal(err)
 	}
-	n, err := idx.Reconcile(context.Background(), ModeIncremental)
+	res, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	rows := rowsByPath(t, idx)
-	if n != 1 || rows["b.md"].ID != id {
+	if n := res.N; n != 1 || rows["b.md"].ID != id {
 		t.Errorf("n=%d rows=%+v, want b.md under %s", n, rows, id)
 	}
 	if _, ok, _ := idx.GetTombstone(context.Background(), id.String()); ok {
@@ -380,5 +380,24 @@ func TestReconcile_WriteIDKeepsConcurrentSave(t *testing.T) {
 				t.Errorf("indexed title %q, want the saved content's", row.Title)
 			}
 		})
+	}
+}
+
+func TestReconcile_ReportsRefsDeltas(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+	writeNoteRaw(t, notesDir, "plain.md", "# Plain\n", time.Unix(1700000000, 0))
+	writeNoteRaw(t, notesDir, "linker.md", "# Linker\n\n[[ado:workitem/7]]\n", time.Unix(1700000000, 0))
+
+	res, err := idx.Reconcile(context.Background(), ModeFull)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(res.Deltas) != 1 {
+		t.Fatalf("deltas = %+v, want one for linker.md", res.Deltas)
+	}
+	d := res.Deltas[0]
+	if d.ID != fileID(t, notesDir, "linker.md") || len(d.Delta.Added) != 1 || d.Delta.Added[0] != "ado:workitem/7" {
+		t.Errorf("delta = %+v", d)
 	}
 }
