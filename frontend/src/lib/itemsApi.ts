@@ -140,3 +140,16 @@ export function refNamespace(ref: string): string {
   const colon = ref.indexOf(":");
   return colon > 0 ? ref.slice(0, colon) : "";
 }
+
+/** Foreign refs by namespace, namespaces alphabetical, refs in document order. */
+export function groupForeignRefs(refs: NoteRef[] | null | undefined): Array<[string, NoteRef[]]> {
+  const groups = new Map<string, NoteRef[]>();
+  for (const r of refs ?? []) {
+    const ns = refNamespace(r.target_ref);
+    if (ns === "" || ns === "jasper") continue;
+    const list = groups.get(ns) ?? [];
+    list.push(r);
+    groups.set(ns, list);
+  }
+  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+}

@@ -6,8 +6,8 @@ vi.mock("../lib/usePaneStore", () => ({
 }));
 vi.mock("../lib/sanitize", () => ({ sanitizeHtml: (s: string) => s }));
 
-import { LinkedMentionsPanel, groupForeignRefs } from "./LinkedMentionsPanel";
-import type { NoteRef } from "../lib/itemsApi";
+import { LinkedMentionsPanel } from "./LinkedMentionsPanel";
+import { groupForeignRefs, type NoteRef } from "../lib/itemsApi";
 
 const REFS: NoteRef[] = [
   { target_ref: "jasper:note/01ARZ3NDEKTSV4RRFFQ69G5FAV", display: "", embed: false, position: 10 },
