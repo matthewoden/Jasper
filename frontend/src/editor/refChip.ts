@@ -53,6 +53,10 @@ export function blobIdOfRef(raw: string): string | null {
   return p.namespace === "jasper" && p.kind === "blob" ? p.id : null;
 }
 
+// A short blob id is a prefix of its re-keyed long form, so a match only
+// counts when the id ends there.
+const ID_CHAR = /[A-Za-z0-9_-]/;
+
 /**
  * Rewrites every reference to oldRef in the document so it names newRef.
  * The user's one-click fix for a replaced blob: an ordinary edit, saved like
@@ -63,8 +67,11 @@ export function replaceRefInDoc(view: EditorView, oldRef: string, newRef: string
   const changes: { from: number; to: number; insert: string }[] = [];
   let at = text.indexOf(oldRef);
   while (at >= 0) {
-    changes.push({ from: at, to: at + oldRef.length, insert: newRef });
-    at = text.indexOf(oldRef, at + oldRef.length);
+    const end = at + oldRef.length;
+    if (!ID_CHAR.test(text.charAt(end))) {
+      changes.push({ from: at, to: end, insert: newRef });
+    }
+    at = text.indexOf(oldRef, end);
   }
   if (changes.length > 0) view.dispatch({ changes, userEvent: "input" });
 }

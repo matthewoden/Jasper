@@ -28,6 +28,7 @@ import {
   noteIdOfRef,
   chipModel,
   RefChipWidget,
+  replaceRefInDoc,
   __testing__,
 } from "./refChip";
 import { findWikiLinkAt } from "./linkClickHandler";
@@ -212,5 +213,20 @@ describe("ref chips in the editor", () => {
     views.push(view);
     expect(findWikiLinkAt(view, 2)).toMatchObject({ isRef: true, isResolved: true, targetId: NOTE_ID });
     expect(findWikiLinkAt(view, ref.length + 8)).toMatchObject({ isRef: true, isResolved: false, targetId: null });
+  });
+});
+
+describe("replaceRefInDoc", () => {
+  it("leaves a longer ref that shares the old ref as a prefix alone", () => {
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: "[[jasper:blob/sha256-aaaa]] [[jasper:blob/sha256-aaaabbbb]] ![[jasper:blob/sha256-aaaa|shot]]",
+      }),
+    });
+    replaceRefInDoc(view, "jasper:blob/sha256-aaaa", "jasper:blob/sha256-cccc");
+    expect(view.state.doc.toString()).toBe(
+      "[[jasper:blob/sha256-cccc]] [[jasper:blob/sha256-aaaabbbb]] ![[jasper:blob/sha256-cccc|shot]]",
+    );
+    view.destroy();
   });
 });
