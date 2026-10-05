@@ -69,10 +69,10 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 			}
 		}
 	}
-	if want := []string{"bare.md", "scratchpad.md", "sub/lacks.md"}; strings.Join(dry.Written, ",") != strings.Join(want, ",") {
+	if want := []string{".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md"}; strings.Join(dry.Written, ",") != strings.Join(want, ",") {
 		t.Errorf("dry run Written = %v, want %v", dry.Written, want)
 	}
-	if strings.Join(dry.CRLF, ",") != "win.md" || dry.Scanned != 5 || !dry.Changed() {
+	if strings.Join(dry.CRLF, ",") != "win.md" || dry.Scanned != 6 || !dry.Changed() {
 		t.Errorf("dry run report = %+v", dry)
 	}
 
@@ -86,7 +86,7 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 	after := snapshotDir(t, notesDir)
 	for p, c := range before {
 		switch p {
-		case "bare.md", "scratchpad.md", "sub/lacks.md":
+		case ".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md":
 			raw, found := markdown.ReadID([]byte(after[p]))
 			id, perr := notes.ParseID(raw)
 			if !found || perr != nil {
@@ -94,7 +94,7 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 			}
 			// The only change is the one id line.
 			stripped := strings.Replace(after[p], "id: "+id.String()+"\n", "", 1)
-			if p == "bare.md" || p == "scratchpad.md" {
+			if p != "sub/lacks.md" {
 				stripped = strings.TrimPrefix(stripped, "---\n---\n")
 			}
 			if stripped != c {
@@ -187,5 +187,28 @@ func TestInjectNoteIDsMigration_WriteFailureLeavesNoMarker(t *testing.T) {
 	}
 	if hasNoteIDMarker(t, db) {
 		t.Errorf("marker recorded after a failed walk")
+	}
+}
+
+func TestInjectNoteIDs_SkipsAttachments(t *testing.T) {
+	_, notesDir := mkNotesDir(t)
+	writeFile(t, notesDir, "attachments/readme.md", []byte("# Readme\n"))
+	writeFile(t, notesDir, "sub/attachments/x.md", []byte("# X\n"))
+	writeFile(t, notesDir, "note.md", []byte("# Note\n"))
+	before := snapshotDir(t, notesDir)
+
+	log, _ := newLogBuffer(t)
+	report, err := InjectNoteIDs(context.Background(), notesDir, false, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(report.Written, ",") != "note.md" {
+		t.Errorf("Written = %v, want only note.md", report.Written)
+	}
+	after := snapshotDir(t, notesDir)
+	for _, p := range []string{"attachments/readme.md", "sub/attachments/x.md"} {
+		if after[p] != before[p] {
+			t.Errorf("%s was touched: %q", p, after[p])
+		}
 	}
 }

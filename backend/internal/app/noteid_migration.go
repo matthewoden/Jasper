@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -43,28 +43,13 @@ func (r NoteIDReport) Changed() bool { return len(r.Written) > 0 }
 func InjectNoteIDs(ctx context.Context, notesDir string, dryRun bool, log *slog.Logger) (NoteIDReport, error) {
 	report := NoteIDReport{Duplicates: map[string][]string{}}
 	byID := map[string][]string{}
+	notesDir, err := filepath.Abs(notesDir)
+	if err != nil {
+		return report, err
+	}
 
-	walkErr := filepath.WalkDir(notesDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if cerr := ctx.Err(); cerr != nil {
-			return cerr
-		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") && path != notesDir {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") || strings.HasPrefix(d.Name(), ".") {
-			return nil
-		}
-		rel, err := filepath.Rel(notesDir, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
+	walkErr := index.WalkVault(ctx, notesDir, func(fm index.FileMeta) error {
+		rel, path := fm.CanonicalRelPath, fm.AbsPath
 		report.Scanned++
 
 		content, readErr := os.ReadFile(path)
