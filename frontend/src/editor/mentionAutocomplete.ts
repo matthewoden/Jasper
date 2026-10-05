@@ -11,6 +11,7 @@
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
 import { searchItems, type ItemSearchHit } from "../lib/itemsApi";
+import { isImageName } from "./blobEmbedPlugin";
 
 export type { ItemSearchHit };
 
@@ -36,7 +37,7 @@ function isInsideCodeOrFrontmatter(ctx: CompletionContext): boolean {
 
 /** The text to insert for a picked item, given the current setting. */
 export function mentionInsertion(hit: ItemSearchHit, idNoteLinks = _idNoteLinks): string {
-  if (hit.kind === "blob") return `![[${hit.ref}|${hit.title}]]`;
+  if (hit.kind === "blob") return `${isImageName(hit.title) ? "!" : ""}[[${hit.ref}|${hit.title}]]`;
   return idNoteLinks ? `[[${hit.ref}|${hit.title}]]` : `[[${hit.title}]]`;
 }
 

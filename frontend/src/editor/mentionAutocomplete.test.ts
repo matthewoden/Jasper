@@ -35,8 +35,12 @@ describe("mentionInsertion", () => {
     expect(mentionInsertion(noteHit, false)).toBe("[[Roadmap]]");
     expect(mentionInsertion(noteHit, true)).toBe(`[[jasper:note/${NOTE_ID}|Roadmap]]`);
   });
-  it("always embeds a blob by id", () => {
+  it("embeds an image blob by id", () => {
     expect(mentionInsertion(blobHit, false)).toBe("![[jasper:blob/sha256-0123456789abcdef|shot.png]]");
+  });
+  it("links a non-image blob by id without embedding it", () => {
+    const pdf: ItemSearchHit = { ...blobHit, title: "spec.pdf", path: "attachments/spec.pdf" };
+    expect(mentionInsertion(pdf, false)).toBe("[[jasper:blob/sha256-0123456789abcdef|spec.pdf]]");
   });
 });
 
