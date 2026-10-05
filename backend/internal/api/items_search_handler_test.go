@@ -219,3 +219,68 @@ func TestGetNoteRefs(t *testing.T) {
 		t.Errorf("unknown note: %d", resp.StatusCode)
 	}
 }
+
+func indexedBlobID(t *testing.T, srv *Server, rel string) string {
+	t.Helper()
+	idx := srv.index.(*index.Indexer)
+	if _, err := idx.Reconcile(context.Background(), index.ModeIncremental); err != nil {
+		t.Fatal(err)
+	}
+	b, ok, err := idx.BlobAtPath(context.Background(), rel)
+	if err != nil || !ok {
+		t.Fatalf("no blob at %s: %v", rel, err)
+	}
+	return b.ID
+}
+
+func getBlob(t *testing.T, ts *httptest.Server, id string) (int, []byte) {
+	t.Helper()
+	resp, err := http.Get(ts.URL + "/api/v1/blobs/" + id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, body
+}
+
+func TestGetBlob_EditedInPlaceIsNotServedUnderTheOldID(t *testing.T) {
+	srv := newSearchTestServer(t, nil)
+	file := filepath.Join(srv.notesRoot(), "attachments", "shot.png")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("original bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id := indexedBlobID(t, srv, "attachments/shot.png")
+	if err := os.WriteFile(file, []byte("edited bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if status, body := getBlob(t, serveReal(t, srv), id); status != 404 {
+		t.Errorf("old id after an edit: %d %q, want 404", status, body)
+	}
+}
+
+func TestGetBlob_ServesTheFirstPathStillHoldingTheBytes(t *testing.T) {
+	srv := newSearchTestServer(t, nil)
+	attach := filepath.Join(srv.notesRoot(), "attachments")
+	if err := os.MkdirAll(attach, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("shared bytes")
+	for _, name := range []string{"a.png", "b.png"} {
+		if err := os.WriteFile(filepath.Join(attach, name), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := indexedBlobID(t, srv, "attachments/a.png")
+	if err := os.Remove(filepath.Join(attach, "a.png")); err != nil {
+		t.Fatal(err)
+	}
+
+	if status, body := getBlob(t, serveReal(t, srv), id); status != 200 || !bytes.Equal(body, content) {
+		t.Errorf("after the first path went away: %d %q, want the second path's bytes", status, body)
+	}
+}

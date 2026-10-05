@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path"
@@ -79,22 +81,39 @@ func (s *Server) GetBlob(
 		return GetBlob404JSONResponse(newError("not_found", "blob not found")), nil
 	}
 
-	cleanFinal, _, resolveErr := fsstore.ResolveContained(s.notesRoot(), blob.Paths[0])
-	switch {
-	case resolveErr == nil:
-	case os.IsNotExist(resolveErr):
+	data, ok := s.firstMatchingBlobPath(blob)
+	if !ok {
 		return GetBlob404JSONResponse(newError("not_found", "blob not found")), nil
-	default:
-		s.log.Error("GetBlob: resolve", "path", blob.Paths[0], "err", resolveErr)
-		return nil, errors.New("could not read blob")
-	}
-	data, readErr := os.ReadFile(cleanFinal)
-	if readErr != nil {
-		s.log.Error("GetBlob: read", "path", cleanFinal, "err", readErr)
-		return nil, errors.New("could not read blob")
 	}
 	return GetBlob200ApplicationoctetStreamResponse{
 		Body:          bytes.NewReader(data),
 		ContentLength: int64(len(data)),
 	}, nil
+}
+
+// firstMatchingBlobPath reads blob's paths in order and returns the first one
+// whose bytes still hash to the blob's digest. The index lags edits made
+// outside Jasper until the next reconcile, so a path alone proves nothing.
+func (s *Server) firstMatchingBlobPath(blob index.Blob) ([]byte, bool) {
+	for _, p := range blob.Paths {
+		cleanFinal, _, err := fsstore.ResolveContained(s.notesRoot(), p)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				s.log.Warn("GetBlob: resolve", "path", p, "err", err)
+			}
+			continue
+		}
+		data, err := os.ReadFile(cleanFinal)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				s.log.Warn("GetBlob: read", "path", cleanFinal, "err", err)
+			}
+			continue
+		}
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) == blob.SHA256 {
+			return data, true
+		}
+	}
+	return nil, false
 }
