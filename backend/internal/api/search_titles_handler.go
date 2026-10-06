@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const recencyWindowSecs = 90 * 24 * 3600
@@ -52,7 +50,7 @@ func (s *Server) GetNotesSearchTitles(
 		recency := computeRecencyScore(now, r.MtimeUnix)
 		folder := folderOf(r.Path)
 		out = append(out, NoteSearchResult{
-			Id:             openapi_types.UUID(r.ID),
+			Id:             r.ID.String(),
 			Title:          r.Title,
 			Folder:         optString(folder),
 			RecencyScore:   recency,

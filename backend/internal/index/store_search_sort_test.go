@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -13,9 +11,9 @@ import (
 // pairing so SearchFTS sort-order tests can assert exact orderings. body is
 // the FTS-indexed content; pass "" for a note that must NOT match an FTS
 // MATCH query (used by the Pitfall-4 fallback-skip fixture).
-func upsertSortFixtureNote(t *testing.T, idx *Indexer, path, title, body string, updatedAtUnix, birthtimeUnix int64) uuid.UUID {
+func upsertSortFixtureNote(t *testing.T, idx *Indexer, path, title, body string, updatedAtUnix, birthtimeUnix int64) notes.ID {
 	t.Helper()
-	id := uuid.New()
+	id := notes.NewID()
 	rec := notes.NoteRecord{
 		ID:            id,
 		Path:          path,
@@ -47,7 +45,7 @@ func TestSearchFTS_SortModified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchFTS(sort=modified): %v", err)
 	}
-	wantOrder := []uuid.UUID{c, b, a} // updated_at DESC: 3000, 2000, 1000
+	wantOrder := []notes.ID{c, b, a} // updated_at DESC: 3000, 2000, 1000
 	assertHitOrder(t, hits, wantOrder)
 }
 
@@ -69,7 +67,7 @@ func TestSearchFTS_SortCreated(t *testing.T) {
 		t.Fatalf("SearchFTS(sort=created): %v", err)
 	}
 	// COALESCE created DESC: alpha=5000, beta(fallback)=2000, gamma=1000
-	wantOrder := []uuid.UUID{a, b, c}
+	wantOrder := []notes.ID{a, b, c}
 	assertHitOrder(t, hits, wantOrder)
 
 	for _, h := range hits {
@@ -164,7 +162,7 @@ func TestSearchFTS_SortSkipsLikeFallback(t *testing.T) {
 	_ = c
 }
 
-func assertHitOrder(t *testing.T, hits []notes.SearchHit, want []uuid.UUID) {
+func assertHitOrder(t *testing.T, hits []notes.SearchHit, want []notes.ID) {
 	t.Helper()
 	if len(hits) != len(want) {
 		t.Fatalf("assertHitOrder: got %d hits, want %d (%+v)", len(hits), len(want), hits)

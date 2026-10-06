@@ -9,11 +9,13 @@
  * the editor sits flush against the window edge. The reopen affordance
  * therefore lives in the tab strip, not here.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type React from "react";
 
 import { useTreeStore, RAIL_MAX_WIDTH, RAIL_MIN_WIDTH } from "../lib/useTreeStore";
 import { useBacklinks } from "../lib/useBacklinks";
+import { noteRefsResource } from "../lib/itemsApi";
+import { useResource } from "../lib/resources";
 import { RightRailTabRow } from "./RightRailTabRow";
 import { OutlinePanel } from "./OutlinePanel";
 import { LinkedMentionsPanel } from "./LinkedMentionsPanel";
@@ -37,6 +39,11 @@ export function RightRail({ activeNoteId, style }: Props) {
     loading: backlinksLoading,
     error: backlinksError,
   } = useBacklinks(activeNoteId);
+  const refsResource = useMemo(
+    () => (activeNoteId ? noteRefsResource.forKey(activeNoteId) : null),
+    [activeNoteId],
+  );
+  const refsSnapshot = useResource(refsResource);
 
   const draggingRef = useRef(false);
   const railRef = useRef<HTMLElement>(null);
@@ -149,6 +156,7 @@ export function RightRail({ activeNoteId, style }: Props) {
               backlinks={backlinks}
               loading={backlinksLoading}
               error={backlinksError}
+              refs={activeNoteId ? (refsSnapshot.data ?? null) : null}
             />
           </div>
         )}

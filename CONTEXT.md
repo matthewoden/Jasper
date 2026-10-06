@@ -54,9 +54,11 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **`.jasper/logs/jasper.log`** — the diagnostic surface. One per vault, opened on every vault open and closed on teardown, written alongside the console rather than instead of it. Everything that tells a user to check the log means this file, so anything that reports a log location resolves it through `vault.LogsDir`. See [ADR-0031](./docs/adr/0031-per-vault-logging.md).
 
-**Note** — a single `.md` file under the vault's `notes/`. Has a UUID for identity and a relative path for location. The UUID is what UI state references, so bookmarks and tabs survive rename and move.
+**Note** — a single `.md` file under the vault's `notes/`. Has a **ULID** for identity, written as the `id` key of its frontmatter and owned by the server, and a relative path for location. The id is what UI state and references hold, so bookmarks, tabs and `[[jasper:note/<id>]]` references survive rename, move and a rebuild of the index. See the amendment to [ADR-0032](./docs/adr/0032-bookmarks-carry-a-path-recovery-hint.md).
 
-**Registry** — the in-memory UUID ↔ relative-path map, hydrated from the index at boot. The bridge between "what the UI holds" and "what's on disk."
+**Registry** — the in-memory ULID ↔ relative-path map, hydrated from the index at boot. The bridge between "what the UI holds" and "what's on disk."
+
+**Tombstone** — what an item was when its index row went away: last path, last title, when, and for a blob replaced in place, which id took over. Written on every index delete and cleared when the id comes back (a restore from trash), so a reference to a deleted item can render as *deleted* with its last title rather than as unknown. Derived: a rebuild starts with none.
 
 **Index** — the per-vault SQLite database (`.jasper/app.db`). Holds note metadata, FTS5 search, tags, backlinks, and MCP grants. **Derived.** Never referred to as a source of truth, never queried outside the `index` package.
 
@@ -64,7 +66,13 @@ These are not preferences. Code that violates one of them is wrong, regardless o
 
 **Attachment** — a non-markdown file stored in an `attachments/` directory beside the note — **one per parent folder, shared by every note in it**, not one per note (`attachmentsRelDir` = the note's parent + `/attachments`). Collisions auto-rename (`image-1.png`). The sharing is what bites: an attachment directory cannot simply travel with a note that moves out of its folder, because a sibling left behind may reference the same file. The reference is written into the note folder-relative (`![x](attachments/x.png)`) but *served* note-UUID-relative against the note's current path, so the two anchorings disagree the moment a note moves — which is why a moved note's attachments travel with it ([ADR-0034](./docs/adr/0034-attachments-travel-with-the-note.md)). The destination is **percent-encoded**, the alt text is not ([ADR-0035](./docs/adr/0035-attachment-references-are-percent-encoded.md)): an unencoded space is not a legal CommonMark destination, so an unencoded reference renders in Jasper and nowhere else.
 
-**Bookmark** — a pinned reference to a note, held by UUID in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
+**Blob** — an attachment identified by its bytes: `sha256-<first 16 hex>` of the file, extended to the full digest only if two different files ever share a prefix. Identical files at several paths are one blob; editing a file in place makes a new blob and tombstones the old one with `replaced_by` pointing at the new. Reconcile hashes a file only when its (mtime, size) pair changes. Blobs and notes are the two kinds of **item**, and `items` is the view over both.
+
+**Ref** — a reference a note makes, in the universal grammar `ns:kind/id` (`ado:workitem/12345`, `jasper:note/<id>`, `jasper:blob/<id>`; `file:` carries no kind). A title link is a ref too once the index resolves it: `jasper:note/<id>`, or `jasper:title/<title>` while unresolved. A ref cannot be mistaken for a title because titles cannot contain `/`. The `refs` table holds one row per occurrence; backlinks for any target are a lookup on it. See the amendment to [ADR-0010](./docs/adr/0010-title-only-wiki-links.md).
+
+**Subgraph** — Jasper as another system reads it: the GraphQL schema at `api/graphql/schema.graphqls`, served at `/graphql` on the main listener as an Apollo Federation 2.3 subgraph, reads only. `Item` is a value interface; `Note` and `Blob` are the keyed entities. Generated and drift-checked like the OpenAPI contract; see the amendment to [ADR-0006](./docs/adr/0006-openapi-as-the-bilateral-contract.md).
+
+**Bookmark** — a pinned reference to a note, held by note id (with the path as a recovery hint) in `<vault>/.jasper/bookmarks.json` so it survives rename and move. A bookmark whose target no longer resolves in the registry is **silently auto-pruned on read**, and the cleaned document is re-saved — there are deliberately no broken or greyed-out rows. The one exception is a nil registry, where pruning is skipped entirely rather than dropping every row.
 
 **Trash** — `.trash/` inside the vault. Deletes are soft: move to `.trash/`, restore by moving back and refreshing. Excluded from every index surface. See [ADR-0015](./docs/adr/0015-filesystem-native-soft-delete.md).
 

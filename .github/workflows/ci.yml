@@ -116,3 +116,25 @@ jobs:
 
       - name: typecheck
         run: cd frontend && npx tsc -b
+
+  compose-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Cache @apollo/composition
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/jasper-compose-check
+          key: compose-check-${{ runner.os }}-${{ hashFiles('scripts/compose-check.sh') }}
+
+      - name: Subgraph composes with the stubs
+        run: make compose-check

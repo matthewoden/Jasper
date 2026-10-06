@@ -3,9 +3,9 @@ package notes
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
@@ -87,10 +87,10 @@ type Index interface {
 	// preserved — the index is recoverable via Reconcile.
 	Upsert(ctx context.Context, rec NoteRecord) error
 
-	// Delete removes the index row for the given UUID. No-op if the row
+	// Delete removes the index row for the given id. No-op if the row
 	// is already absent (idempotent — file-deletes can race with the
 	// indexer scan).
-	Delete(ctx context.Context, id uuid.UUID) error
+	Delete(ctx context.Context, id ID) error
 
 	// List returns one NoteSummary per indexed note for the file-tree /
 	// notes-list UI. Order is undefined at the port level; the API
@@ -124,12 +124,22 @@ type Index interface {
 
 	// SyncTags replaces all tags for noteID atomically (orphan cleanup).
 	// Passing nil or empty slice removes all tags for the note.
-	SyncTags(ctx context.Context, noteID uuid.UUID, tags []string) error
+	SyncTags(ctx context.Context, noteID ID, tags []string) error
 
-	// SyncBacklinks resolves [[Title]] refs, deduplicates, and rewrites
-	// all backlinks rows for sourceID atomically.
-	SyncBacklinks(ctx context.Context, sourceID uuid.UUID, sourcePath string,
-		refs []markdown.WikiLinkRef, registry *Registry, content []byte) error
+	// SyncBacklinks rewrites every backlinks and refs row for sourceID in one
+	// transaction: title links resolve through the registry and feed both
+	// tables, ref-shaped targets feed refs only. Returns which targets the
+	// note gained and lost.
+	SyncBacklinks(ctx context.Context, sourceID ID, sourcePath string,
+		refs []markdown.Ref, registry *Registry, content []byte) (RefsDelta, error)
+
+	// RefBacklinks returns one row per note referencing targetRef, newest
+	// source first. Returns a non-nil empty slice when there are none.
+	RefBacklinks(ctx context.Context, targetRef string) ([]RefBacklink, error)
+
+	// LookupItem resolves a native id (note or blob, bare or jasper:-prefixed)
+	// to its current state, consulting tombstones for what went away.
+	LookupItem(ctx context.Context, id string) (ItemInfo, error)
 
 	// NotesByTag returns one NoteSummary per note carrying the named tag,
 	// sorted by mtime descending. Returns a non-nil empty slice when no
@@ -137,13 +147,13 @@ type Index interface {
 	NotesByTag(ctx context.Context, name string) ([]NoteSummary, error)
 
 	// RenameTag atomically renames oldName to newName in the SQL store and
-	// returns the UUIDs of all carrier notes. Returns ErrTagNotFound,
+	// returns the ids of all carrier notes. Returns ErrTagNotFound,
 	// ErrTagCollision, ErrInvalidTagName on the respective error conditions.
-	RenameTag(ctx context.Context, oldName, newName string) ([]uuid.UUID, error)
+	RenameTag(ctx context.Context, oldName, newName string) ([]ID, error)
 
 	// DeleteTag atomically removes the tag and its note_tags rows and returns
-	// the UUIDs of the notes that carried it. Returns ErrTagNotFound.
-	DeleteTag(ctx context.Context, name string) ([]uuid.UUID, error)
+	// the ids of the notes that carried it. Returns ErrTagNotFound.
+	DeleteTag(ctx context.Context, name string) ([]ID, error)
 
 	// SourcesByBacklinkTitle returns one NoteSummary per source note that has
 	// a backlinks row where target_title = title. Used by
@@ -154,12 +164,12 @@ type Index interface {
 	// target_title = oldTitle to use newTitle (and optionally newTargetID).
 	// Called by RenameRewriteWikilinks after the FS pass succeeds. Non-fatal
 	// on error — filesystem is truth; next Reconcile heals.
-	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *uuid.UUID) error
+	UpdateBacklinksTargetTitle(ctx context.Context, oldTitle, newTitle string, newTargetID *ID) error
 
 	// GetBacklinks returns the resolved backlinks for targetID sorted by
 	// source note recency (mtime_unix DESC). Pending rows are excluded.
 	// Returns a non-nil empty slice when there are none.
-	GetBacklinks(ctx context.Context, targetID uuid.UUID) ([]BacklinkRow, error)
+	GetBacklinks(ctx context.Context, targetID ID) ([]BacklinkRow, error)
 
 	// SearchTitles returns up to limit notes whose titles contain q
 	// (case-insensitive LIKE match), ordered by mtime DESC. When q is
@@ -184,7 +194,7 @@ type Index interface {
 // mention lines (multiple references on the same line collapse to one
 // excerpt for that line).
 type BacklinkRow struct {
-	SourceID    uuid.UUID
+	SourceID    ID
 	SourceTitle string
 	SourcePath  string
 	Excerpts    []string // server-built HTML snippets, one per mention line
@@ -193,7 +203,7 @@ type BacklinkRow struct {
 // SearchResult is the projection returned by Index.SearchTitles.
 // Used by GetNotesSearchTitles for wiki-link autocomplete.
 type SearchResult struct {
-	ID        uuid.UUID
+	ID        ID
 	Title     string
 	Path      string
 	MtimeUnix int64
@@ -216,7 +226,7 @@ type TagWithCount struct {
 // BodyFTS/TagNamesFTS are "" for callers without content; reconcile repopulates.
 // Checksum is always "".
 type NoteRecord struct {
-	ID            uuid.UUID
+	ID            ID
 	Path          string // canonical relpath (NFC + lowercase) under notes/
 	Title         string // first-H1 or filename-without-.md
 	MTimeUnix     int64
@@ -238,9 +248,128 @@ type NoteRecord struct {
 // the API handler translates NoteSummary -> api.Note, keeping internal-only
 // fields (Checksum, UpdatedAtUnix) off the wire.
 type NoteSummary struct {
-	ID        uuid.UUID
+	ID        ID
 	Path      string
 	Title     string
 	UpdatedAt time.Time
 	CreatedAt time.Time
 }
+
+// RefsDelta is what a links sync changed in a note's set of targets, as
+// universal refs, sorted.
+type RefsDelta struct {
+	Added   []string
+	Removed []string
+}
+
+// Empty reports whether the sync changed nothing.
+func (d RefsDelta) Empty() bool { return len(d.Added) == 0 && len(d.Removed) == 0 }
+
+// RefsDeltaFor is a RefsDelta and the note it happened to.
+type RefsDeltaFor struct {
+	ID    ID
+	Delta RefsDelta
+}
+
+// RefBacklink is one note that references a target.
+type RefBacklink struct {
+	SourceID    ID
+	SourceTitle string
+	SourcePath  string
+	Display     string
+	Embed       bool
+}
+
+// ItemKind is what an item is, spelled as the items API and GraphQL spell it.
+type ItemKind string
+
+// ItemStatus is whether an item exists, spelled as the items API and GraphQL
+// spell it.
+type ItemStatus string
+
+// Item kinds and statuses.
+const (
+	ItemKindNote    ItemKind = "note"
+	ItemKindBlob    ItemKind = "blob"
+	ItemKindForeign ItemKind = "foreign"
+
+	ItemStatusOK      ItemStatus = "OK"
+	ItemStatusUnknown ItemStatus = "UNKNOWN"
+	ItemStatusDeleted ItemStatus = "DELETED"
+)
+
+// ItemInfo is what an id points at right now. A deleted item carries its
+// last title and path from the tombstone.
+type ItemInfo struct {
+	ID         string
+	Kind       ItemKind
+	Status     ItemStatus
+	Title      string
+	Path       string
+	UpdatedAt  time.Time
+	Excerpt    string
+	ReplacedBy string
+}
+
+// The native reference namespace and its kinds, and the prefix every blob id
+// carries.
+const (
+	RefNamespace = "jasper"
+	RefKindNote  = "note"
+	RefKindBlob  = "blob"
+	RefKindTitle = "title"
+	BlobIDPrefix = "sha256-"
+)
+
+// ErrNotARef reports a string that is neither a reference nor a bare note or
+// blob id.
+var ErrNotARef = errors.New("not a reference")
+
+// ItemRef is a parsed reference, ns:kind/id. A file: ref has no kind.
+type ItemRef struct {
+	Namespace string
+	Kind      string
+	ID        string
+}
+
+func (r ItemRef) String() string {
+	if r.Kind == "" {
+		return r.Namespace + ":" + r.ID
+	}
+	return r.Namespace + ":" + r.Kind + "/" + r.ID
+}
+
+// Native reports whether the ref names something in this vault.
+func (r ItemRef) Native() bool { return r.Namespace == RefNamespace }
+
+// ParseItemRef parses a reference, or a bare note or blob id into its jasper:
+// form. It checks grammar only: a well-formed ref may name nothing.
+func ParseItemRef(s string) (ItemRef, error) {
+	s = strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(s, BlobIDPrefix):
+		return ItemRef{Namespace: RefNamespace, Kind: RefKindBlob, ID: s}, nil
+	case !strings.Contains(s, ":"):
+		id, err := ParseID(s)
+		if err != nil {
+			return ItemRef{}, fmt.Errorf("%q: %w", s, ErrNotARef)
+		}
+		return ItemRef{Namespace: RefNamespace, Kind: RefKindNote, ID: id.String()}, nil
+	case !markdown.IsRefTarget(s):
+		return ItemRef{}, fmt.Errorf("%q: %w", s, ErrNotARef)
+	}
+	ns, rest, _ := strings.Cut(s, ":")
+	if kind, id, ok := strings.Cut(rest, "/"); ok && ns != "file" {
+		return ItemRef{Namespace: ns, Kind: kind, ID: id}, nil
+	}
+	return ItemRef{Namespace: ns, ID: rest}, nil
+}
+
+// RefForNote is the universal ref of a note id.
+func RefForNote(id ID) string { return ItemRef{RefNamespace, RefKindNote, id.String()}.String() }
+
+// RefForTitle is the universal ref of a title link that does not resolve.
+func RefForTitle(title string) string { return ItemRef{RefNamespace, RefKindTitle, title}.String() }
+
+// RefForBlob is the universal ref of a blob id.
+func RefForBlob(id string) string { return ItemRef{RefNamespace, RefKindBlob, id}.String() }

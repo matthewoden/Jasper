@@ -33,7 +33,7 @@ func setupSetupTestServer(t *testing.T) (*httptest.Server, string) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r), dataDir
 }
@@ -356,7 +356,7 @@ func TestPostSetup_MissingMigrationsFS_500(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()

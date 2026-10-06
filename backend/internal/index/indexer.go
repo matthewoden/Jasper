@@ -6,9 +6,8 @@ package index
 
 import (
 	"log/slog"
+	"sync"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -42,6 +41,11 @@ type Indexer struct {
 	Log      *slog.Logger
 
 	nowUnix func() int64
+	// reconcileMu runs passes one at a time: each settles ids against a
+	// snapshot of the index, which a concurrent pass would make stale.
+	reconcileMu sync.Mutex
+	// afterWalk runs between reconcile's read pass and its id writes; tests only.
+	afterWalk func()
 }
 
 // New constructs an Indexer. Pass the *sqlite.Pair returned by
@@ -62,12 +66,12 @@ func New(pair *sqlite.Pair, notesDir string, log *slog.Logger) *Indexer {
 
 var _ notes.Index = (*Indexer)(nil)
 
-func chooseID(existingID uuid.UUID, relPath string) uuid.UUID {
-	if existingID != uuid.Nil {
+func chooseID(existingID notes.ID, relPath string) notes.ID {
+	if existingID != notes.ID("") {
 		return existingID
 	}
 	if relPath == notes.ScratchpadRelPath {
-		return notes.ScratchpadUUID
+		return notes.ScratchpadID
 	}
-	return uuid.New()
+	return notes.NewID()
 }

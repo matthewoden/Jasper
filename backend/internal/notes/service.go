@@ -16,8 +16,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
@@ -66,7 +64,7 @@ type nopBroadcaster struct{}
 
 func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 
-// Registry returns the in-memory UUID → relPath registry. Exposed only
+// Registry returns the in-memory id → relPath registry. Exposed only
 // for the composition root: lifecycle.Run calls svc.Registry().Hydrate(summaries)
 // after the startup incremental reindex completes, so every indexed note has
 // a registry entry before the HTTP listener accepts connections.
@@ -76,13 +74,13 @@ func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 // registry internally.
 func (s *Service) Registry() *Registry { return s.registry }
 
-// Get returns the Note for the given UUID, or ErrNotFound if the UUID is
+// Get returns the Note for the given id, or ErrNotFound if the id is
 // not in the registry or the underlying file is missing on disk.
 //
 // File-not-found is mapped to ErrNotFound rather than surfaced raw because
 // the API layer treats both as a 404 — and the registry "knowing" about a
-// UUID does not guarantee the file was seeded yet.
-func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
+// id does not guarantee the file was seeded yet.
+func (s *Service) Get(_ context.Context, id ID) (Note, error) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return Note{}, fmt.Errorf("notes.Get(%s): %w", id, ErrNotFound)
@@ -113,7 +111,7 @@ func (s *Service) Get(_ context.Context, id uuid.UUID) (Note, error) {
 // the source of truth and Reconcile heals, so a transient SQLite error must not
 // surface as a 500 over content already safely on disk. ErrCaseCollision is
 // returned — the API maps it to 409.
-func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMatch string) (Note, error) {
+func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch string) (Note, error) {
 	// Held across compare AND write: releasing between them would let a second
 	// writer holding the same comparator slip in and lose one of the writes.
 	defer s.writeLocks.lock(id)()
@@ -138,6 +136,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 
 	if content != "" && !markdown.HasFrontmatter([]byte(content)) {
 		content = "---\ntags: []\n---\n\n" + content
+	}
+	// The id belongs to the server: whatever the client did to the line, the
+	// note keeps the id it is known by. The rewrite comes back in the response
+	// like a tag rewrite does.
+	if withID, err := markdown.WithID([]byte(content), id.String()); err != nil {
+		s.log.Warn("notes.Update: id not written into content", "id", id.String(), "err", err)
+	} else {
+		content = string(withID)
 	}
 
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
@@ -206,8 +212,8 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 
 	s.registry.AddRecord(id, relPath, strings.ToLower(freshTitle))
 
-	refs := markdown.ExtractWikilinks([]byte(content))
-	if err := s.index.SyncBacklinks(ctx, id, relPath, refs, s.registry, []byte(content)); err != nil {
+	delta, err := s.index.SyncBacklinks(ctx, id, relPath, markdown.ExtractRefs([]byte(content)), s.registry, []byte(content))
+	if err != nil {
 		s.log.Error("notes.Update: backlinks sync failed (file safe; index heals on reconcile)",
 			"id", id.String(), "err", err)
 	}
@@ -222,6 +228,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, content string, ifMa
 		s.broadcaster.Broadcast(EventTagsUpdated, map[string]any{
 			"note_id": id.String(),
 		}, SessionIDFromContext(ctx))
+		BroadcastRefsChanged(s.broadcaster, RefsDeltaFor{ID: id, Delta: delta}, SessionIDFromContext(ctx))
 	}
 
 	return Note{
@@ -248,7 +255,25 @@ func (s *Service) Create(ctx context.Context, parentPath, title string) (NoteSum
 // displayTitle is sanitized at the call site to strip newlines + control
 // chars + collapse whitespace.
 func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title, body, displayTitle string) (NoteSummary, error) {
-	return s.createInternal(ctx, parentPath, title, body, displayTitle)
+	return s.createInternal(ctx, parentPath, title, body, displayTitle, "")
+}
+
+// CreateWithID is CreateWithBodyAndTitle with a caller-chosen id, for a
+// client that already refers to the note elsewhere. The id must never have
+// been used: reusing a deleted note's id would silently repoint its refs.
+func (s *Service) CreateWithID(ctx context.Context, parentPath, title, body, displayTitle string, id ID) (NoteSummary, error) {
+	defer s.writeLocks.lock(id)()
+	if _, taken := s.registry.Lookup(id); taken {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", id, ErrIDTaken)
+	}
+	info, err := s.index.LookupItem(ctx, id.String())
+	if err != nil {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): lookup: %w", id, err)
+	}
+	if info.Status == ItemStatusDeleted {
+		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", id, ErrIDTaken)
+	}
+	return s.createInternal(ctx, parentPath, title, body, displayTitle, id)
 }
 
 // CreateWithBody composes scaffold + body IN MEMORY and writes once, so there is
@@ -256,14 +281,17 @@ func (s *Service) CreateWithBodyAndTitle(ctx context.Context, parentPath, title,
 //
 // The body is appended VERBATIM — no server-side massaging beyond the scaffold.
 func (s *Service) CreateWithBody(ctx context.Context, parentPath, title, body string) (NoteSummary, error) {
-	return s.createInternal(ctx, parentPath, title, body, "")
+	return s.createInternal(ctx, parentPath, title, body, "", "")
 }
 
-func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string) (NoteSummary, error) {
+func (s *Service) createInternal(ctx context.Context, parentPath, title, body, displayTitleOverride string, id ID) (NoteSummary, error) {
 	if err := validateNoteTitle(title); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create: %w", err)
 	}
 	relPath := buildNotePath(parentPath, title)
+	if id == "" {
+		id = NewID()
+	}
 
 	if err := s.files.CreateFile(relPath); err != nil {
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): %w", relPath, err)
@@ -274,14 +302,11 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		displayTitle = displayTitleOverride
 	}
 	scaffold := markdown.NewNoteContent(displayTitle)
-	var scaffoldContent []byte
-	if body == "" {
-		scaffoldContent = scaffold
-	} else {
-		scaffoldContent = make([]byte, 0, len(scaffold)+len(body))
-		scaffoldContent = append(scaffoldContent, scaffold...)
-		scaffoldContent = append(scaffoldContent, body...)
-	}
+	scaffoldContent := make([]byte, 0, len(scaffold)+len(body))
+	scaffoldContent = append(scaffoldContent, scaffold...)
+	scaffoldContent = append(scaffoldContent, body...)
+	// The scaffold is LF, so the only refusal WithID knows cannot happen here.
+	scaffoldContent, _ = markdown.WithID(scaffoldContent, id.String())
 	canonPath := canonicalRelPath(relPath)
 	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
@@ -291,7 +316,6 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		return NoteSummary{}, fmt.Errorf("notes.Create(%s): scaffold write: %w", relPath, err)
 	}
 
-	id := uuid.New()
 	now := time.Now().UTC()
 
 	scaffoldTags := markdown.ExtractTags(scaffoldContent)
@@ -336,6 +360,11 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		s.log.Error("notes.Create: tags sync failed (file safe; index heals on reconcile)",
 			"path", canonPath, "err", err)
 	}
+	delta, err := s.index.SyncBacklinks(ctx, id, canonPath, markdown.ExtractRefs(scaffoldContent), s.registry, scaffoldContent)
+	if err != nil {
+		s.log.Error("notes.Create: backlinks sync failed (file safe; index heals on reconcile)",
+			"path", canonPath, "err", err)
+	}
 
 	s.broadcaster.Broadcast(EventNoteCreated, map[string]any{
 		"id":         id.String(),
@@ -343,6 +372,7 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 		"title":      rec.Title,
 		"updated_at": now.UTC().Format(time.RFC3339Nano),
 	}, SessionIDFromContext(ctx))
+	BroadcastRefsChanged(s.broadcaster, RefsDeltaFor{ID: id, Delta: delta}, SessionIDFromContext(ctx))
 
 	return NoteSummary{
 		ID:        id,
@@ -360,7 +390,7 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 // On FS-delete failure AFTER successful index delete, the index row is
 // re-Upserted (best-effort) so the row reappears and the user can retry.
 // The reconciler heals if the re-Upsert itself fails.
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, id ID) error {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return fmt.Errorf("notes.Delete(%s): %w", id, ErrNotFound)
@@ -396,7 +426,7 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 // The title is re-extracted with the same scanner the indexer uses, so the row
 // reflects the current first-H1. A post-rename read failure is non-fatal —
 // filename fallback, and the reconciler heals.
-func (s *Service) Move(ctx context.Context, id uuid.UUID, newPath string) (NoteSummary, error) {
+func (s *Service) Move(ctx context.Context, id ID, newPath string) (NoteSummary, error) {
 	// Serialized against Update: a save that resolved the old relPath before the
 	// rename would otherwise write to a path this call has already moved away.
 	defer s.writeLocks.lock(id)()
@@ -665,7 +695,7 @@ func deriveTitleFromFilename(title string) string {
 
 // LookupTitle is the public form of lookupTitle for use by API handlers.
 // Returns "" when the id is unknown so the caller can short-circuit.
-func (s *Service) LookupTitle(id uuid.UUID) string {
+func (s *Service) LookupTitle(id ID) string {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return ""
@@ -677,7 +707,7 @@ func (s *Service) LookupTitle(id uuid.UUID) string {
 // registry (for use by the PostNoteMove handler to capture the pre-move
 // state and post-rollback state without a DB round-trip).
 // Returns a zero NoteSummary and false if the id is not in the registry.
-func (s *Service) LookupSummary(id uuid.UUID) (NoteSummary, bool) {
+func (s *Service) LookupSummary(id ID) (NoteSummary, bool) {
 	relPath, ok := s.registry.Lookup(id)
 	if !ok {
 		return NoteSummary{}, false
@@ -693,7 +723,7 @@ var validTagRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 func isValidTagName(s string) bool { return validTagRE.MatchString(s) }
 
-func uuidsToStrings(ids []uuid.UUID) []string {
+func idsToStrings(ids []ID) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {
 		out[i] = id.String()
@@ -701,19 +731,19 @@ func uuidsToStrings(ids []uuid.UUID) []string {
 	return out
 }
 
-// dedupeAndLockForRewrite returns targets deduplicated and in UUID order, with
+// dedupeAndLockForRewrite returns targets deduplicated and in id order, with
 // every one of their write locks held, plus the release.
 //
 // The three bulk passes below are read-all-then-write-all, so an Update landing
 // between a note's read and its write is silently reverted by a body that
 // predates it. Two details are load-bearing: the index emits one row per match,
-// so a note can appear twice and re-locking a UUID this goroutine already holds
+// so a note can appear twice and re-locking an id this goroutine already holds
 // would deadlock; and this is the only place holding more than one note lock at
 // once, so a shared acquisition order is what keeps two concurrent passes over
 // overlapping sets from waiting on each other.
 func (s *Service) dedupeAndLockForRewrite(targets []NoteSummary) ([]NoteSummary, func()) {
 	ordered := make([]NoteSummary, 0, len(targets))
-	seen := make(map[uuid.UUID]struct{}, len(targets))
+	seen := make(map[ID]struct{}, len(targets))
 	for _, t := range targets {
 		if _, dup := seen[t.ID]; dup {
 			continue
@@ -740,7 +770,7 @@ func (s *Service) dedupeAndLockForRewrite(targets []NoteSummary) ([]NoteSummary,
 // first, SQL pass second (non-fatal), broadcast third.
 //
 // If any write fails, every already-written file is restored best-effort.
-func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName string) ([]uuid.UUID, error) {
+func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName string) ([]ID, error) {
 	if !isValidTagName(newName) {
 		return nil, fmt.Errorf("notes.RenameTagAcrossVault: %w", ErrInvalidTagName)
 	}
@@ -793,7 +823,7 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 			"old", oldName, "new", newName, "err", sqlErr)
 	}
 
-	touchedIDs := make([]uuid.UUID, len(carriers))
+	touchedIDs := make([]ID, len(carriers))
 	for i, c := range carriers {
 		touchedIDs[i] = c.ID
 	}
@@ -804,7 +834,7 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
 		"old_name":         oldName,
 		"new_name":         newName,
-		"touched_note_ids": uuidsToStrings(touchedIDs),
+		"touched_note_ids": idsToStrings(touchedIDs),
 	}, SessionIDFromContext(ctx))
 
 	return touchedIDs, nil
@@ -814,7 +844,7 @@ func (s *Service) RenameTagAcrossVault(ctx context.Context, oldName, newName str
 // Structurally identical to RenameTagAcrossVault except the tag is deleted
 // (rewriteTagsArray with newName="") and index.DeleteTag is called.
 // The broadcast payload uses new_name=nil.
-func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid.UUID, error) {
+func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]ID, error) {
 	carriers, err := s.index.NotesByTag(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("notes.DeleteTagAcrossVault: NotesByTag: %w", err)
@@ -860,7 +890,7 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 			"name", name, "err", sqlErr)
 	}
 
-	touchedIDs := make([]uuid.UUID, len(carriers))
+	touchedIDs := make([]ID, len(carriers))
 	for i, c := range carriers {
 		touchedIDs[i] = c.ID
 	}
@@ -871,7 +901,7 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 	s.broadcaster.Broadcast(EventTagsRewritten, map[string]any{
 		"old_name":         name,
 		"new_name":         nil,
-		"touched_note_ids": uuidsToStrings(touchedIDs),
+		"touched_note_ids": idsToStrings(touchedIDs),
 	}, SessionIDFromContext(ctx))
 
 	return touchedIDs, nil
@@ -882,20 +912,20 @@ func (s *Service) DeleteTagAcrossVault(ctx context.Context, name string) ([]uuid
 //
 // FS pass first, SQL second (non-fatal), broadcast third; every already-written
 // file is restored if a write fails.
-func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]uuid.UUID, error) {
+func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle string) ([]ID, error) {
 	referrers, err := s.index.SourcesByBacklinkTitle(ctx, oldTitle)
 	if err != nil {
 		return nil, fmt.Errorf("notes.RenameRewriteWikilinks: SourcesByBacklinkTitle: %w", err)
 	}
 	if len(referrers) == 0 {
-		return []uuid.UUID{}, nil
+		return []ID{}, nil
 	}
 
 	referrers, release := s.dedupeAndLockForRewrite(referrers)
 	defer release()
 
 	type fileState struct {
-		id      uuid.UUID
+		id      ID
 		path    string
 		before  []byte
 		rewrite []byte
@@ -911,7 +941,7 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 	}
 
 	if os.Getenv("JASPER_TEST_FAIL_REWRITE") == "1" {
-		return []uuid.UUID{}, fmt.Errorf("JASPER_TEST_FAIL_REWRITE: simulated rewrite failure")
+		return []ID{}, fmt.Errorf("JASPER_TEST_FAIL_REWRITE: simulated rewrite failure")
 	}
 
 	written := make([]int, 0, len(states))
@@ -933,7 +963,7 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 			"old", oldTitle, "new", newTitle, "err", sqlErr)
 	}
 
-	touchedIDs := make([]uuid.UUID, len(states))
+	touchedIDs := make([]ID, len(states))
 	for i, st := range states {
 		touchedIDs[i] = st.id
 	}
@@ -944,7 +974,7 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 	s.broadcaster.Broadcast(EventLinksRewritten, map[string]any{
 		"old_title":        oldTitle,
 		"new_title":        newTitle,
-		"touched_note_ids": uuidsToStrings(touchedIDs),
+		"touched_note_ids": idsToStrings(touchedIDs),
 	}, SessionIDFromContext(ctx))
 
 	return touchedIDs, nil
@@ -953,7 +983,7 @@ func (s *Service) RenameRewriteWikilinks(ctx context.Context, oldTitle, newTitle
 type nopIndex struct{}
 
 func (nopIndex) Upsert(_ context.Context, _ NoteRecord) error  { return nil }
-func (nopIndex) Delete(_ context.Context, _ uuid.UUID) error   { return nil }
+func (nopIndex) Delete(_ context.Context, _ ID) error          { return nil }
 func (nopIndex) List(_ context.Context) ([]NoteSummary, error) { return nil, nil }
 
 // nopIndex no-ops for path-mutation methods. A misconfigured caller gets a
@@ -966,31 +996,39 @@ func (nopIndex) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { r
 
 // nopIndex no-ops for tag + backlink sync. These are the fallbacks used
 // by nil-index callers (tests that don't wire a real indexer).
-func (nopIndex) ListTags(_ context.Context) ([]TagWithCount, error)        { return []TagWithCount{}, nil }
-func (nopIndex) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
+func (nopIndex) ListTags(_ context.Context) ([]TagWithCount, error) { return []TagWithCount{}, nil }
+func (nopIndex) SyncTags(_ context.Context, _ ID, _ []string) error { return nil }
 
-func (nopIndex) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
-	_ []markdown.WikiLinkRef, _ *Registry, _ []byte,
-) error {
-	return nil
+func (nopIndex) SyncBacklinks(_ context.Context, _ ID, _ string,
+	_ []markdown.Ref, _ *Registry, _ []byte,
+) (RefsDelta, error) {
+	return RefsDelta{}, nil
+}
+
+func (nopIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, error) {
+	return []RefBacklink{}, nil
+}
+
+func (nopIndex) LookupItem(_ context.Context, id string) (ItemInfo, error) {
+	return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: id}, nil
 }
 
 // nopIndex no-ops for cross-vault rewrite methods.
 func (nopIndex) NotesByTag(_ context.Context, _ string) ([]NoteSummary, error) {
 	return []NoteSummary{}, nil
 }
-func (nopIndex) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) { return nil, nil }
-func (nopIndex) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error)    { return nil, nil }
+func (nopIndex) RenameTag(_ context.Context, _, _ string) ([]ID, error) { return nil, nil }
+func (nopIndex) DeleteTag(_ context.Context, _ string) ([]ID, error)    { return nil, nil }
 func (nopIndex) SourcesByBacklinkTitle(_ context.Context, _ string) ([]NoteSummary, error) {
 	return []NoteSummary{}, nil
 }
 
-func (nopIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (nopIndex) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *ID) error {
 	return nil
 }
 
 // nopIndex no-ops for GetBacklinks + SearchTitles.
-func (nopIndex) GetBacklinks(_ context.Context, _ uuid.UUID) ([]BacklinkRow, error) {
+func (nopIndex) GetBacklinks(_ context.Context, _ ID) ([]BacklinkRow, error) {
 	return []BacklinkRow{}, nil
 }
 
@@ -1014,4 +1052,43 @@ func unionTags(a, b []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// nonNil keeps an empty list on the wire as [] rather than null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// ResolveTitle answers which note a title link lands on, with the same
+// same-folder-then-alphabetical rule the index applies. Pass "" for
+// sourceFolder when there is no source.
+func (s *Service) ResolveTitle(title, sourceFolder string) (ID, bool) {
+	candidates := s.registry.FindByTitle(strings.ToLower(title), sourceFolder)
+	if len(candidates) == 0 {
+		return "", false
+	}
+	return candidates[0].ID, true
+}
+
+// LookupItem resolves any ref to what it points at. A title ref goes
+// through the registry; a native id through the index, tombstones included;
+// any other well-formed ref is foreign and comes back as a raw stub.
+func (s *Service) LookupItem(ctx context.Context, id string) (ItemInfo, error) {
+	ref, err := ParseItemRef(id)
+	switch {
+	case err == nil && ref.Native() && ref.Kind == RefKindTitle:
+		if noteID, ok := s.ResolveTitle(ref.ID, ""); ok {
+			info, err := s.index.LookupItem(ctx, noteID.String())
+			info.ID = id
+			return info, err
+		}
+		return ItemInfo{ID: id, Kind: ItemKindNote, Status: ItemStatusUnknown, Title: ref.ID}, nil
+	case err == nil && !ref.Native():
+		return ItemInfo{ID: id, Kind: ItemKindForeign, Status: ItemStatusUnknown, Title: id}, nil
+	default:
+		return s.index.LookupItem(ctx, id)
+	}
 }

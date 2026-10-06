@@ -1,0 +1,40 @@
+# Stand-in for an Azure DevOps subgraph: its own entity keyed by id,
+# implementing the shared value interface. Used only by compose-check.
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@shareable"])
+
+scalar DateTime
+
+enum ItemStatus {
+  OK
+  UNKNOWN
+  DELETED
+}
+
+enum ItemKind {
+  NOTE
+  BLOB
+  FOREIGN
+}
+
+interface Item {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+}
+
+type WorkItem implements Item @key(fields: "id") {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+  state: String!
+  assignedTo: String
+}
+
+type Query {
+  workItem(id: ID!): WorkItem
+}

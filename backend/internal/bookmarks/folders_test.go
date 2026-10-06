@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 func TestService_RenameFolder_PersistsAndBroadcasts(t *testing.T) {
@@ -42,8 +43,8 @@ func TestService_RenameFolder_PersistsAndBroadcasts(t *testing.T) {
 
 func TestService_RenameFolder_KeepsBookmarkMembership(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/a.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/a.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 
@@ -76,8 +77,8 @@ func TestService_RenameFolder_KeepsBookmarkMembership(t *testing.T) {
 // was already there.
 func TestService_DeleteFolder_ReparentsBookmarksToTopLevel(t *testing.T) {
 	dir := t.TempDir()
-	topID, aID, bID := uuid.New(), uuid.New(), uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{
+	topID, aID, bID := notes.NewID(), notes.NewID(), notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{
 		topID: "notes/top.md",
 		aID:   "notes/a.md",
 		bID:   "notes/b.md",
@@ -92,7 +93,7 @@ func TestService_DeleteFolder_ReparentsBookmarksToTopLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFolder() error = %v", err)
 	}
-	for _, id := range []uuid.UUID{aID, bID} {
+	for _, id := range []notes.ID{aID, bID} {
 		if _, err := svc.Add(context.Background(), id, &folder.ID); err != nil {
 			t.Fatalf("Add() error = %v", err)
 		}
@@ -145,8 +146,8 @@ func TestService_DeleteFolder_UnknownID_ReturnsErrFolderNotFound(t *testing.T) {
 
 func TestService_DeleteFolder_LeavesOtherFoldersIntact(t *testing.T) {
 	dir := t.TempDir()
-	keptNoteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{keptNoteID: "notes/kept.md"})
+	keptNoteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{keptNoteID: "notes/kept.md"})
 	bc := &fakeBroadcaster{}
 	svc := newTestService(t, dir, registry, bc)
 

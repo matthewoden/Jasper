@@ -82,6 +82,26 @@ export function EditorSection({ config, saveConfig, onSaveError }: SectionProps)
           </span>
         )}
       </ControlRow>
+      <ControlRow label="Link notes by id" htmlFor="settings-id-note-links">
+        <input
+          id="settings-id-note-links"
+          type="checkbox"
+          aria-label="Link notes by id"
+          aria-describedby="settings-id-note-links-helper"
+          checked={config.editor.idNoteLinks ?? false}
+          onChange={(e) => {
+            void saveConfig({ editor: { idNoteLinks: e.target.checked } }).then(({ error }) => {
+              onSaveError(error ? error.message : null);
+            });
+          }}
+        />
+        <span
+          id="settings-id-note-links-helper"
+          style={{ fontSize: 12, color: "var(--color-muted)", display: "block", marginTop: 4 }}
+        >
+          The @ picker inserts [[jasper:note/…|Title]] instead of [[Title]], so the link survives a rename without a rewrite.
+        </span>
+      </ControlRow>
     </section>
   );
 }

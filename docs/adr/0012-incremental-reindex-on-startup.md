@@ -1,6 +1,6 @@
 # ADR-0012 — Incremental re-index on every startup
 
-**Status:** Accepted
+**Status:** Accepted. **Amended 2026-10-04:** a restored note keeps its id.
 
 ## Context
 
@@ -30,5 +30,6 @@ Worth knowing when diagnosing "my external edit didn't show up": the current ans
 
 - Startup cost scales with vault size. The 5-second budget for 5,000 notes is the stated NFR; a regression past it is a real defect, not a tuning matter.
 - Reconcile runs in a background goroutine and does not block the HTTP listener.
-- A note restored by moving a file back into `notes/` is re-adopted with a **fresh UUID**. Anything holding the old UUID — a bookmark, a persisted tab — will not resolve. This is the accepted trade for filesystem-native restore ([ADR-0015](./0015-filesystem-native-soft-delete.md)).
+- A note restored by moving a file back into `notes/` **keeps the id its frontmatter carries**, and its tombstone is cleared, so a bookmark or persisted tab holding that id resolves again. (Amended 2026-10-04; until then identity lived only in the index and a restore minted a fresh UUID — see the amendment to [ADR-0032](./0032-bookmarks-carry-a-path-recovery-hint.md).) A rename made outside the app is likewise recognised as a move, not a delete and a create.
+- Reconcile is no longer read-only on `notes/`: a note without a valid id line is given one, and nothing else in the file changes. Ids are settled across the whole pass before any row is written, so two files claiming one id never race each other into the index.
 - The full rebuild path drops and recreates tables. That drop list is **derived from the embedded migrations** rather than hardcoded — a hardcoded list silently went stale when a migration added a table, and the rebuild then failed as unrecoverable. Adding migration N+1 must not be able to reintroduce that.

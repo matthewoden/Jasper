@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -21,7 +20,26 @@ func newReconcileFixture(t *testing.T) (*Indexer, string) {
 	return idx, notesDir
 }
 
+// writeNote writes a note as a migrated vault holds it, with an id line, so a
+// reconcile over it has nothing to write back. writeNoteRaw leaves content as
+// given.
 func writeNote(t *testing.T, notesDir, rel, content string, mtime time.Time) {
+	t.Helper()
+	if _, found := markdown.ReadID([]byte(content)); !found {
+		id := notes.NewID()
+		if rel == notes.ScratchpadRelPath {
+			id = notes.ScratchpadID
+		}
+		withID, err := markdown.WithID([]byte(content), id.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		content = string(withID)
+	}
+	writeNoteRaw(t, notesDir, rel, content, mtime)
+}
+
+func writeNoteRaw(t *testing.T, notesDir, rel, content string, mtime time.Time) {
 	t.Helper()
 	full := filepath.Join(notesDir, rel)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -46,11 +64,11 @@ func TestReconcileFull_PopulatesAllFiles(t *testing.T) {
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
 	writeNote(t, notesDir, "sub/c.md", "# Charlie", mtime)
 
-	n, err := idx.Reconcile(context.Background(), ModeFull)
+	res, err := idx.Reconcile(context.Background(), ModeFull)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 3 {
+	if n := res.N; n != 3 {
 		t.Errorf("upserts: got %d, want 3", n)
 	}
 	got, _ := idx.List(context.Background())
@@ -83,11 +101,11 @@ func TestReconcileIncremental_NewFile(t *testing.T) {
 	}
 
 	writeNote(t, notesDir, "b.md", "# Bravo", mtime)
-	n, err := idx.Reconcile(context.Background(), ModeIncremental)
+	res, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 2 {
+	if n := res.N; n != 2 {
 		t.Errorf("count: got %d, want 2", n)
 	}
 }
@@ -107,11 +125,11 @@ func TestReconcileIncremental_DeletedFile(t *testing.T) {
 	if err := os.Remove(filepath.Join(notesDir, "a.md")); err != nil {
 		t.Fatal(err)
 	}
-	n, err := idx.Reconcile(context.Background(), ModeIncremental)
+	res, err := idx.Reconcile(context.Background(), ModeIncremental)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if n != 0 {
+	if n := res.N; n != 0 {
 		t.Errorf("count after delete: got %d, want 0", n)
 	}
 	got, _ := idx.List(context.Background())
@@ -158,9 +176,9 @@ func TestReconcileIncremental_MTimeUnchanged_Skipped(t *testing.T) {
 	}
 }
 
-// TestReconcile_Scratchpad_KeepsScratchpadUUID — writing scratchpad.md
-// in the notes dir and reconciling assigns it the canonical ScratchpadUUID.
-func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
+// TestReconcile_Scratchpad_KeepsScratchpadID — writing scratchpad.md
+// in the notes dir and reconciling assigns it the canonical ScratchpadID.
+func TestReconcile_Scratchpad_KeepsScratchpadID(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)
 
@@ -173,8 +191,8 @@ func TestReconcile_Scratchpad_KeepsScratchpadUUID(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len: got %d, want 1", len(got))
 	}
-	if got[0].ID != notes.ScratchpadUUID {
-		t.Errorf("ID: got %v, want ScratchpadUUID %v", got[0].ID, notes.ScratchpadUUID)
+	if got[0].ID != notes.ScratchpadID {
+		t.Errorf("ID: got %v, want ScratchpadID %v", got[0].ID, notes.ScratchpadID)
 	}
 }
 
@@ -196,14 +214,14 @@ func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List after seed: %v", err)
 	}
-	var firstUUID uuid.UUID
+	var firstUUID notes.ID
 	for _, sm := range firstList {
 		if sm.Path == "restored.md" {
 			firstUUID = sm.ID
 			break
 		}
 	}
-	if firstUUID == uuid.Nil {
+	if firstUUID == notes.ID("") {
 		t.Fatalf("seed: restored.md not found in index")
 	}
 
@@ -241,8 +259,8 @@ func TestReconcile_ReadoptsRestoredFile(t *testing.T) {
 			continue
 		}
 		found = true
-		if sm.ID == uuid.Nil {
-			t.Errorf("restored UUID is nil; chooseID must mint uuid.New() for a newly-seen path")
+		if sm.ID == notes.ID("") {
+			t.Errorf("restored UUID is nil; chooseID must mint notes.NewID() for a newly-seen path")
 		}
 		if sm.Title != "Restored Title" {
 			t.Errorf("restored title: got %q, want %q", sm.Title, "Restored Title")

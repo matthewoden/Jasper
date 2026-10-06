@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // TreeFolder is a folder node. Children are sorted: folders first,
@@ -31,7 +30,7 @@ type TreeFolder struct {
 // COALESCE(NULLIF(birthtime_unix,0), created_at), exposed so
 // the client can offer a "Created" notes sort (SORT-01).
 type TreeNote struct {
-	ID        uuid.UUID
+	ID        notes.ID
 	Path      string
 	Title     string
 	UpdatedAt time.Time

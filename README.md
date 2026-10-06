@@ -97,6 +97,7 @@ plain files. Restoring is a copy-back.
 | `jasper status`    | Show service state, address, data dir, log path, MCP listener state |
 | `jasper doctor`    | Diagnose install/runtime issues with plain-English fixes |
 | `jasper doctor --json` | Same checks, JSON output for support tooling |
+| `jasper migrate-ids` | Write an `id:` line into every note that lacks one; `--dry-run` lists them and writes nothing |
 | `jasper version`   | Print binary version + commit |
 
 Each subcommand has a hand-tuned `--help` that explains what it does and any
@@ -180,6 +181,13 @@ jasper install
 
 ## Changelog
 
+- **0.x — Note ids:** every note now carries its identity as an `id:` ULID in
+  its frontmatter, so bookmarks, tabs and references survive a rebuild of the
+  index. **The first start after upgrading writes that one line into every
+  note under `notes/`.** Anything watching the directory (git, Obsidian, a
+  sync client) sees one bulk change. Back the vault up first, and preview the
+  change with `jasper migrate-ids --dry-run`. Nothing else in a note is
+  touched; a rebuild of the index never writes to `notes/`.
 - **0.x — Phase 8:** Native install (launchd / systemd), first-run wizard,
   Reveal in file manager, deep links, MCP server with folder-scoped ACL,
   port migration to 6683, perf + security validation.

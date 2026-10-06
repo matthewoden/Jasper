@@ -1,9 +1,6 @@
 package markdown
 
-import (
-	"bufio"
-	"bytes"
-)
+import "bytes"
 
 // FrontmatterCanonicalContract is the single-sentence definition of
 // "frontmatter is present" used across the entire codebase. It is exported
@@ -20,24 +17,33 @@ const FrontmatterCanonicalContract = "Frontmatter is present iff the file begins
 // Every caller routes through here — a second implementation would drift
 // loose-vs-strict.
 func HasFrontmatter(content []byte) bool {
+	_, ok := frontmatterClose(content)
+	return ok
+}
+
+// frontmatterClose locates the closing fence under the same contract as
+// HasFrontmatter, returning the byte offset at which its line starts.
+func frontmatterClose(content []byte) (int, bool) {
 	if len(content) < 4 {
-		return false
+		return 0, false
 	}
 
 	if !bytes.HasPrefix(content, []byte("---\n")) {
-		return false
+		return 0, false
 	}
 
-	rest := content[len("---\n"):]
-	sc := bufio.NewScanner(bytes.NewReader(rest))
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "---" {
-			return true
+	offset := len("---\n")
+	for offset < len(content) {
+		end := len(content)
+		if nl := bytes.IndexByte(content[offset:], '\n'); nl >= 0 {
+			end = offset + nl
 		}
+		if string(content[offset:end]) == "---" {
+			return offset, true
+		}
+		offset = end + 1
 	}
-	return false
+	return 0, false
 }
 
 // InjectFrontmatterScaffold prepends the canonical scaffold unless one is

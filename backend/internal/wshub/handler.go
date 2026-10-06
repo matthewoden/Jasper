@@ -14,7 +14,7 @@ import (
 const maxSessionIDLen = 128
 
 // ServeHTTP upgrades the request and runs the read+write pumps. Registered
-// BEFORE api.HandlerFromMux so it wins over the generated stub.
+// BEFORE api.Mount so it wins over the generated stub.
 //
 // coder/websocket's authenticateOrigin returns nil for an EMPTY Origin (curl,
 // scripts), bypassing OriginPatterns — hence the explicit empty-Origin reject,

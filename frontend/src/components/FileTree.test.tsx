@@ -66,7 +66,7 @@ vi.mock("../lib/useTreeMutations", async () => {
 
 vi.mock("../lib/notesApi", async (importActual) => ({
   ...(await importActual<typeof import("../lib/notesApi")>()),
-  ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+  ScratchpadID: "00000000000000000000000001",
   getNote: vi.fn(),
   getNoteFresh: vi.fn(),
   updateNote: vi.fn(),

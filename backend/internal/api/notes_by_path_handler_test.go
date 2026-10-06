@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -39,7 +38,7 @@ func setupByPathServer(t *testing.T, idx notes.Index) *httptest.Server {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
@@ -63,7 +62,7 @@ func getByPath(t *testing.T, ts *httptest.Server, rawPath string) (*http.Respons
 // NoteSummary; response shape matches the GetNotes wire schema.
 func TestGetNoteByPath_HappyPath_200(t *testing.T) {
 	t.Parallel()
-	id := uuid.New()
+	id := notes.NewID()
 	mtime := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
 	idx := &byPathIndex{
 		wantPath: "projects/alpha.md",
@@ -85,7 +84,7 @@ func TestGetNoteByPath_HappyPath_200(t *testing.T) {
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("unmarshal: %v; body=%s", err, body)
 	}
-	if uuid.UUID(got.Id) != id {
+	if notes.ID(got.Id) != id {
 		t.Errorf("Id: got %v, want %v", got.Id, id)
 	}
 	if got.Path != "projects/alpha.md" {
@@ -104,7 +103,7 @@ func TestGetNoteByPath_HappyPath_200(t *testing.T) {
 // lookup still hits.
 func TestGetNoteByPath_HappyPath_CaseInsensitive_200(t *testing.T) {
 	t.Parallel()
-	id := uuid.New()
+	id := notes.NewID()
 	mtime := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
 	idx := &byPathIndex{
 		wantPath: "projects/alpha.md",

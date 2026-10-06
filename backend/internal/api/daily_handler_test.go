@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
@@ -57,7 +56,7 @@ func TestDailyNotesHandler(t *testing.T) {
 		}
 		content := string(data)
 
-		if !strings.HasPrefix(content, "---\ntags: []") {
+		if !strings.HasPrefix(content, "---\nid: ") || !strings.Contains(content, "\ntags: []\n---\n") {
 			t.Errorf("missing frontmatter scaffold; content: %q", content)
 		}
 
@@ -305,7 +304,7 @@ func (f *fakeIndexForDaily) Upsert(_ context.Context, rec notes.NoteRecord) erro
 	return nil
 }
 
-func (f *fakeIndexForDaily) Delete(_ context.Context, id uuid.UUID) error {
+func (f *fakeIndexForDaily) Delete(_ context.Context, id notes.ID) error {
 	for k, v := range f.byPath {
 		if v.ID == id {
 			delete(f.byPath, k)
@@ -331,23 +330,23 @@ func (f *fakeIndexForDaily) ListTags(_ context.Context) ([]notes.TagWithCount, e
 	return nil, nil
 }
 
-func (f *fakeIndexForDaily) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error {
+func (f *fakeIndexForDaily) SyncTags(_ context.Context, _ notes.ID, _ []string) error {
 	return nil
 }
 
-func (f *fakeIndexForDaily) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string, _ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte) error {
-	return nil
+func (f *fakeIndexForDaily) SyncBacklinks(_ context.Context, _ notes.ID, _ string, _ []markdown.Ref, _ *notes.Registry, _ []byte) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *fakeIndexForDaily) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return nil, nil
 }
 
-func (f *fakeIndexForDaily) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndexForDaily) RenameTag(_ context.Context, _, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
-func (f *fakeIndexForDaily) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndexForDaily) DeleteTag(_ context.Context, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
@@ -355,11 +354,11 @@ func (f *fakeIndexForDaily) SourcesByBacklinkTitle(_ context.Context, _ string) 
 	return nil, nil
 }
 
-func (f *fakeIndexForDaily) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *fakeIndexForDaily) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (f *fakeIndexForDaily) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+func (f *fakeIndexForDaily) GetBacklinks(_ context.Context, _ notes.ID) ([]notes.BacklinkRow, error) {
 	return nil, nil
 }
 
@@ -414,7 +413,7 @@ func newDailyHTTPServer(t *testing.T, dailyNotesTemplate string) (*Server, *http
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
@@ -438,7 +437,7 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 			t.Fatalf("expected CreateDailyNote201JSONResponse, got %T", resp)
 		}
 
-		id := uuid.UUID(got201.Id)
+		id := notes.ID(got201.Id)
 
 		relPath, ok := srv.notes.Registry().Lookup(id)
 		if !ok {
@@ -463,7 +462,7 @@ func TestDailyNotesHandler_RegistryHydration(t *testing.T) {
 		if !ok {
 			t.Fatalf("first call: expected 201, got %T", resp1)
 		}
-		id := uuid.UUID(got201.Id)
+		id := notes.ID(got201.Id)
 
 		srv.notes.Registry().Remove(id)
 
@@ -510,7 +509,7 @@ func TestDailyNotesHandler_TagPassthrough(t *testing.T) {
 		// Seed the record directly into the SAME index instance the Service
 		// holds internally (GetOrCreateDailyNote calls s.index, not srv.index —
 		// reassigning srv.index alone would not be observed by the Service).
-		recID := uuid.New()
+		recID := notes.NewID()
 		idx.byPath["daily/2026-04-01.md"] = notes.NoteRecord{
 			ID:        recID,
 			Path:      "daily/2026-04-01.md",
@@ -580,7 +579,7 @@ func newDailyRealTestServer(t *testing.T, template string) (*Server, *index.Inde
 		t.Fatalf("sqlite.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = pair.Close() })
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql", "010_refs.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)
@@ -654,7 +653,7 @@ func TestGetDailyNote_FTSSearchableWithoutReconcile(t *testing.T) {
 	}
 	found := false
 	for _, h := range hits {
-		if h.ID == got201.Id.String() {
+		if h.ID == got201.Id {
 			found = true
 		}
 	}
@@ -682,11 +681,19 @@ func TestGetDailyNote_ResolvableByWikilinkTitle(t *testing.T) {
 	matches := srv.notes.Registry().FindByTitle("2026-06-03", "")
 	found := false
 	for _, m := range matches {
-		if m.ID.String() == got201.Id.String() {
+		if m.ID.String() == got201.Id {
 			found = true
 		}
 	}
 	if !found {
 		t.Errorf("Registry.FindByTitle(%q) did not resolve to %s; matches=%+v", "2026-06-03", got201.Id, matches)
 	}
+}
+
+func (*fakeIndexForDaily) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*fakeIndexForDaily) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

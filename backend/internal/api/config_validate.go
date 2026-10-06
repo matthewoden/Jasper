@@ -12,7 +12,7 @@ import (
 //
 // Exists because oapi-codegen's strict-server decodes without
 // DisallowUnknownFields, so unknown keys would otherwise be silently accepted.
-// Mount before HandlerFromMux; the raw body is restored for the handler.
+// Mount before Mount; the raw body is restored for the handler.
 func ConfigStrictBodyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if (r.Method != http.MethodPut && r.Method != http.MethodPatch) || !strings.HasSuffix(r.URL.Path, "/config") {
@@ -150,6 +150,7 @@ type strictConfigValidator struct {
 		AutosaveMs     int     `json:"autosaveMs"`
 		ShowProperties *bool   `json:"showProperties,omitempty"`
 		AutoPair       *bool   `json:"autoPair,omitempty"`
+		IDNoteLinks    *bool   `json:"idNoteLinks,omitempty"`
 		FoldGutter     *bool   `json:"foldGutter,omitempty"`
 		LineNumbers    *bool   `json:"lineNumbers,omitempty"`
 		LineWidth      *int    `json:"lineWidth,omitempty"`
@@ -189,6 +190,7 @@ type strictConfigPatchValidator struct {
 		AutosaveMs     *int     `json:"autosaveMs,omitempty"`
 		ShowProperties *bool    `json:"showProperties,omitempty"`
 		AutoPair       *bool    `json:"autoPair,omitempty"`
+		IDNoteLinks    *bool    `json:"idNoteLinks,omitempty"`
 		FoldGutter     *bool    `json:"foldGutter,omitempty"`
 		LineNumbers    *bool    `json:"lineNumbers,omitempty"`
 		LineWidth      *int     `json:"lineWidth,omitempty"`

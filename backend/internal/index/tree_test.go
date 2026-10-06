@@ -521,7 +521,7 @@ func TestBuildTree_NoteUpdatedAtFromIndex(t *testing.T) {
 
 	pinned := time.Unix(1700123456, 0)
 	full := filepath.Join(notesDir, "x.md")
-	if err := os.WriteFile(full, []byte("# X"), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte("---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\n---\n# X"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(full, pinned, pinned); err != nil {

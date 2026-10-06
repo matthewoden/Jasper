@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -38,6 +36,11 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 			notes.ErrCaseCollision, rec.Path, existingID)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("upsert collision check: %w", err)
+	}
+
+	// An id that comes back is no longer deleted.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tombstones WHERE id = ?`, rec.ID.String()); err != nil {
+		return fmt.Errorf("upsert clear tombstone: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx,
@@ -74,21 +77,24 @@ func (x *Indexer) Upsert(ctx context.Context, rec notes.NoteRecord) error {
 // the incremental reconcile's skip branch to backfill migration 006's 0
 // sentinel for files whose mtime is unchanged (upgraded vaults would
 // otherwise never capture a birthtime without a manual full reindex).
-func (x *Indexer) setBirthtime(ctx context.Context, id uuid.UUID, birthtimeUnix int64) error {
+func (x *Indexer) setBirthtime(ctx context.Context, id notes.ID, birthtimeUnix int64) error {
 	_, err := x.Pair.Writer.ExecContext(ctx,
 		`UPDATE notes SET birthtime_unix = ? WHERE id = ?`, birthtimeUnix, id.String())
 	return err
 }
 
-// Delete removes the index row for the given UUID. Idempotent — a
+// Delete removes the index row for the given id. Idempotent — a
 // missing row is not an error (file-deletes can race with the indexer
 // scan).
-func (x *Indexer) Delete(ctx context.Context, id uuid.UUID) error {
+func (x *Indexer) Delete(ctx context.Context, id notes.ID) error {
 	tx, err := x.Pair.BeginImmediate(ctx)
 	if err != nil {
 		return fmt.Errorf("delete begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := x.tombstoneNotes(ctx, tx, `id = ?`, id.String()); err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id.String()); err != nil {
 		return fmt.Errorf("delete exec: %w", err)
 	}
@@ -122,7 +128,7 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 		if err := rows.Scan(&idStr, &path, &title, &mtime, &createdAt); err != nil {
 			return nil, fmt.Errorf("list scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
 			// Skip, don't abort: this builds the boot registry, and failing the
 			// whole call for one unreadable id left every note in the vault
@@ -154,7 +160,7 @@ func (x *Indexer) List(ctx context.Context) ([]notes.NoteSummary, error) {
 // LookupByPath finds a NoteRecord by its canonical relative path. Returns
 // notes.ErrNotFound when no row matches. Reads via Pair.Reader (no
 // transaction — pure read). Used by Service.Move to look up the existing
-// record before issuing the rename (so the same UUID stays attached to
+// record before issuing the rename (so the same id stays attached to
 // the moved file).
 func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes.NoteRecord, error) {
 	var (
@@ -172,9 +178,9 @@ func (x *Indexer) LookupByPath(ctx context.Context, canonicalPath string) (notes
 		}
 		return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): %w", canonicalPath, err)
 	}
-	id, err := uuid.Parse(idStr)
+	id, err := notes.ParseID(idStr)
 	if err != nil {
-		return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): parse uuid %q: %w", canonicalPath, idStr, err)
+		return notes.NoteRecord{}, fmt.Errorf("LookupByPath(%q): parse id %q: %w", canonicalPath, idStr, err)
 	}
 	return notes.NoteRecord{
 		ID:            id,
@@ -258,9 +264,13 @@ func (x *Indexer) DeleteByPathPrefix(ctx context.Context, prefix string) (int, e
 
 	var res sql.Result
 	if prefix == "" {
+		// A wholesale drop precedes a rebuild; nothing was deleted by the user.
 		res, err = tx.ExecContext(ctx, `DELETE FROM notes`)
 	} else {
 		escaped := escapeLike(prefix)
+		if err := x.tombstoneNotes(ctx, tx, `path = ? OR path LIKE ? || '/%' ESCAPE '\'`, prefix, escaped); err != nil {
+			return 0, fmt.Errorf("DeleteByPathPrefix: %w", err)
+		}
 		res, err = tx.ExecContext(ctx,
 			`DELETE FROM notes WHERE path = ? OR path LIKE ? || '/%' ESCAPE '\'`,
 			prefix, escaped)
@@ -311,9 +321,9 @@ func (x *Indexer) SearchTitles(ctx context.Context, q string, limit int) ([]note
 		if err := rows.Scan(&idStr, &title, &path, &mtime); err != nil {
 			return nil, fmt.Errorf("searchtitles scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("searchtitles parse uuid %q: %w", idStr, err)
+			return nil, fmt.Errorf("searchtitles parse id %q: %w", idStr, err)
 		}
 		out = append(out, notes.SearchResult{
 			ID:        id,
@@ -662,7 +672,7 @@ func escapeLike(s string) string {
 }
 
 type existingRow struct {
-	ID        uuid.UUID
+	ID        notes.ID
 	MTime     int64
 	Birthtime int64
 }
@@ -680,9 +690,9 @@ func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) 
 		if err := rows.Scan(&idStr, &path, &mtime, &birthtime); err != nil {
 			return nil, fmt.Errorf("existing scan: %w", err)
 		}
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("existing parse uuid %q: %w", idStr, err)
+			return nil, fmt.Errorf("existing parse id %q: %w", idStr, err)
 		}
 		out[path] = existingRow{ID: id, MTime: mtime, Birthtime: birthtime}
 	}
@@ -690,4 +700,25 @@ func (x *Indexer) existing(ctx context.Context) (map[string]existingRow, error) 
 		return nil, fmt.Errorf("existing rows: %w", err)
 	}
 	return out, nil
+}
+
+// deleteAtPath removes the row for id only while it still lives at path, so a
+// row an upsert has already moved to a new path is left alone. The row is
+// tombstoned first.
+func (x *Indexer) deleteAtPath(ctx context.Context, id notes.ID, path string) error {
+	tx, err := x.Pair.BeginImmediate(ctx)
+	if err != nil {
+		return fmt.Errorf("deleteAtPath begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := x.tombstoneNotes(ctx, tx, `id = ? AND path = ?`, id.String(), path); err != nil {
+		return fmt.Errorf("deleteAtPath: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ? AND path = ?`, id.String(), path); err != nil {
+		return fmt.Errorf("deleteAtPath exec: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("deleteAtPath commit: %w", err)
+	}
+	return nil
 }

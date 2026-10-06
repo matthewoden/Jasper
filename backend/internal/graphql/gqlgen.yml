@@ -1,0 +1,39 @@
+# Generation config for the federation subgraph. `make gen-go` runs it via
+# gen.go; the generated files are committed and drift-checked by gen-check.
+schema:
+  - ../../../api/graphql/schema.graphqls
+exec:
+  filename: generated/exec.go
+  package: generated
+federation:
+  filename: generated/federation.go
+  package: generated
+  version: 2
+model:
+  filename: model/models_gen.go
+  package: model
+resolver:
+  layout: follow-schema
+  dir: .
+  package: graphql
+  filename_template: "{name}.resolvers.go"
+omit_slice_element_pointers: true
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  DateTime:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+      - github.com/99designs/gqlgen/graphql.Int64
+  Note:
+    fields:
+      body:
+        resolver: true
+      refs:
+        resolver: true
+      backlinks:
+        resolver: true

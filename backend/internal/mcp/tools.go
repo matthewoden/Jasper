@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
@@ -38,7 +37,7 @@ type ListNotesResult struct {
 
 // ReadNoteArgs accepts EITHER id OR path; id wins if both are set.
 type ReadNoteArgs struct {
-	ID   string `json:"id,omitempty" jsonschema:"note UUID (preferred for rename resilience)"`
+	ID   string `json:"id,omitempty" jsonschema:"note ULID (preferred for rename resilience)"`
 	Path string `json:"path,omitempty" jsonschema:"notes/-relative path (fallback if id unknown)"`
 }
 
@@ -48,12 +47,13 @@ type ReadNoteArgs struct {
 // same thing here as on the REST surface deliberately: one word for one
 // concept across both write paths.
 type ReadNoteResult struct {
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	UpdatedAt string `json:"updated_at"`
-	Etag      string `json:"etag"`
+	ID        string   `json:"id"`
+	Path      string   `json:"path"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	UpdatedAt string   `json:"updated_at"`
+	Etag      string   `json:"etag"`
+	Refs      []string `json:"refs"`
 }
 
 // SearchNotesArgs — search_notes takes an FTS5 query + optional limit.
@@ -66,10 +66,11 @@ type SearchNotesArgs struct {
 // <mark>...</mark> snippet that the index produces (the index escapes
 // user content; only the <mark> tags are unescaped).
 type SearchHit struct {
-	ID          string `json:"id"`
-	Path        string `json:"path"`
-	Title       string `json:"title"`
-	ExcerptHTML string `json:"excerpt_html"`
+	ID          string   `json:"id"`
+	Path        string   `json:"path"`
+	Title       string   `json:"title"`
+	ExcerptHTML string   `json:"excerpt_html"`
+	Refs        []string `json:"refs,omitempty"`
 }
 
 // SearchNotesResult envelope.
@@ -79,7 +80,7 @@ type SearchNotesResult struct {
 
 // ReadAttachmentArgs — read_attachment takes note_id + filename.
 type ReadAttachmentArgs struct {
-	NoteID   string `json:"note_id" jsonschema:"UUID of the note that owns the attachment"`
+	NoteID   string `json:"note_id" jsonschema:"ULID of the note that owns the attachment"`
 	Filename string `json:"filename" jsonschema:"basename of the attachment file (must not contain path separators)"`
 }
 
@@ -95,6 +96,7 @@ type CreateNoteArgs struct {
 	Path  string `json:"path" jsonschema:"folder-relative path under notes/, e.g. projects/2026-roadmap.md (must end .md)"`
 	Body  string `json:"body,omitempty" jsonschema:"optional initial markdown body; if omitted, only the frontmatter scaffold + heading are written"`
 	Title string `json:"title,omitempty" jsonschema:"optional human-friendly H1 title; when provided the first heading is '# {title}' (filename stays slugified, derived from path)"`
+	ID    string `json:"id,omitempty" jsonschema:"optional note ULID to assign; rejected when malformed or already in use"`
 }
 
 // CreateNoteResult — id + path + version of the new note.
@@ -108,8 +110,8 @@ type CreateNoteResult struct {
 // UpdateNoteArgs — update_note takes the path (or id), new body, and the
 // etag of the version being replaced, for stale-write detection.
 type UpdateNoteArgs struct {
-	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the UUID"`
-	ID      string `json:"id,omitempty" jsonschema:"UUID of the note (fallback if path not supplied)"`
+	Path    string `json:"path,omitempty" jsonschema:"notes/-relative path to the note (preferred); used to resolve the ULID"`
+	ID      string `json:"id,omitempty" jsonschema:"ULID of the note (fallback if path not supplied)"`
 	Body    string `json:"body" jsonschema:"new markdown body (server prepends frontmatter scaffold if missing)"`
 	IfMatch string `json:"if_match,omitempty" jsonschema:"REQUIRED: etag from a prior read_note or update_note call, or '*' to force last-writer-wins; omitting or passing empty is rejected"`
 }
@@ -175,6 +177,7 @@ func (s *Server) registerTools() {
 	s.registerReadNote()
 	s.registerSearchNotes()
 	s.registerReadAttachment()
+	s.registerBacklinks()
 	s.registerListGrants()
 	s.registerCreateNote()
 	s.registerUpdateNote()
@@ -231,7 +234,7 @@ func (s *Server) registerListNotes() {
 func (s *Server) registerReadNote() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "read_note",
-		Description: "Read a note by id (preferred) or path. Returns the markdown body, title, updated_at, and the etag to pass as if_match when updating it.",
+		Description: "Read a note by ULID (preferred) or path. Returns the markdown body, title, updated_at, the etag to pass as if_match when updating it, and refs: every target the note references as a universal ref (jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref such as ado:workitem/123 as written).",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args ReadNoteArgs) (*mcpsdk.CallToolResult, ReadNoteResult, error) {
 		id, err := s.resolveNoteID(ctx, args.ID, args.Path)
 		if err != nil {
@@ -249,6 +252,7 @@ func (s *Server) registerReadNote() {
 			Body:      n.Content,
 			UpdatedAt: notes.ETag(n.UpdatedAt),
 			Etag:      notes.ETag(n.UpdatedAt),
+			Refs:      s.refsOf(ctx, id),
 		}, nil
 	})
 }
@@ -256,7 +260,7 @@ func (s *Server) registerReadNote() {
 func (s *Server) registerSearchNotes() {
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "search_notes",
-		Description: "Run an FTS5 search across the vault. Returns ranked hits with id, path, title, and an excerpt_html containing <mark> tags around match terms.",
+		Description: "Run an FTS5 search across the vault. Returns ranked hits with id (the note ULID), path, title, refs (the universal refs the note makes), and an excerpt_html containing <mark> tags around match terms.",
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args SearchNotesArgs) (*mcpsdk.CallToolResult, SearchNotesResult, error) {
 		if s.searchSvc == nil {
 			return nil, SearchNotesResult{}, errors.New("search_notes: search provider not configured")
@@ -274,6 +278,11 @@ func (s *Server) registerSearchNotes() {
 		}
 		if hits == nil {
 			hits = []SearchHit{}
+		}
+		for i := range hits {
+			if id, perr := notes.ParseID(hits[i].ID); perr == nil {
+				hits[i].Refs = s.refsOf(ctx, id)
+			}
 		}
 		return nil, SearchNotesResult{Hits: hits}, nil
 	})
@@ -328,8 +337,20 @@ func (s *Server) registerCreateNote() {
 			}
 		}
 
-		summary, err := s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
+		var summary notes.NoteSummary
+		if args.ID != "" {
+			id, perr := notes.ParseID(args.ID)
+			if perr != nil {
+				return nil, CreateNoteResult{}, fmt.Errorf("invalid_id: %w", perr)
+			}
+			summary, err = s.notesSvc.CreateWithID(ctx, parent, title, args.Body, displayTitle, id)
+		} else {
+			summary, err = s.notesSvc.CreateWithBodyAndTitle(ctx, parent, title, args.Body, displayTitle)
+		}
 		if err != nil {
+			if errors.Is(err, notes.ErrIDTaken) {
+				return nil, CreateNoteResult{}, fmt.Errorf("id_taken: %w", err)
+			}
 			return nil, CreateNoteResult{}, mapCreateNoteErr(args.Path, err)
 		}
 		level, _ := s.acl.Resolve(ctx, args.Path)
@@ -367,7 +388,7 @@ func (s *Server) registerUpdateNote() {
 	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args UpdateNoteArgs) (*mcpsdk.CallToolResult, UpdateNoteResult, error) {
 		notePath := args.Path
 		if notePath == "" && args.ID != "" {
-			id, err := uuid.Parse(args.ID)
+			id, err := notes.ParseID(args.ID)
 			if err != nil {
 				return nil, UpdateNoteResult{}, fmt.Errorf("update_note: invalid id: %w", err)
 			}
@@ -468,23 +489,23 @@ func (s *Server) registerDeleteNote() {
 	})
 }
 
-func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uuid.UUID, error) {
+func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (notes.ID, error) {
 	if idStr != "" {
-		id, err := uuid.Parse(idStr)
+		id, err := notes.ParseID(idStr)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("invalid id %q: %w", idStr, err)
+			return notes.ID(""), fmt.Errorf("invalid id %q: %w", idStr, err)
 		}
 		return id, nil
 	}
 	if notePath == "" {
-		return uuid.Nil, errors.New("either id or path is required")
+		return notes.ID(""), errors.New("either id or path is required")
 	}
 	if s.notesProvider == nil {
-		return uuid.Nil, errors.New("notes provider not configured")
+		return notes.ID(""), errors.New("notes provider not configured")
 	}
 	summaries, err := s.notesProvider.List(ctx)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("lookup by path: %w", err)
+		return notes.ID(""), fmt.Errorf("lookup by path: %w", err)
 	}
 	target := canonNotePath(notePath)
 	for _, sm := range summaries {
@@ -492,7 +513,7 @@ func (s *Server) resolveNoteID(ctx context.Context, idStr, notePath string) (uui
 			return sm.ID, nil
 		}
 	}
-	return uuid.Nil, fmt.Errorf("note not found at path %q", notePath)
+	return notes.ID(""), fmt.Errorf("note not found at path %q", notePath)
 }
 
 func splitNotePath(rel string) (parent, title string, err error) {
@@ -552,4 +573,77 @@ func canonNotePath(rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.TrimPrefix(rel, "/")
 	return strings.ToLower(path.Clean(rel))
+}
+
+// BacklinksArgs — backlinks takes any ref: a note ULID, jasper:note/<ulid>,
+// jasper:blob/<id>, jasper:title/<title>, or a foreign ref as written.
+type BacklinksArgs struct {
+	ID string `json:"id" jsonschema:"the target: a note ULID, a universal ref such as jasper:note/<ulid> or jasper:blob/<id>, or a foreign ref such as ado:workitem/123"`
+}
+
+// BacklinkInfo — one note that references the target.
+type BacklinkInfo struct {
+	ID      string `json:"id"`
+	Path    string `json:"path"`
+	Title   string `json:"title"`
+	Display string `json:"display,omitempty"`
+	Embed   bool   `json:"embed"`
+}
+
+// BacklinksResult — the target as resolved plus its referencing notes.
+type BacklinksResult struct {
+	Target    string         `json:"target"`
+	Backlinks []BacklinkInfo `json:"backlinks"`
+}
+
+func (s *Server) refsOf(ctx context.Context, id notes.ID) []string {
+	if s.refsSvc == nil {
+		return []string{}
+	}
+	refs, err := s.refsSvc.RefsOf(ctx, id)
+	if err != nil {
+		s.log.Warn("mcp: refs lookup failed", "id", id, "err", err)
+		return []string{}
+	}
+	if refs == nil {
+		refs = []string{}
+	}
+	return refs
+}
+
+func (s *Server) registerBacklinks() {
+	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
+		Name: "backlinks",
+		Description: "List the notes that reference a target. The target may be a note ULID, a universal ref " +
+			"(jasper:note/<ulid>, jasper:blob/<id>, jasper:title/<title>), or a foreign ref such as ado:workitem/123, " +
+			"so an agent can ask which notes mention a work item. Read-only; no grant needed.",
+	}, func(ctx context.Context, _ *mcpsdk.CallToolRequest, args BacklinksArgs) (*mcpsdk.CallToolResult, BacklinksResult, error) {
+		if s.refsSvc == nil {
+			return nil, BacklinksResult{}, errors.New("backlinks: reference index not configured")
+		}
+		target := strings.TrimSpace(args.ID)
+		if target == "" {
+			return nil, BacklinksResult{}, errors.New("backlinks: id is required")
+		}
+		ref, err := notes.ParseItemRef(target)
+		switch {
+		case err == nil && ref.Native() && ref.Kind == notes.RefKindTitle:
+			if id, ok := s.notesSvc.ResolveTitle(ref.ID, ""); ok {
+				target = notes.RefForNote(id)
+			}
+		case err == nil:
+			target = ref.String()
+		case !strings.Contains(target, ":"):
+			return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
+		}
+		rows, err := s.refsSvc.Backlinks(ctx, target)
+		if err != nil {
+			return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
+		}
+		out := make([]BacklinkInfo, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, BacklinkInfo{ID: r.SourceID.String(), Path: r.SourcePath, Title: r.SourceTitle, Display: r.Display, Embed: r.Embed})
+		}
+		return nil, BacklinksResult{Target: target, Backlinks: out}, nil
+	})
 }

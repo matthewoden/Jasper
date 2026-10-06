@@ -6,22 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 type secTestFixture struct {
 	srv      *Server
 	dataDir  string
-	validID  uuid.UUID
+	validID  notes.ID
 	validRel string
 }
 
 func newSecurityTestServer(t *testing.T) secTestFixture {
 	t.Helper()
 
-	validID := uuid.New()
+	validID := notes.NewID()
 	validRel := "valid-note.md"
 	summaries := []notes.NoteSummary{
 		{

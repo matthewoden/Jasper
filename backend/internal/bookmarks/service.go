@@ -76,7 +76,7 @@ func (nopBroadcaster) Broadcast(_ string, _ any, _ string) {}
 // that does not resolve in the registry with ErrNoteNotFound (security
 // control) WITHOUT persisting. Rejects a non-nil folderID that
 // does not exist in the loaded document with ErrFolderNotFound.
-func (s *Service) Add(ctx context.Context, noteID uuid.UUID, folderID *string) (Bookmark, error) {
+func (s *Service) Add(ctx context.Context, noteID notes.ID, folderID *string) (Bookmark, error) {
 	// A nil registry means notesSvc was nil at construction (Server's
 	// documented graceful-degradation contract) — nothing resolves, so
 	// treat it the same as "note not found" rather than panicking on

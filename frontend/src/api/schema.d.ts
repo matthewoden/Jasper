@@ -38,21 +38,21 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
         };
-        /** Read a note by UUID */
+        /** Read a note by ULID */
         get: operations["getNoteById"];
-        /** Replace the content of a note by UUID */
+        /** Replace the content of a note by ULID */
         put: operations["putNoteById"];
         post?: never;
         /**
-         * Delete a note by UUID (TREE-06)
-         * @description Delete the note identified by UUID. Removes the underlying `.md` file
+         * Delete a note by ULID (TREE-06)
+         * @description Delete the note identified by ULID. Removes the underlying `.md` file
          *     atomically and clears the SQLite index row in the same write transaction.
-         *     404 when the UUID is unknown; 500 when the FS / SQLite operation fails
+         *     404 when the ULID is unknown; 500 when the FS / SQLite operation fails
          *     and the two stores would be left inconsistent.
          */
         delete: operations["deleteNoteById"];
@@ -66,7 +66,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -323,7 +323,7 @@ export interface paths {
          *     user confirms the content-count copy. Path is
          *     passed as a query parameter so URL-encoding handles `/` separators
          *     cleanly — folders have no SQLite identity and so cannot be addressed by
-         *     UUID.
+         *     ULID.
          */
         delete: operations["deleteFolder"];
         options?: never;
@@ -454,7 +454,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -469,6 +469,126 @@ export interface paths {
          *     allowlist: `<span>...<mark class="backlink-ref">[[Title]]</mark>...</span>`.
          */
         get: operations["getNoteBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/refs/backlinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List notes that reference a target, native or foreign
+         * @description Backlinks for any universal ref: a foreign id such as
+         *     `ado:workitem/12345`, a note as `jasper:note/<ulid>` (which also
+         *     covers title links that resolve to it), an unresolved title as
+         *     `jasper:title/<title>`, or a blob as `jasper:blob/<id>`. One row per
+         *     source note. Excerpts are not included; the linked-mentions panel
+         *     keeps reading `/notes/{id}/backlinks` for those.
+         */
+        get: operations["getRefBacklinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a batch of refs to their current state
+         * @description For each id, what it is and whether it still exists. Native ids
+         *     (`jasper:note/...`, a bare ULID, `jasper:blob/...`, `sha256-...`)
+         *     resolve against the index and the tombstones; `jasper:title/...`
+         *     resolves through the registry; any other well-formed ref is foreign
+         *     and comes back as a raw stub with status UNKNOWN. Order matches the
+         *     request. Previews are batched here so an editor pass costs one call.
+         */
+        post: operations["postItemsBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search notes and blobs by name for the @ picker
+         * @description Notes match on title, blobs on file name, both case-insensitively.
+         *     Results carry the universal ref to insert. Empty `q` lists the most
+         *     recently modified notes.
+         */
+        get: operations["getItemsSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blobs/{blobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream a blob by its content id
+         * @description Serves the first live path holding these bytes, through the same
+         *     hardened path resolution as the attachments route. The client sniffs
+         *     the type from the name it shows.
+         */
+        get: operations["getBlob"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/{id}/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ULID of the note */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the references a note makes
+         * @description One row per distinct target, in document order of first occurrence,
+         *     in universal form: a foreign ref as written, a title link as
+         *     `jasper:note/<id>` once resolved or `jasper:title/<title>` until
+         *     then, an embed by id as `jasper:blob/<id>`.
+         */
+        get: operations["getNoteRefs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -702,7 +822,7 @@ export interface paths {
         get: operations["getBookmarks"];
         put?: never;
         /**
-         * Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
+         * Bookmark a note by ULID, optionally into a folder (BOOK-01, BOOK-03)
          * @description Adds a new bookmark row for note_id. Rejects an unknown/forged
          *     note_id with 404 — validated against the notes registry, not
          *     trusted client input. Rejects an unknown folder_id with 400.
@@ -1202,7 +1322,7 @@ export interface paths {
          * Lookup a note by its relative path (deep-link fallback)
          * @description Deep-link fallback. Used by the `?path=<rel>` URL
          *     parameter when the canonical `/notes/{id}` form is not available
-         *     (e.g. someone shares a permalink across machines and the UUIDs
+         *     (e.g. someone shares a permalink across machines and the ULIDs
          *     differ but the path is stable). Server canonicalizes `path` via
          *     the same DATA-11 rules as the rest of the API.
          */
@@ -1220,10 +1340,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         Note: {
-            /**
-             * Format: uuid
-             * @example 00000000-0000-4000-a000-000000000001
-             */
+            /** @example 00000000000000000000000001 */
             id: string;
             /**
              * @description Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
@@ -1244,7 +1361,6 @@ export interface components {
             content: string;
         };
         UpdateNoteResponse: {
-            /** Format: uuid */
             id: string;
             path: string;
             /** Format: date-time */
@@ -1260,7 +1376,6 @@ export interface components {
          *     survived.
          */
         MoveNoteResponse: {
-            /** Format: uuid */
             id: string;
             /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1287,7 +1402,6 @@ export interface components {
          */
         NoteETag: string;
         NoteSummary: {
-            /** Format: uuid */
             id: string;
             /**
              * @description Canonical relative path under notes/ (NFC + lowercase per DATA-11)
@@ -1316,7 +1430,6 @@ export interface components {
          *     such as GET /daily-notes/{date}.
          */
         NoteDetail: {
-            /** Format: uuid */
             id: string;
             /** @description Canonicalized relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1464,7 +1577,6 @@ export interface components {
              * @enum {string}
              */
             kind: "note";
-            /** Format: uuid */
             id: string;
             /** @description Canonical relative path under notes/ (NFC + lowercase per DATA-11) */
             path: string;
@@ -1543,6 +1655,8 @@ export interface components {
                 showProperties: boolean;
                 /** @default true */
                 autoPair: boolean;
+                /** @default false */
+                idNoteLinks: boolean;
                 /** @default true */
                 foldGutter: boolean;
                 /** @default false */
@@ -1616,6 +1730,7 @@ export interface components {
                 autosaveMs?: number;
                 showProperties?: boolean;
                 autoPair?: boolean;
+                idNoteLinks?: boolean;
                 foldGutter?: boolean;
                 lineNumbers?: boolean;
                 lineWidth?: number;
@@ -1641,7 +1756,7 @@ export interface components {
         Error: {
             /** @example not_found */
             code: string;
-            /** @example no note with id 00000000-0000-4000-a000-000000000001 */
+            /** @example no note with id 00000000000000000000000001 */
             message: string;
         };
         /** @description A single tag entry with the number of notes carrying it. */
@@ -1675,13 +1790,13 @@ export interface components {
             old_name: string;
             /** @description The tag name after the rename. */
             new_name: string;
-            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            /** @description ULIDs of notes whose frontmatter was rewritten. */
             touched_note_ids: string[];
         };
         TagDeleteResponse: {
             /** @description The tag name that was deleted. */
             old_name: string;
-            /** @description UUIDs of notes whose frontmatter was rewritten (tag removed). */
+            /** @description ULIDs of notes whose frontmatter was rewritten (tag removed). */
             touched_note_ids: string[];
         };
         AttachmentUploadResult: {
@@ -1696,6 +1811,8 @@ export interface components {
             is_image: boolean;
             /** Format: int64 */
             size_bytes: number;
+            /** @description The content id the index gave the upload, for an embed by id (jasper:blob/<id>). */
+            blob_id?: string;
         };
         /**
          * @description A single backlink entry: a note that contains one or more `[[...]]`
@@ -1706,10 +1823,7 @@ export interface components {
          *     produce their own excerpt, rendered as stacked lines within the card.
          */
         BacklinkRow: {
-            /**
-             * Format: uuid
-             * @description UUID of the note containing the `[[...]]` reference.
-             */
+            /** @description ULID of the note containing the `[[...]]` reference. */
             source_id: string;
             /** @description Title of the source note (first H1 or filename without .md). */
             source_title: string;
@@ -1735,10 +1849,7 @@ export interface components {
         };
         /** @description A single note-title search result for wiki-link autocomplete. */
         NoteSearchResult: {
-            /**
-             * Format: uuid
-             * @description UUID of the matching note.
-             */
+            /** @description ULID of the matching note. */
             id: string;
             /** @description Title of the matching note (first H1 or filename without .md). */
             title: string;
@@ -1774,8 +1885,84 @@ export interface components {
             old_name: string;
             /** @description The new tag name, or null when the tag was deleted. */
             new_name?: string | null;
-            /** @description UUIDs of notes whose frontmatter was rewritten. */
+            /** @description ULIDs of notes whose frontmatter was rewritten. */
             touched_note_ids: string[];
+        };
+        /** @description One note that references the requested target. */
+        RefBacklinkRow: {
+            source_id: string;
+            source_title: string;
+            source_path: string;
+            /** @description The alias the first occurrence shows, or empty. */
+            display: string;
+            /** @description True when the first occurrence is an embed (`![[...]]`). */
+            embed: boolean;
+        };
+        RefBacklinksResponse: {
+            backlinks: components["schemas"]["RefBacklinkRow"][];
+        };
+        ItemsBatchRequest: {
+            ids: string[];
+        };
+        /**
+         * @description What a ref points at right now. A DELETED item carries its last
+         *     known title and path from the tombstone; an UNKNOWN one carries the
+         *     raw ref as its title.
+         */
+        Item: {
+            /** @description The id as requested. */
+            id: string;
+            /** @enum {string} */
+            kind: "note" | "blob" | "foreign";
+            /** @enum {string} */
+            status: "OK" | "UNKNOWN" | "DELETED";
+            title: string;
+            /** @description Current (or, when DELETED, last) vault-relative path. Absent for foreign ids. */
+            path?: string;
+            /**
+             * Format: date-time
+             * @description Last modification (or, when DELETED, deletion time).
+             */
+            updated_at?: string;
+            /** @description The first stretch of a note's body text, plain, at most 200 characters. */
+            excerpt?: string;
+            /** @description For a DELETED blob whose bytes changed in place, the blob id that took over the path. */
+            replaced_by?: string;
+        };
+        ItemsBatchResponse: {
+            items: components["schemas"]["Item"][];
+        };
+        /**
+         * @description Broadcast payload for `refs:changed`: the set of targets a note
+         *     references changed on save. Lists hold universal refs.
+         */
+        WSRefsChangedPayload: {
+            source_id: string;
+            added: string[];
+            removed: string[];
+        };
+        ItemSearchHit: {
+            /** @description The universal ref to insert (`jasper:note/<id>` or `jasper:blob/<id>`). */
+            ref: string;
+            /** @enum {string} */
+            kind: "note" | "blob";
+            /** @description Note title, or the blob's file name. */
+            title: string;
+            path: string;
+        };
+        ItemSearchResponse: {
+            items: components["schemas"]["ItemSearchHit"][];
+        };
+        NoteRef: {
+            target_ref: string;
+            /** @description The alias the first occurrence shows, or empty. */
+            display: string;
+            embed: boolean;
+            /** @description Byte offset of the first occurrence; -1 for a frontmatter ref. */
+            position: number;
+        };
+        NoteRefsResponse: {
+            refs: components["schemas"]["NoteRef"][];
         };
         /**
          * @description Broadcast payload for `links:rewritten` events. Emitted when a note is
@@ -1787,7 +1974,7 @@ export interface components {
             old_title: string;
             /** @description The note title after the rename. */
             new_title: string;
-            /** @description UUIDs of notes whose content was rewritten. */
+            /** @description ULIDs of notes whose content was rewritten. */
             touched_note_ids: string[];
             /** @description True when the rewrite failed partway; the rename was rolled back and the client should surface the error banner. */
             error?: boolean;
@@ -1800,7 +1987,7 @@ export interface components {
          */
         WSEnvelope: {
             /** @enum {string} */
-            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "workspace:changed" | "vault.switching" | "vault.switched";
+            event: "session:assigned" | "note:created" | "note:updated" | "note:deleted" | "note:moved" | "folder:created" | "folder:deleted" | "folder:moved" | "file:created" | "file:deleted" | "file:moved" | "tags:updated" | "tags:rewritten" | "links:rewritten" | "refs:changed" | "reindex:started" | "reindex:complete" | "migration:status" | "mcp:grant_changed" | "bookmark:changed" | "workspace:changed" | "vault.switching" | "vault.switched";
             /**
              * @description UUID of the session that originated the mutation. Empty
              *     string for server-originated events (reindex:*,
@@ -1813,7 +2000,6 @@ export interface components {
             payload: unknown;
         };
         WSNoteCreatedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
             title: string;
@@ -1821,19 +2007,16 @@ export interface components {
             updated_at: string;
         };
         WSNoteUpdatedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
             /** Format: date-time */
             updated_at: string;
         };
         WSNoteDeletedPayload: {
-            /** Format: uuid */
             id: string;
             path: string;
         };
         WSNoteMovedPayload: {
-            /** Format: uuid */
             id: string;
             old_path: string;
             new_path: string;
@@ -1959,17 +2142,14 @@ export interface components {
             /** @enum {integer} */
             level: 1 | 2;
         };
-        /** @description A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID. */
+        /** @description A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's ULID. */
         Bookmark: {
             /**
              * Format: uuid
              * @description Opaque id of the bookmark row.
              */
             id: string;
-            /**
-             * Format: uuid
-             * @description UUID of the bookmarked note (survives note rename/move — BOOK-04).
-             */
+            /** @description ULID of the bookmarked note (survives note rename/move — BOOK-04). */
             note_id: string;
             /**
              * Format: uuid
@@ -2012,10 +2192,7 @@ export interface components {
             bookmarksSort?: "" | "manual" | "name-asc" | "name-desc" | "modified-desc" | "modified-asc" | "created-desc" | "created-asc";
         };
         BookmarkCreateRequest: {
-            /**
-             * Format: uuid
-             * @description UUID of the note to bookmark. Validated against the notes registry server-side.
-             */
+            /** @description ULID of the note to bookmark. Validated against the notes registry server-side. */
             note_id: string;
             /**
              * Format: uuid
@@ -2237,7 +2414,7 @@ export interface components {
     };
     responses: never;
     parameters: {
-        /** @description UUID of the note */
+        /** @description ULID of the note */
         NoteId: string;
         /** @description Opaque UUID of the bookmark row (not a note UUID). */
         BookmarkId: string;
@@ -2322,7 +2499,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2338,7 +2515,7 @@ export interface operations {
                     "application/json": components["schemas"]["Note"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2374,7 +2551,7 @@ export interface operations {
                 "If-Match"?: string;
             };
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2403,7 +2580,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2437,7 +2614,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2451,7 +2628,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2476,7 +2653,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -2505,7 +2682,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3358,7 +3535,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description UUID of the note */
+                /** @description ULID of the note */
                 id: components["parameters"]["NoteId"];
             };
             cookie?: never;
@@ -3374,7 +3551,149 @@ export interface operations {
                     "application/json": components["schemas"]["BacklinksResponse"];
                 };
             };
-            /** @description Note not found (unknown UUID) */
+            /** @description Note not found (unknown ULID) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRefBacklinks: {
+        parameters: {
+            query: {
+                /** @description The target ref, exactly as it appears in `[[...]]`. */
+                id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Source notes referencing the target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefBacklinksResponse"];
+                };
+            };
+        };
+    };
+    postItemsBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemsBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description One item per requested id, in request order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsBatchResponse"];
+                };
+            };
+            /** @description Malformed request (missing ids, or more than 200) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getItemsSearch: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemSearchResponse"];
+                };
+            };
+        };
+    };
+    getBlob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                blobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Binary stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description No live path holds this blob */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getNoteRefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ULID of the note */
+                id: components["parameters"]["NoteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The note's references */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteRefsResponse"];
+                };
+            };
+            /** @description Note not found (unknown ULID) */
             404: {
                 headers: {
                     [name: string]: unknown;

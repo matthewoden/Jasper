@@ -4,6 +4,7 @@ import { nextDelay } from "./backoff";
 import { useTreeStore } from "./useTreeStore";
 import { treeResource } from "./treeApi";
 import { publish } from "./resources";
+import { revalidateCleanControllers } from "./noteBufferController";
 import type { components } from "../api/schema";
 
 type WSEnvelope = components["schemas"]["WSEnvelope"];
@@ -161,10 +162,17 @@ export function useSessionSync(
             // invalidatedBy reindex:complete, so this publish covers the
             // note/folder mutation cases above too.
             publish("reindex:complete");
+            // Reconcile may have rewritten open notes (id lines) with no
+            // note:updated behind it; a clean tab re-reads so its comparator
+            // stays current, a dirty one keeps its edits.
+            revalidateCleanControllers();
             break;
           case "tags:updated":
           case "tags:rewritten":
             publish(env.event);
+            break;
+          case "refs:changed":
+            publish("refs:changed");
             break;
           case "links:rewritten":
             publish("links:rewritten");

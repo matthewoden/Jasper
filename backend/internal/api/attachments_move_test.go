@@ -36,7 +36,7 @@ func newAttachmentMoveServer(t *testing.T) (*httptest.Server, string) {
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, dataDir)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(NewStrictHandler(srv, nil), r)
+		Mount(NewStrictHandler(srv, nil), r)
 	})
 	return httptest.NewServer(r), notesDir
 }

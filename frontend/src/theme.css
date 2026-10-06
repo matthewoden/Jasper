@@ -874,3 +874,29 @@ body {
   outline-offset: -1px;
 }
 
+
+/* Reference chip hover card: appended to <body> by refChip.ts, so it is
+   styled here rather than in the editor theme. */
+.cm-ref-hover {
+  z-index: 60;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.cm-ref-hover-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.cm-ref-hover-row {
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

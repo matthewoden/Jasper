@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/google/uuid"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
@@ -27,7 +26,7 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "005_backlink_multi_excerpt.sql", "006_birthtime.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "005_backlink_multi_excerpt.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql", "010_refs.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)
@@ -43,7 +42,7 @@ func newTestIndexer(t *testing.T) (*Indexer, string) {
 	return idx, notesDir
 }
 
-func rec1(id uuid.UUID) notes.NoteRecord {
+func rec1(id notes.ID) notes.NoteRecord {
 	return notes.NoteRecord{
 		ID:            id,
 		Path:          "a.md",
@@ -60,7 +59,7 @@ func TestUpsert_NewRow(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	if err := idx.Upsert(context.Background(), rec1(id)); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -88,7 +87,7 @@ func TestUpsert_UpdateExistingRow(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	if err := idx.Upsert(context.Background(), rec1(id)); err != nil {
 		t.Fatalf("upsert 1: %v", err)
 	}
@@ -114,12 +113,12 @@ func TestUpsert_CaseCollision_DifferentID(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	idA := uuid.New()
+	idA := notes.NewID()
 	if err := idx.Upsert(context.Background(), rec1(idA)); err != nil {
 		t.Fatalf("upsert A: %v", err)
 	}
 
-	idB := uuid.New()
+	idB := notes.NewID()
 	r := rec1(idB)
 	err := idx.Upsert(context.Background(), r)
 	if err == nil {
@@ -143,7 +142,7 @@ func TestUpsert_NoChecksumComputed(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	if err := idx.Upsert(context.Background(), rec1(id)); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -162,7 +161,7 @@ func TestDelete_Existing(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	if err := idx.Upsert(context.Background(), rec1(id)); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
@@ -179,7 +178,7 @@ func TestDelete_Existing(t *testing.T) {
 func TestDelete_Missing_NoOp(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
-	if err := idx.Delete(context.Background(), uuid.New()); err != nil {
+	if err := idx.Delete(context.Background(), notes.NewID()); err != nil {
 		t.Fatalf("delete missing: %v", err)
 	}
 }
@@ -190,17 +189,17 @@ func TestList_OrderedByPathASC(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	r := rec1(uuid.New())
+	r := rec1(notes.NewID())
 	r.Path = "z.md"
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
-	r = rec1(uuid.New())
+	r = rec1(notes.NewID())
 	r.Path = "m.md"
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
-	r = rec1(uuid.New())
+	r = rec1(notes.NewID())
 	r.Path = "a.md"
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatal(err)
@@ -238,7 +237,7 @@ func TestList_TitleAndUpdatedAtPopulated(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	r := rec1(id)
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatal(err)
@@ -263,7 +262,7 @@ func TestLookupByPath_Hit(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	r := rec1(id)
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -304,9 +303,9 @@ func TestLookupByPath_Miss(t *testing.T) {
 	}
 }
 
-func upsertAt(t *testing.T, idx *Indexer, path string) uuid.UUID {
+func upsertAt(t *testing.T, idx *Indexer, path string) notes.ID {
 	t.Helper()
-	id := uuid.New()
+	id := notes.NewID()
 	r := rec1(id)
 	r.Path = path
 	if err := idx.Upsert(context.Background(), r); err != nil {
@@ -553,14 +552,14 @@ func TestUpsert_NFC_Equivalence(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	idA := uuid.New()
+	idA := notes.NewID()
 	r := rec1(idA)
 	r.Path = norm.NFC.String("café.md")
 	if err := idx.Upsert(context.Background(), r); err != nil {
 		t.Fatalf("upsert A: %v", err)
 	}
 
-	idB := uuid.New()
+	idB := notes.NewID()
 	r = rec1(idB)
 	r.Path = norm.NFC.String("café.md")
 	err := idx.Upsert(context.Background(), r)
@@ -621,7 +620,7 @@ func TestSearchFTS_PrefixMatch(t *testing.T) {
 	t.Parallel()
 	idx, _ := newTestIndexer(t)
 
-	id := uuid.New()
+	id := notes.NewID()
 	r := rec1(id)
 	r.BodyFTS = "this note contains the word testing"
 	if err := idx.Upsert(context.Background(), r); err != nil {
@@ -640,9 +639,9 @@ func TestSearchFTS_PrefixMatch(t *testing.T) {
 // upsertTaggedNote inserts a note with the given body text and syncs the
 // given tags onto it via note_tags/tags (the tables the EXISTS clauses in
 // SearchFTS/searchTitlePathLike join against — distinct from tag_names_fts).
-func upsertTaggedNote(t *testing.T, idx *Indexer, path, body string, tags []string) uuid.UUID {
+func upsertTaggedNote(t *testing.T, idx *Indexer, path, body string, tags []string) notes.ID {
 	t.Helper()
-	id := uuid.New()
+	id := notes.NewID()
 	rec := notes.NoteRecord{
 		ID:            id,
 		Path:          path,
@@ -775,12 +774,12 @@ func TestList_SkipsMalformedUUIDRow(t *testing.T) {
 	idx, _ := newTestIndexer(t)
 	ctx := context.Background()
 
-	good := rec1(uuid.New())
+	good := rec1(notes.NewID())
 	good.Path = "good.md"
 	if err := idx.Upsert(ctx, good); err != nil {
 		t.Fatalf("upsert good: %v", err)
 	}
-	bad := rec1(uuid.New())
+	bad := rec1(notes.NewID())
 	bad.Path = "bad.md"
 	if err := idx.Upsert(ctx, bad); err != nil {
 		t.Fatalf("upsert bad: %v", err)

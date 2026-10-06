@@ -32,7 +32,7 @@ func setupValidateServer(t *testing.T) *httptest.Server {
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(ConfigStrictBodyMiddleware)
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }

@@ -39,9 +39,15 @@ for i in $(seq 1 "$COUNT"); do
     n=$(printf "%05d" "$i")
     kind=$((i % 100))
     path="$NOTES_DIR/note-$n.md"
+    # Every note carries the id line a migrated vault has; ids are
+    # deterministic so the vault is reproducible.
+    id="01PERF$(printf "%020d" "$i")"
     if (( kind < 80 )); then
         # 80%: body only.
         cat > "$path" <<EOF
+---
+id: $id
+---
 # Note $n
 
 This is synthetic note number $n. Lorem ipsum dolor sit amet, consectetur
@@ -62,6 +68,7 @@ EOF
         done
         cat > "$path" <<EOF
 ---
+id: $id
 tags: [$tags]
 ---
 
@@ -76,6 +83,9 @@ EOF
         link_idx=$((((i - 2) % COUNT) + 1))
         link_n=$(printf "%05d" "$link_idx")
         cat > "$path" <<EOF
+---
+id: $id
+---
 # Note $n
 
 See also [[note-$link_n]] for context. Synthetic linked note that exercises
@@ -85,3 +95,40 @@ EOF
 done
 
 echo "Wrote $COUNT notes to $NOTES_DIR/"
+
+# Optional third argument: references per note. With REFS > 0 every note
+# also carries that many [[ado:workitem/N]] links, spread over a pool ten
+# times the note count, for the backlinks-at-volume gate.
+REFS="${3:-0}"
+if (( REFS > 0 )); then
+    for i in $(seq 1 "$COUNT"); do
+        n=$(printf "%05d" "$i")
+        {
+            echo
+            for r in $(seq 1 "$REFS"); do
+                echo "Tracks [[ado:workitem/$(( (i * 7 + r * 13) % (COUNT * 10) + 1 ))]]."
+            done
+        } >> "$NOTES_DIR/note-$n.md"
+    done
+    echo "Added $REFS references to each of $COUNT notes"
+fi
+
+# Attachments: the cold-start gate also covers hashing every attachment once.
+# One attachments/ directory per note folder, as the app lays them out; the
+# vault is flat, so one directory holds them all. Sizes skew small with a few
+# large files, roughly what a vault of screenshots and PDFs looks like.
+ATTACH_DIR="$NOTES_DIR/attachments"
+mkdir -p "$ATTACH_DIR"
+find "$ATTACH_DIR" -maxdepth 1 -type f -delete 2>/dev/null || true
+ATTACH_COUNT=$(( COUNT / 10 ))
+for i in $(seq 1 "$ATTACH_COUNT"); do
+    n=$(printf "%05d" "$i")
+    if (( i % 50 == 0 )); then
+        size=$(( 4 * 1024 * 1024 ))   # 2%: a 4 MiB PDF or photo
+    else
+        size=$(( 48 * 1024 ))         # 98%: a 48 KiB screenshot
+    fi
+    # Deterministic and distinct per file: a unique header, then filler.
+    { printf "attachment-%s\n" "$n"; head -c "$size" /dev/zero; } > "$ATTACH_DIR/image-$n.png"
+done
+echo "Wrote $ATTACH_COUNT attachments to $ATTACH_DIR/"

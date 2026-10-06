@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // A full rebuild (POST /admin/reindex, or reset-and-rebuild) DROPs the notes
@@ -14,10 +14,10 @@ func TestLoad_ReResolvesByPathAfterIDChange(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	oldID := uuid.New()
-	newID := uuid.New()
+	oldID := notes.NewID()
+	newID := notes.NewID()
 	// The rebuild's registry: same path, freshly minted id.
-	registry := newTestRegistry(map[uuid.UUID]string{newID: "notes/keep.md"})
+	registry := newTestRegistry(map[notes.ID]string{newID: "notes/keep.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -55,9 +55,9 @@ func TestLoad_PrunesWhenPathIsAlsoGone(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	liveID := uuid.New()
-	deadID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{liveID: "notes/live.md"})
+	liveID := notes.NewID()
+	deadID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{liveID: "notes/live.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -85,8 +85,8 @@ func TestLoad_RefreshesStalePathHint(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/renamed.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/renamed.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{
@@ -107,8 +107,8 @@ func TestLoad_RefreshesStalePathHint(t *testing.T) {
 
 	// Refreshed on disk too: prove it by rebuilding identity under the new
 	// path and checking the row is still recoverable.
-	rebuilt := uuid.New()
-	rebuiltRegistry := newTestRegistry(map[uuid.UUID]string{rebuilt: "notes/renamed.md"})
+	rebuilt := notes.NewID()
+	rebuiltRegistry := newTestRegistry(map[notes.ID]string{rebuilt: "notes/renamed.md"})
 	after, err := Load(dir, rebuiltRegistry, testLogger())
 	if err != nil {
 		t.Fatalf("Load() (after rebuild) error = %v", err)
@@ -124,8 +124,8 @@ func TestLoad_PrunesRowWithNoPathHint(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdirJasper(t, dir)
 
-	deadID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{uuid.New(): "notes/other.md"})
+	deadID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{notes.NewID(): "notes/other.md"})
 
 	doc := Bookmarks{
 		Bookmarks: []Bookmark{{ID: "bm-legacy", NoteID: deadID.String(), Order: 0}},
@@ -145,8 +145,8 @@ func TestLoad_PrunesRowWithNoPathHint(t *testing.T) {
 
 func TestService_Add_RecordsPathHint(t *testing.T) {
 	dir := t.TempDir()
-	noteID := uuid.New()
-	registry := newTestRegistry(map[uuid.UUID]string{noteID: "notes/foo.md"})
+	noteID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{noteID: "notes/foo.md"})
 	svc := newTestService(t, dir, registry, &fakeBroadcaster{})
 
 	bm, err := svc.Add(context.Background(), noteID, nil)
@@ -163,5 +163,32 @@ func TestService_Add_RecordsPathHint(t *testing.T) {
 	}
 	if len(persisted.Bookmarks) != 1 || persisted.Bookmarks[0].Path != "notes/foo.md" {
 		t.Fatalf("persisted = %+v, want the hint written to disk", persisted.Bookmarks)
+	}
+}
+
+// The index used to mint UUIDs; a bookmark written then no longer parses as
+// an id, and must still recover by path rather than be pruned.
+func TestLoad_RecoversLegacyUUIDByPath(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdirJasper(t, dir)
+
+	newID := notes.NewID()
+	registry := newTestRegistry(map[notes.ID]string{newID: "notes/keep.md"})
+	doc := Bookmarks{
+		Bookmarks: []Bookmark{
+			{ID: "bm-1", NoteID: "00000000-0000-4000-a000-000000000001", Path: "notes/keep.md", Order: 0},
+			{ID: "bm-2", NoteID: "00000000-0000-4000-a000-000000000002", Path: "notes/gone.md", Order: 1},
+		},
+	}
+	if err := Save(dir, doc); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := Load(dir, registry, testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Bookmarks) != 1 || got.Bookmarks[0].ID != "bm-1" || got.Bookmarks[0].NoteID != newID.String() {
+		t.Fatalf("Load() bookmarks = %+v, want bm-1 adopted as %s and bm-2 pruned", got.Bookmarks, newID)
 	}
 }

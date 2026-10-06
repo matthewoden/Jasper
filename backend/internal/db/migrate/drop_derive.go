@@ -5,10 +5,11 @@ import (
 	"io/fs"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 var createTablePattern = regexp.MustCompile(
-	`(?i)create\s+(?:temp(?:orary)?\s+)?(?:virtual\s+)?table\s+(?:if\s+not\s+exists\s+)?` +
+	`(?i)create\s+(?:temp(?:orary)?\s+)?(?:virtual\s+)?(table|view)\s+(?:if\s+not\s+exists\s+)?` +
 		`["` + "`" + `]?([a-z_][a-z0-9_]*)["` + "`" + `]?`,
 )
 
@@ -42,12 +43,13 @@ func deriveDropStatements(migrations fs.FS) ([]string, error) {
 		matches := createTablePattern.FindAllSubmatch(body, -1)
 
 		for j := len(matches) - 1; j >= 0; j-- {
-			tbl := string(matches[j][1])
+			kind := strings.ToUpper(string(matches[j][1]))
+			tbl := string(matches[j][2])
 			if tbl == "schema_migrations" {
 				schemaMigrationsTable = tbl
 				continue
 			}
-			stmts = append(stmts, "DROP TABLE IF EXISTS "+tbl)
+			stmts = append(stmts, "DROP "+kind+" IF EXISTS "+tbl)
 		}
 	}
 

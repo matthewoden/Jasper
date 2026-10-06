@@ -12,16 +12,15 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 type blIdx struct {
-	existing map[uuid.UUID]notes.NoteSummary
+	existing map[notes.ID]notes.NoteSummary
 
-	backlinks    map[uuid.UUID][]notes.BacklinkRow
+	backlinks    map[notes.ID][]notes.BacklinkRow
 	backlinksErr error
 
 	searchResults []notes.SearchResult
@@ -30,21 +29,21 @@ type blIdx struct {
 
 func newBlIdx() *blIdx {
 	return &blIdx{
-		existing:  make(map[uuid.UUID]notes.NoteSummary),
-		backlinks: make(map[uuid.UUID][]notes.BacklinkRow),
+		existing:  make(map[notes.ID]notes.NoteSummary),
+		backlinks: make(map[notes.ID][]notes.BacklinkRow),
 	}
 }
 
-func (f *blIdx) addNote(id uuid.UUID, path, title string) {
+func (f *blIdx) addNote(id notes.ID, path, title string) {
 	f.existing[id] = notes.NoteSummary{ID: id, Path: path, Title: title}
 }
 
-func (f *blIdx) setRows(targetID uuid.UUID, rows []notes.BacklinkRow) {
+func (f *blIdx) setRows(targetID notes.ID, rows []notes.BacklinkRow) {
 	f.backlinks[targetID] = rows
 }
 
 func (f *blIdx) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
-func (f *blIdx) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *blIdx) Delete(_ context.Context, _ notes.ID) error         { return nil }
 func (f *blIdx) List(_ context.Context) ([]notes.NoteSummary, error) {
 	out := make([]notes.NoteSummary, 0, len(f.existing))
 	for _, s := range f.existing {
@@ -61,27 +60,27 @@ func (f *blIdx) DeleteByPathPrefix(_ context.Context, _ string) (int, error) { r
 func (f *blIdx) ListTags(_ context.Context) ([]notes.TagWithCount, error) {
 	return []notes.TagWithCount{}, nil
 }
-func (f *blIdx) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error { return nil }
-func (f *blIdx) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+func (f *blIdx) SyncTags(_ context.Context, _ notes.ID, _ []string) error { return nil }
+func (f *blIdx) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *blIdx) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return []notes.NoteSummary{}, nil
 }
-func (f *blIdx) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) { return nil, nil }
-func (f *blIdx) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error)    { return nil, nil }
+func (f *blIdx) RenameTag(_ context.Context, _, _ string) ([]notes.ID, error) { return nil, nil }
+func (f *blIdx) DeleteTag(_ context.Context, _ string) ([]notes.ID, error)    { return nil, nil }
 func (f *blIdx) SourcesByBacklinkTitle(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return []notes.NoteSummary{}, nil
 }
 
-func (f *blIdx) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *blIdx) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (f *blIdx) GetBacklinks(_ context.Context, targetID uuid.UUID) ([]notes.BacklinkRow, error) {
+func (f *blIdx) GetBacklinks(_ context.Context, targetID notes.ID) ([]notes.BacklinkRow, error) {
 	if f.backlinksErr != nil {
 		return nil, f.backlinksErr
 	}
@@ -103,20 +102,20 @@ func setupBLServer(t *testing.T, idx notes.Index) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	files := &fakeFileStore{}
-	svc := notes.NewService(files, nil, nil, logger)
+	svc := notes.NewService(files, idx, nil, logger)
 	srv := NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r)
 }
 
 // BH1: target note has 3 backlinks; returns 200 with 3-element array.
 func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
-	targetID := uuid.New()
-	src1, src2, src3 := uuid.New(), uuid.New(), uuid.New()
+	targetID := notes.NewID()
+	src1, src2, src3 := notes.NewID(), notes.NewID(), notes.NewID()
 
 	idx := newBlIdx()
 	idx.addNote(targetID, "target.md", "Target")
@@ -166,7 +165,7 @@ func TestGetNoteBacklinks_BH1_ThreeBacklinks(t *testing.T) {
 
 // BH2: zero backlinks returns 200 with empty non-null array.
 func TestGetNoteBacklinks_BH2_ZeroBacklinks(t *testing.T) {
-	targetID := uuid.New()
+	targetID := notes.NewID()
 	idx := newBlIdx()
 	idx.addNote(targetID, "target.md", "Target")
 	idx.setRows(targetID, []notes.BacklinkRow{})
@@ -218,7 +217,7 @@ func TestGetNoteBacklinks_BH3_InvalidUUID_Returns400(t *testing.T) {
 
 // BH4: UUID not present in index returns 404.
 func TestGetNoteBacklinks_BH4_NoteNotFound_Returns404(t *testing.T) {
-	unknownID := uuid.New()
+	unknownID := notes.NewID()
 	idx := newBlIdx()
 
 	ts := setupBLServer(t, idx)
@@ -238,8 +237,8 @@ func TestGetNoteBacklinks_BH4_NoteNotFound_Returns404(t *testing.T) {
 
 // BH5: excerpt HTML in response contains <mark class="backlink-ref">.
 func TestGetNoteBacklinks_BH5_ExcerptContainsMarkClass(t *testing.T) {
-	targetID := uuid.New()
-	srcID := uuid.New()
+	targetID := notes.NewID()
+	srcID := notes.NewID()
 	wantExcerpt := `<span>See </span><mark class="backlink-ref">[[Target]]</mark><span> for more</span>`
 
 	idx := newBlIdx()
@@ -279,7 +278,7 @@ func TestGetNotesSearchTitles_ST1_EmptyQuery_ReturnsRecentNotes(t *testing.T) {
 	results := make([]notes.SearchResult, 5)
 	for i := range results {
 		results[i] = notes.SearchResult{
-			ID:        uuid.New(),
+			ID:        notes.NewID(),
 			Title:     fmt.Sprintf("Note %d", i),
 			Path:      fmt.Sprintf("note%d.md", i),
 			MtimeUnix: int64(1000 + i),
@@ -318,7 +317,7 @@ func TestGetNotesSearchTitles_ST1_EmptyQuery_ReturnsRecentNotes(t *testing.T) {
 // ST2: query "foo" returns matching titles.
 func TestGetNotesSearchTitles_ST2_QueryFoo_ReturnsMatching(t *testing.T) {
 	results := []notes.SearchResult{
-		{ID: uuid.New(), Title: "Foobar", Path: "foobar.md", MtimeUnix: 1000},
+		{ID: notes.NewID(), Title: "Foobar", Path: "foobar.md", MtimeUnix: 1000},
 	}
 	ts := buildSearchServer(t, results, nil)
 	defer ts.Close()
@@ -350,7 +349,7 @@ func TestGetNotesSearchTitles_ST2_QueryFoo_ReturnsMatching(t *testing.T) {
 // ST3: results include recency_score field.
 func TestGetNotesSearchTitles_ST3_ResultsHaveRecencyScore(t *testing.T) {
 	results := []notes.SearchResult{
-		{ID: uuid.New(), Title: "Test", Path: "test.md", MtimeUnix: 1000},
+		{ID: notes.NewID(), Title: "Test", Path: "test.md", MtimeUnix: 1000},
 	}
 	ts := buildSearchServer(t, results, nil)
 	defer ts.Close()
@@ -383,8 +382,8 @@ func TestGetNotesSearchTitles_ST3_ResultsHaveRecencyScore(t *testing.T) {
 // ST4: limit param caps result count.
 func TestGetNotesSearchTitles_ST4_LimitCapCount(t *testing.T) {
 	ts := buildSearchServer(t, []notes.SearchResult{
-		{ID: uuid.New(), Title: "A", Path: "a.md", MtimeUnix: 3},
-		{ID: uuid.New(), Title: "B", Path: "b.md", MtimeUnix: 2},
+		{ID: notes.NewID(), Title: "A", Path: "a.md", MtimeUnix: 3},
+		{ID: notes.NewID(), Title: "B", Path: "b.md", MtimeUnix: 2},
 	}, nil)
 	defer ts.Close()
 
@@ -420,8 +419,8 @@ func TestGetNotesSearchTitles_ST5_LimitOver50_ClampsTo50(t *testing.T) {
 // ST6: results are present (sort is handled by the index; handler passes them through).
 func TestGetNotesSearchTitles_ST6_ResultsSortedByRecency(t *testing.T) {
 	results := []notes.SearchResult{
-		{ID: uuid.New(), Title: "Recent", Path: "r.md", MtimeUnix: 2000},
-		{ID: uuid.New(), Title: "Old", Path: "o.md", MtimeUnix: 1000},
+		{ID: notes.NewID(), Title: "Recent", Path: "r.md", MtimeUnix: 2000},
+		{ID: notes.NewID(), Title: "Old", Path: "o.md", MtimeUnix: 1000},
 	}
 	ts := buildSearchServer(t, results, nil)
 	defer ts.Close()
@@ -451,4 +450,12 @@ func TestGetNotesSearchTitles_ST6_ResultsSortedByRecency(t *testing.T) {
 	if result.Results[0].Title != "Recent" {
 		t.Errorf("ST6: expected first result 'Recent' (highest mtime), got %q", result.Results[0].Title)
 	}
+}
+
+func (*blIdx) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*blIdx) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

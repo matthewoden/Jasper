@@ -21,6 +21,8 @@ import type { Transaction, Extension } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { FRONTMATTER_NODE_NAME, FRONTMATTER_LINE_CLASS } from "./frontmatterPlugin";
 
+export const FRONTMATTER_ID_LINE_CLASS = "cm-frontmatter-id";
+
 
 /** Toggles the frontmatter hidden state when dispatched. */
 export const toggleFrontmatterVisibility = StateEffect.define<void>();
@@ -86,6 +88,9 @@ interface FrontmatterFieldState {
 
 
 const frontmatterLineDeco = Decoration.line({ class: FRONTMATTER_LINE_CLASS });
+const frontmatterIdLineDeco = Decoration.line({ class: `${FRONTMATTER_LINE_CLASS} ${FRONTMATTER_ID_LINE_CLASS}` });
+
+const ID_LINE_RE = /^id:/;
 
 function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -108,7 +113,11 @@ function buildDecorations(state: EditorState, hidden: boolean): DecorationSet {
         let pos = node.from;
         while (pos < node.to) {
           const line = state.doc.lineAt(pos);
-          builder.add(line.from, line.from, frontmatterLineDeco);
+          builder.add(
+            line.from,
+            line.from,
+            ID_LINE_RE.test(line.text) ? frontmatterIdLineDeco : frontmatterLineDeco,
+          );
           if (line.to >= node.to) break;
           pos = line.to + 1;
         }
@@ -216,6 +225,54 @@ const frontmatterHiddenEditFilter = EditorState.transactionFilter.of((tr) => {
 });
 
 
+/** The frontmatter block and its top-level `id:` line, when both exist. */
+function idLineRange(state: EditorState): { from: number; to: number; blockFrom: number; blockTo: number } | null {
+  let found: { from: number; to: number; blockFrom: number; blockTo: number } | null = null;
+  syntaxTree(state).iterate({
+    from: 0,
+    to: 0,
+    enter(node) {
+      if (found || node.name !== FRONTMATTER_NODE_NAME) return;
+      let pos = node.from;
+      while (pos < node.to) {
+        const line = state.doc.lineAt(pos);
+        if (ID_LINE_RE.test(line.text)) {
+          found = { from: line.from, to: line.to, blockFrom: node.from, blockTo: node.to };
+          return;
+        }
+        if (line.to >= node.to) return;
+        pos = line.to + 1;
+      }
+    },
+  });
+  return found;
+}
+
+/**
+ * frontmatterIdReadOnly — the server owns a note's id and forces it back on
+ * save, so user edits that touch the `id:` line are dropped rather than
+ * producing a confusing rewrite. Deleting the whole block is allowed (the
+ * server re-adds the id), as is a newline typed at the end of the line.
+ */
+const frontmatterIdReadOnly = EditorState.changeFilter.of((tr) => {
+  if (!tr.isUserEvent("input") && !tr.isUserEvent("delete") && !tr.isUserEvent("move")) return true;
+  const id = idLineRange(tr.startState);
+  if (id === null) return true;
+
+  let touches = false;
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (fromA <= id.blockFrom && toA >= id.blockTo) return;
+    if (fromA === toA) {
+      const atEnd = fromA === id.to && inserted.sliceString(0, 1) === "\n";
+      if (fromA >= id.from && fromA <= id.to && !atEnd) touches = true;
+      return;
+    }
+    if (fromA <= id.to && toA >= id.from) touches = true;
+  });
+  return !touches;
+});
+
+
 /**
  * Atomic ranges only guard incremental motion, so Ctrl/Cmd-Home jumps straight
  * to position 0 INSIDE the hidden block. A caret parked there makes every
@@ -247,6 +304,7 @@ export const frontmatterHideExtension: Extension = [
   frontmatterHidePlugin,
   frontmatterAtomicRanges,
   frontmatterHiddenEditFilter,
+  frontmatterIdReadOnly,
   frontmatterSelectionClamp,
 ];
 

@@ -82,6 +82,7 @@ import {
 import { nextUntitledName } from "./lib/nextUntitledName";
 import { useFileTree } from "./lib/useFileTree";
 import { useConfig } from "./lib/useConfig";
+import { setMentionIdNoteLinks } from "./editor/mentionAutocomplete";
 import type { CommandActions } from "./lib/useCommandPalette";
 import type { TreeNode } from "./lib/treeApi";
 import {
@@ -231,6 +232,10 @@ export function AppInner({ vaultPath = null }: AppInnerProps = {}) {
   } | null>(null);
 
   const { config } = useConfig();
+  const idNoteLinks = config?.editor.idNoteLinks ?? false;
+  useEffect(() => {
+    setMentionIdNoteLinks(idNoteLinks);
+  }, [idNoteLinks]);
 
   useEffect(() => {
     if (!config) return;

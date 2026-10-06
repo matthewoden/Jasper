@@ -42,6 +42,9 @@ type Editor struct {
 	ShowProperties bool `json:"showProperties"`
 	// AutoPair auto-closes brackets/quotes in the CM6 editor (EDIT-01).
 	AutoPair bool `json:"autoPair"`
+	// IDNoteLinks makes the @ picker insert [[jasper:note/<id>|Title]] rather
+	// than [[Title]], so the link survives a rename without a rewrite.
+	IDNoteLinks bool `json:"idNoteLinks"`
 	// FoldGutter shows the heading/list code-folding gutter (EDIT-03).
 	FoldGutter bool `json:"foldGutter"`
 	// LineNumbers shows the CM6 line-number gutter (EDIT-03).

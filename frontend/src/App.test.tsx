@@ -47,10 +47,10 @@ vi.mock("./lib/useVaultPicker", () => ({
 }));
 
 vi.mock("./lib/notesApi", () => ({
-  ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+  ScratchpadID: "00000000000000000000000001",
   getNote: vi.fn().mockResolvedValue({
     data: {
-      id: "00000000-0000-4000-a000-000000000001",
+      id: "00000000000000000000000001",
       path: "scratchpad.md",
       content: "# Welcome",
       updated_at: "2025-01-01T00:00:00Z",
@@ -260,7 +260,7 @@ import { updateNote } from "./lib/notesApi";
 import { __testing__ as resourcesTesting } from "./lib/resources/createResource";
 import { vaultApi } from "./lib/vaultApi";
 
-const SCRATCHPAD = "00000000-0000-4000-a000-000000000001";
+const SCRATCHPAD = "00000000000000000000000001";
 
 // usePaneStore is a module-level singleton (not reset by
 // useTreeStore.setState), and every test in this file now renders <PaneTree>

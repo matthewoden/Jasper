@@ -2,11 +2,9 @@ package notes
 
 import (
 	"sync"
-
-	"github.com/google/uuid"
 )
 
-// keyedMutex serializes writers per note UUID.
+// keyedMutex serializes writers per note id.
 //
 // If-Match is a check-then-act: Stat, compare, WriteAtomic. Without this,
 // two writers holding the same valid comparator both pass the compare before
@@ -18,7 +16,7 @@ import (
 // with 100k notes does not accumulate 100k mutexes.
 type keyedMutex struct {
 	mu    sync.Mutex
-	locks map[uuid.UUID]*refCountedLock
+	locks map[ID]*refCountedLock
 }
 
 type refCountedLock struct {
@@ -27,14 +25,14 @@ type refCountedLock struct {
 }
 
 func newKeyedMutex() *keyedMutex {
-	return &keyedMutex{locks: make(map[uuid.UUID]*refCountedLock)}
+	return &keyedMutex{locks: make(map[ID]*refCountedLock)}
 }
 
 // lock blocks until this note's write lock is held, and returns the unlock.
 // Callers must never hold two of these at once — every acquisition in this
 // package is lock/write/unlock within one function, which is what keeps the
 // lock order irrelevant and the whole thing deadlock-free.
-func (k *keyedMutex) lock(id uuid.UUID) func() {
+func (k *keyedMutex) lock(id ID) func() {
 	k.mu.Lock()
 	l, ok := k.locks[id]
 	if !ok {

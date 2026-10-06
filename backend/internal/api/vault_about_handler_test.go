@@ -62,7 +62,7 @@ func setupVaultAboutServer(t *testing.T) (*httptest.Server, *notes.Service, *mcp
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
@@ -72,7 +72,7 @@ func setupVaultAboutServer(t *testing.T) (*httptest.Server, *notes.Service, *mcp
 func applyVaultAboutTestMigrations(pair *sqlite.Pair) error {
 	for _, name := range []string{
 		"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql",
-		"004_mcp_grants.sql", "006_birthtime.sql",
+		"004_mcp_grants.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql", "010_refs.sql",
 	} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
@@ -185,7 +185,7 @@ func TestGetVaultAbout_NilSubsystems_Returns200WithZeros(t *testing.T) {
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	ts := httptest.NewServer(r)
 	defer ts.Close()

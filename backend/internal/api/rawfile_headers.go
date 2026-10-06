@@ -49,7 +49,7 @@ var inlineContentTypes = map[string]bool{
 // setRawFileSecurityHeaders applies the headers every raw-file response needs.
 //
 // Set by the handler itself rather than relying solely on the router: ServeFile
-// is mounted after HandlerFromMux so chi's last-registration-wins promotes it
+// is mounted after Mount so chi's last-registration-wins promotes it
 // (see the ordering hazard in ADR-0023), and a security header that depends on
 // mount order is a security header that will eventually go missing.
 func setRawFileSecurityHeaders(h http.Header) {

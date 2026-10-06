@@ -27,6 +27,16 @@ The existing shape demonstrates it — `ExtractTitle`, `ExtractTags`, `ExtractBo
 - **Never duplicate a content transform in TypeScript.** If a client-anchored flow needs a server-side transform, fetch the result rather than reimplementing it — two implementations of date formatting or variable substitution will drift.
 - `notes.Service` stays the orchestrator: it calls markdown helpers and owns the write ordering ([ADR-0007](./0007-file-first-save-path.md)). It does not itself parse.
 
+## Amendment (2026-10-05): the client's reference grammar
+
+`frontend/src/lib/itemRef.ts` repeats the reference grammar from `markdown/refs.go` (`IsRefTarget`, and splitting a ref into namespace, kind and id). This is not a content transform in the sense above, so the "never duplicate in TypeScript" rule doesn't cover it:
+
+- The editor has to recognise a reference synchronously, on every keystroke, to draw its chip. A server round trip per decoration isn't an option.
+- The grammar is a regular expression and a split. It reads a ref; it never rewrites content.
+- The one edit the client makes to a ref, the replaced-blob fix (`replaceRefInDoc`), is an ordinary user edit saved through the normal etag check. The server still owns every transform it applies on save.
+
+`itemRef.ts` is the client's only copy; the editor and `itemsApi.ts` both use it. A change to the grammar changes both files in the same commit.
+
 ## Related routing constraint
 
 A separate ordering rule lives in the composition root and is equally load-bearing: in `app.go`, **the SPA fallback `r.Mount("/", …)` must be mounted last**. Anything mounted after it is unreachable — the catch-all swallows the request and serves `index.html` with a 200, producing "it opens the app instead of the thing I asked for" rather than a loud 404. Any new route tree needs an explicit mount before that line and a route-order regression test.

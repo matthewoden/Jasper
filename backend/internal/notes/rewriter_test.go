@@ -2,6 +2,8 @@ package notes
 
 import (
 	"testing"
+
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
 // T1: basic rename in flow sequence.
@@ -217,4 +219,20 @@ func countOccurrences(s, sub string) int {
 		}
 	}
 	return count
+}
+
+// The id line must survive the tag rewriter's re-serialization, including an
+// all-digit id YAML would otherwise read as a number.
+func TestRewriteTagsArray_PreservesIDLine(t *testing.T) {
+	for _, id := range []string{"01ARZ3NDEKTSV4RRFFQ69G5FAV", string(ScratchpadID)} {
+		in := []byte("---\nid: " + id + "\ntags: [foo]\n---\nbody")
+		got := rewriteTagsArray(in, "foo", "bar")
+		want := "---\nid: " + id + "\ntags: [bar]\n---\nbody"
+		if string(got) != want {
+			t.Errorf("rewriteTagsArray\n got: %q\nwant: %q", got, want)
+		}
+		if v, ok := markdown.ReadID(got); !ok || v != id {
+			t.Errorf("ReadID after rewrite = %q, %v; want %q", v, ok, id)
+		}
+	}
 }

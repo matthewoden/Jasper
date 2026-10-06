@@ -16,7 +16,7 @@ vi.mock("./notesApi", () => ({
 import { useDeepLink } from "./useDeepLink";
 import { usePaneStore } from "./usePaneStore";
 
-const NOTE_ID = "00000000-0000-4000-a000-000000000001";
+const NOTE_ID = "00000000000000000000000001";
 
 
 const originalLocation = window.location;

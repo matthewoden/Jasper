@@ -31,7 +31,7 @@ func setupWorkspaceTestServer(t *testing.T) (*httptest.Server, *apiBroadcaster) 
 	si := NewStrictHandler(srv, nil)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
-		HandlerFromMux(si, r)
+		Mount(si, r)
 	})
 	return httptest.NewServer(r), bc
 }

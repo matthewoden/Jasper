@@ -1,4 +1,4 @@
-.PHONY: gen gen-check build test lint dev lock gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e
+.PHONY: gen gen-check build test lint dev lock gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e compose-check
 
 # Canonical port resolver. Returns server.port from
 # the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
@@ -23,6 +23,11 @@ perf-vault:
 	@rm -rf _perf-vault
 	@bash scripts/generate-perf-vault.sh _perf-vault 5000
 
+# Federation gate: the subgraph composes with the stub subgraphs under
+# api/graphql/stubs (acceptance criterion 11). Needs node and, once, network.
+compose-check:
+	@bash scripts/compose-check.sh
+
 gen: gen-go gen-ts
 
 gen-go:
@@ -32,8 +37,8 @@ gen-ts:
 	cd frontend && npx openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts
 
 gen-check: gen
-	git diff --exit-code -- backend/internal/api/openapi_gen.go frontend/src/api/schema.d.ts || \
-	  (echo "ERROR: generated artifacts drift from api/openapi.yaml. Run 'make gen' and commit." && exit 1)
+	git diff --exit-code -- backend/internal/api/openapi_gen.go frontend/src/api/schema.d.ts backend/internal/graphql/generated backend/internal/graphql/model || \
+	  (echo "ERROR: generated artifacts drift from api/openapi.yaml or api/graphql/schema.graphqls. Run 'make gen' and commit." && exit 1)
 
 build:
 	cd frontend && npm install && npm run build

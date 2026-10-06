@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -229,8 +230,8 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	for _, n := range listOut.Notes {
 		if n.Path == notes.ScratchpadRelPath {
 			foundScratchpad = true
-			if n.ID != notes.ScratchpadUUID.String() {
-				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadUUID.String())
+			if n.ID != notes.ScratchpadID.String() {
+				t.Errorf("scratchpad id: got %q, want %q", n.ID, notes.ScratchpadID.String())
 			}
 		}
 	}
@@ -238,7 +239,7 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 		t.Fatalf("scratchpad.md not in /api/v1/notes; body=%s", body)
 	}
 
-	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
+	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadID.String())
 	if status != 200 {
 		t.Fatalf("GET scratchpad-by-UUID status: got %d; body=%s", status, body)
 	}
@@ -262,12 +263,12 @@ func TestSmoke_HappyPath_FreshDB(t *testing.T) {
 	}
 
 	putBody, _ := json.Marshal(map[string]string{"content": "# smoke round-trip"})
-	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String(), putBody)
+	status, body = httpPut(t, base+"/api/v1/notes/"+notes.ScratchpadID.String(), putBody)
 	if status != 200 {
 		t.Fatalf("PUT scratchpad status: got %d; body=%s", status, body)
 	}
 
-	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadUUID.String())
+	status, body = httpGet(t, base+"/api/v1/notes/"+notes.ScratchpadID.String())
 	if status != 200 {
 		t.Fatalf("re-GET scratchpad status: got %d; body=%s", status, body)
 	}
@@ -281,7 +282,7 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	addr := pickFreePort(t)
 
 	overrideDir := t.TempDir()
-	// Baseline mirrors the full shipped migration set (through 006_birthtime)
+	// Baseline mirrors the full shipped migration set (through 010_refs)
 	// so the post-rollback schema matches a real deployment's
 	// last-known-good state — GET /api/v1/notes reads birthtime_unix.
 	copyFile(t, "../../migrations/001_initial.sql", filepath.Join(overrideDir, "001_initial.sql"))
@@ -290,6 +291,10 @@ func TestSmoke_BrokenMigration_FiresPath1_Banner(t *testing.T) {
 	copyFile(t, "../../migrations/004_mcp_grants.sql", filepath.Join(overrideDir, "004_mcp_grants.sql"))
 	copyFile(t, "../../migrations/005_backlink_multi_excerpt.sql", filepath.Join(overrideDir, "005_backlink_multi_excerpt.sql"))
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
+	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
+	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
+	copyFile(t, "../../migrations/009_blobs.sql", filepath.Join(overrideDir, "009_blobs.sql"))
+	copyFile(t, "../../migrations/010_refs.sql", filepath.Join(overrideDir, "010_refs.sql"))
 
 	env1 := []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir}
 	cmd, log := spawn(t, dataDir, addr, env1)
@@ -393,7 +398,7 @@ func TestSmoke_ConcurrentSaves_NoSQLITE_BUSY(t *testing.T) {
 		t.Fatalf("listener never came up; output:\n%s", log.String())
 	}
 
-	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadUUID.String()
+	url := "http://" + addr + "/api/v1/notes/" + notes.ScratchpadID.String()
 	origin := "http://" + addr
 	const N = 100
 
@@ -493,6 +498,10 @@ func TestSmoke_ResetAndRebuild_FullPath2Flow(t *testing.T) {
 	copyFile(t, "../../migrations/002_tags_backlinks.sql", filepath.Join(overrideDir, "002_tags_backlinks.sql"))
 	copyFile(t, "../../migrations/003_fts.sql", filepath.Join(overrideDir, "003_fts.sql"))
 	copyFile(t, "../../migrations/006_birthtime.sql", filepath.Join(overrideDir, "006_birthtime.sql"))
+	copyFile(t, "../../migrations/007_ulid_cutover.sql", filepath.Join(overrideDir, "007_ulid_cutover.sql"))
+	copyFile(t, "../../migrations/008_tombstones.sql", filepath.Join(overrideDir, "008_tombstones.sql"))
+	copyFile(t, "../../migrations/009_blobs.sql", filepath.Join(overrideDir, "009_blobs.sql"))
+	copyFile(t, "../../migrations/010_refs.sql", filepath.Join(overrideDir, "010_refs.sql"))
 	addr := pickFreePort(t)
 	cmd, log := spawn(t, dataDir, addr, []string{"JASPER_TEST_MIGRATIONS_DIR=" + overrideDir})
 	if err := waitForListener(t, addr, 10*time.Second); err != nil {
@@ -711,9 +720,9 @@ func TestSmoke_Phase3_NoteCRUD(t *testing.T) {
 		t.Fatalf("unmarshal note: %v; body=%s", err, body)
 	}
 
-	wantScaffoldPrefix := "---\ntags: []\n---"
-	if !strings.HasPrefix(note.Content, wantScaffoldPrefix) {
-		t.Errorf("new note content: got %q, want prefix %q (TAGS-EXT-01 scaffold)", note.Content, wantScaffoldPrefix)
+	wantScaffold := regexp.MustCompile(`^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\n---`)
+	if !wantScaffold.MatchString(note.Content) {
+		t.Errorf("new note content: got %q, want scaffold with id line (TAGS-EXT-01 scaffold)", note.Content)
 	}
 
 	status, body = httpGet(t, base+"/tree")

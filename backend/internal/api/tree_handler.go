@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/index"
 )
 
@@ -67,7 +65,7 @@ func translateNodeToWire(n index.TreeNode) TreeNode {
 		created := n.Note.Created
 		note := NoteNode{
 			Kind:      NoteNodeKind("note"),
-			Id:        openapi_types.UUID(n.Note.ID),
+			Id:        n.Note.ID.String(),
 			Path:      n.Note.Path,
 			Title:     n.Note.Title,
 			UpdatedAt: n.Note.UpdatedAt,

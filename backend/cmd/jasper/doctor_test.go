@@ -48,8 +48,8 @@ func TestDoctor_JSONFlag_EmitsParseableArray(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &arr); err != nil {
 		t.Fatalf("--json output not parseable: %v\nbody=%s", err, buf.String())
 	}
-	if len(arr) != 12 {
-		t.Errorf("want 12 checks (8 original + 3 vault checks + server bind address), got %d", len(arr))
+	if len(arr) != 13 {
+		t.Errorf("want 13 checks (8 original + 3 vault checks + server bind address + note ids), got %d", len(arr))
 	}
 
 	for i, c := range arr {

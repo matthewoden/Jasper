@@ -59,6 +59,11 @@ const mockUseBacklinks = vi.fn();
 vi.mock("../lib/useBacklinks", () => ({
   useBacklinks: (...args: unknown[]) => mockUseBacklinks(...args),
 }));
+// The refs resource would fetch and re-render; a null resource keeps the
+// render count below about useBacklinks alone.
+vi.mock("../lib/itemsApi", () => ({
+  noteRefsResource: { forKey: () => null },
+}));
 
 vi.mock("./OutlinePanel", () => ({
   OutlinePanel: () => <div data-testid="mock-outline-panel">No headings</div>,

@@ -262,7 +262,7 @@ test.describe("Frontmatter scaffold (TAGS-EXT-01/02/03)", () => {
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    expect(content).toMatch(/^---\s*\ntags: \[\]\s*\n---/);
+    expect(content).toMatch(/^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\s*\n---/);
     expect(content).toContain("# scaffold-s1-note");
   });
 
@@ -280,7 +280,7 @@ test.describe("Frontmatter scaffold (TAGS-EXT-01/02/03)", () => {
       const restarted = await spawnJasper({ dataDir });
       try {
         const content = await fs.readFile(probePath, "utf8");
-        expect(content).toMatch(/^---\s*\ntags: \[\]\s*\n---/);
+        expect(content).toMatch(/^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\s*\n---/);
         expect(content).toContain("# Already Had H1");
         expect(content).toContain("body here");
       } finally {
@@ -326,7 +326,7 @@ test.describe("Frontmatter scaffold (TAGS-EXT-01/02/03)", () => {
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    expect(content).toMatch(/^---\s*\ntags: \[\]\s*\n---/);
+    expect(content).toMatch(/^---\nid: [0-9A-HJKMNP-TV-Z]{26}\ntags: \[\]\s*\n---/);
     expect(content).toContain("body without any frontmatter block");
   });
 });

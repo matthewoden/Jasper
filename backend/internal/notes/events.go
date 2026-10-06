@@ -26,4 +26,17 @@ const (
 	EventMigrationStatus = "migration:status"
 	EventTagsRewritten   = "tags:rewritten"  // cross-vault tag rename/delete batch event
 	EventLinksRewritten  = "links:rewritten" // cross-vault wiki-link rename batch event
+	EventRefsChanged     = "refs:changed"    // a note's set of references changed
 )
+
+// BroadcastRefsChanged announces a non-empty change to a note's references.
+func BroadcastRefsChanged(b Broadcaster, d RefsDeltaFor, originSessionID string) {
+	if d.Delta.Empty() {
+		return
+	}
+	b.Broadcast(EventRefsChanged, map[string]any{
+		"source_id": d.ID.String(),
+		"added":     nonNil(d.Delta.Added),
+		"removed":   nonNil(d.Delta.Removed),
+	}, originSessionID)
+}

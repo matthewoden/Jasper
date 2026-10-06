@@ -2,11 +2,11 @@
 // (<dataDir>/.jasper/bookmarks.json). Stateless per-call — no in-memory
 // cache, no vault-swap teardown needed (mirrors internal/config).
 //
-// Bookmarks are keyed by stable note UUID (not path), so a bookmark
+// Bookmarks are keyed by stable note id (not path), so a bookmark
 // survives note rename/move (BOOK-04). A bookmark whose NoteID no longer
 // resolves in the notes.Registry is dropped on load (auto-prune).
 //
-// A note's UUID is only as durable as the index it lives in: a full
+// A note's id is only as durable as the index it lives in: a full
 // rebuild (POST /admin/reindex, or the reset-and-rebuild recovery path)
 // DROPs the notes table and re-mints every id, which made this document —
 // which is source of truth, not a derived surface — collateral damage.
@@ -29,7 +29,7 @@ type Folder struct {
 	Name string `json:"name"`
 }
 
-// Bookmark pins a single note by its stable UUID. FolderID is nil for a
+// Bookmark pins a single note by its stable id. FolderID is nil for a
 // top-level (ungrouped) bookmark; otherwise it references a Folder.ID in
 // the same document.
 //

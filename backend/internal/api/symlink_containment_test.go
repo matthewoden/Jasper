@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -55,7 +53,7 @@ func TestGetFile_RejectsSymlinkedAncestor(t *testing.T) {
 
 // TestServeFile_RejectsSymlinkedAncestor covers the hand-mounted ServeFile,
 // which is the handler a browser actually reaches (it is registered after
-// HandlerFromMux so chi's last-registration-wins promotes it over the
+// Mount so chi's last-registration-wins promotes it over the
 // generated GetFile wrapper).
 func TestServeFile_RejectsSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
@@ -127,7 +125,7 @@ func TestCreateFile_RejectsSymlinkedAncestor(t *testing.T) {
 func TestGetAttachment_RejectsSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
 
-	noteID := uuid.New()
+	noteID := notes.NewID()
 	srv, _, external := newSymlinkEscapeVault(t, []notes.NoteSummary{{
 		ID:        noteID,
 		Path:      "shared/note.md",
@@ -178,7 +176,7 @@ func TestContainment_RevealsNothingAboutFilesOutsideTheVault(t *testing.T) {
 func TestCreateAttachment_RejectsSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
 
-	noteID := uuid.New()
+	noteID := notes.NewID()
 	srv, _, external := newSymlinkEscapeVault(t, []notes.NoteSummary{{
 		ID:        noteID,
 		Path:      "shared/note.md",

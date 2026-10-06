@@ -106,14 +106,20 @@ func (s *Server) PostAdminReindex(
 				newError("no_indexer", "indexer not available"),
 			), nil
 		}
-		n, err := idx.Reconcile(ctx, index.ModeIncremental)
+		res, err := idx.Reconcile(ctx, index.ModeIncremental)
 		if err != nil {
 			s.log.Error("PostAdminReindex: incremental reconcile failed", "err", err)
 			return nil, errors.New("could not run incremental reindex")
 		}
 
 		s.hydrateRegistryFromIndex(ctx)
-		notesIndexed = n
+		if s.broadcaster != nil {
+			for _, d := range res.Deltas {
+				notes.BroadcastRefsChanged(s.broadcaster, d, "")
+			}
+		}
+		notesIndexed = res.N
+		n := res.N
 		return PostAdminReindex202JSONResponse{
 			StartedAt:    started,
 			NotesIndexed: &n,

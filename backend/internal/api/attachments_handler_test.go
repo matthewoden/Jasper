@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -24,7 +22,7 @@ type fakeIndexForAttachments struct {
 var _ notes.Index = (*fakeIndexForAttachments)(nil)
 
 func (f *fakeIndexForAttachments) Upsert(_ context.Context, _ notes.NoteRecord) error { return nil }
-func (f *fakeIndexForAttachments) Delete(_ context.Context, _ uuid.UUID) error        { return nil }
+func (f *fakeIndexForAttachments) Delete(_ context.Context, _ notes.ID) error         { return nil }
 func (f *fakeIndexForAttachments) List(_ context.Context) ([]notes.NoteSummary, error) {
 	return f.summaries, nil
 }
@@ -45,25 +43,25 @@ func (f *fakeIndexForAttachments) ListTags(_ context.Context) ([]notes.TagWithCo
 	return nil, nil
 }
 
-func (f *fakeIndexForAttachments) SyncTags(_ context.Context, _ uuid.UUID, _ []string) error {
+func (f *fakeIndexForAttachments) SyncTags(_ context.Context, _ notes.ID, _ []string) error {
 	return nil
 }
 
-func (f *fakeIndexForAttachments) SyncBacklinks(_ context.Context, _ uuid.UUID, _ string,
-	_ []markdown.WikiLinkRef, _ *notes.Registry, _ []byte,
-) error {
-	return nil
+func (f *fakeIndexForAttachments) SyncBacklinks(_ context.Context, _ notes.ID, _ string,
+	_ []markdown.Ref, _ *notes.Registry, _ []byte,
+) (notes.RefsDelta, error) {
+	return notes.RefsDelta{}, nil
 }
 
 func (f *fakeIndexForAttachments) NotesByTag(_ context.Context, _ string) ([]notes.NoteSummary, error) {
 	return nil, nil
 }
 
-func (f *fakeIndexForAttachments) RenameTag(_ context.Context, _, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndexForAttachments) RenameTag(_ context.Context, _, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
-func (f *fakeIndexForAttachments) DeleteTag(_ context.Context, _ string) ([]uuid.UUID, error) {
+func (f *fakeIndexForAttachments) DeleteTag(_ context.Context, _ string) ([]notes.ID, error) {
 	return nil, nil
 }
 
@@ -71,11 +69,11 @@ func (f *fakeIndexForAttachments) SourcesByBacklinkTitle(_ context.Context, _ st
 	return nil, nil
 }
 
-func (f *fakeIndexForAttachments) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *uuid.UUID) error {
+func (f *fakeIndexForAttachments) UpdateBacklinksTargetTitle(_ context.Context, _, _ string, _ *notes.ID) error {
 	return nil
 }
 
-func (f *fakeIndexForAttachments) GetBacklinks(_ context.Context, _ uuid.UUID) ([]notes.BacklinkRow, error) {
+func (f *fakeIndexForAttachments) GetBacklinks(_ context.Context, _ notes.ID) ([]notes.BacklinkRow, error) {
 	return nil, nil
 }
 
@@ -148,8 +146,8 @@ func TestAttachmentsUploadStorage(t *testing.T) {
 
 	pngHeader := []byte("\x89PNG\r\n\x1a\n")
 
-	rootID := uuid.New()
-	nestedID := uuid.New()
+	rootID := notes.NewID()
+	nestedID := notes.NewID()
 	summaries := []notes.NoteSummary{
 		{ID: rootID, Path: "root.md", Title: "Root", UpdatedAt: time.Now()},
 		{ID: nestedID, Path: "sub/nested.md", Title: "Nested", UpdatedAt: time.Now()},
@@ -256,7 +254,7 @@ func TestUniqueAttachmentName(t *testing.T) {
 func TestAttachmentsSecurity(t *testing.T) {
 	t.Parallel()
 
-	noteID := uuid.New()
+	noteID := notes.NewID()
 	summaries := []notes.NoteSummary{
 		{ID: noteID, Path: "test.md", Title: "Test", UpdatedAt: time.Now()},
 	}
@@ -361,7 +359,7 @@ func TestAttachmentsSecurity(t *testing.T) {
 
 	t.Run("unknown noteId returns 404", func(t *testing.T) {
 		resp, err := srv.GetAttachment(context.Background(), GetAttachmentRequestObject{
-			NoteId:   uuid.New().String(),
+			NoteId:   notes.NewID().String(),
 			Filename: "real.txt",
 		})
 		if err != nil {
@@ -371,4 +369,12 @@ func TestAttachmentsSecurity(t *testing.T) {
 			t.Fatalf("expected GetAttachment404JSONResponse, got %T", resp)
 		}
 	})
+}
+
+func (*fakeIndexForAttachments) RefBacklinks(_ context.Context, _ string) ([]notes.RefBacklink, error) {
+	return []notes.RefBacklink{}, nil
+}
+
+func (*fakeIndexForAttachments) LookupItem(_ context.Context, id string) (notes.ItemInfo, error) {
+	return notes.ItemInfo{ID: id, Kind: notes.ItemKindNote, Status: notes.ItemStatusUnknown, Title: id}, nil
 }

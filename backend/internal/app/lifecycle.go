@@ -21,6 +21,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/firstrun"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/graphql"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/mcp"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -223,7 +224,8 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	}
 
 	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
-		return a.indexer.Reconcile(ctx, index.ModeFull)
+		res, err := a.indexer.Reconcile(ctx, index.ModeFull)
+		return res.N, err
 	}
 
 	status, runErr := a.runner.Run(ctx)
@@ -258,6 +260,9 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
 			return a.serveStartupError(ctx, "Frontmatter scaffold", fmt.Errorf("lifecycle: frontmatter scaffold migration: %w", err))
 		}
+		if err := InjectNoteIDsMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return a.serveStartupError(ctx, "Note ids", fmt.Errorf("lifecycle: note ids migration: %w", err))
+		}
 	}
 
 	if status.State != migrate.StateUnrecoverable {
@@ -269,12 +274,14 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 		}
 	}
 
+	var reconciled index.ReconcileResult
 	if status.State != migrate.StateUnrecoverable {
-		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
+		res, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("startup incremental reindex failed (non-fatal)", "err", err)
 		} else {
-			a.cfg.Logger.Info("startup incremental reindex done", "notes_indexed", n)
+			reconciled = res
+			a.cfg.Logger.Info("startup incremental reindex done", "notes_indexed", res.N)
 		}
 	}
 
@@ -284,11 +291,12 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
+	events := newVaultEvents(hub, reconciled.Deltas)
+	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
 		// Refuse to serve rather than come up with an empty registry: the
-		// registry is the UUID -> path map, so without it tabs, bookmarks, deep
+		// registry is the id -> path map, so without it tabs, bookmarks, deep
 		// links and wiki-links all fail to resolve and the vault reads as empty
 		// while the notes sit untouched on disk (JASPER-9).
 		summaries, err := hydrateList(ctx, a.indexer, a.cfg.Logger, hydrateAttempts, hydrateBackoff)
@@ -331,13 +339,14 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
+	a.mountGraphQL(r, notesSvc, events)
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
 		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
-		api.HandlerFromMux(si, r)
+		api.Mount(si, r)
 
 		r.Get("/ws", hub.ServeHTTP)
 
@@ -445,7 +454,8 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		a.runner.Migrations = a.cfg.MigrationsOverride
 	}
 	a.runner.Path2Rebuild = func(ctx context.Context) (int, error) {
-		return a.indexer.Reconcile(ctx, index.ModeFull)
+		res, err := a.indexer.Reconcile(ctx, index.ModeFull)
+		return res.N, err
 	}
 
 	status, runErr := a.runner.Run(ctx)
@@ -460,6 +470,9 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		if err := InjectFrontmatterScaffoldMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
 			return fmt.Errorf("initVaultSubsystemsOnly: frontmatter scaffold: %w", err)
 		}
+		if err := InjectNoteIDsMigration(ctx, pair.Writer, notesDir, a.cfg.Logger); err != nil {
+			return fmt.Errorf("initVaultSubsystemsOnly: note ids: %w", err)
+		}
 	}
 
 	if status.State != migrate.StateUnrecoverable {
@@ -470,12 +483,14 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 		}
 	}
 
+	var reconciled index.ReconcileResult
 	if status.State != migrate.StateUnrecoverable {
-		n, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
+		res, err := a.indexer.ReconcileWithRegistry(ctx, index.ModeIncremental, nil)
 		if err != nil {
 			a.cfg.Logger.Warn("switch: incremental reindex failed (non-fatal)", "err", err)
 		} else {
-			a.cfg.Logger.Info("switch: incremental reindex done", "notes_indexed", n)
+			reconciled = res
+			a.cfg.Logger.Info("switch: incremental reindex done", "notes_indexed", res.N)
 		}
 	}
 
@@ -485,7 +500,8 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	notesSvc := notes.NewService(files, a.indexer, hub, a.cfg.Logger)
+	events := newVaultEvents(hub, reconciled.Deltas)
+	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
 		if summaries, err := a.indexer.List(ctx); err == nil {
@@ -517,13 +533,14 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
+	a.mountGraphQL(r, notesSvc, events)
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
 		r.Use(sessionIDMiddleware)
 		r.Use(api.ConfigStrictBodyMiddleware)
 		r.Use(csrfOriginMiddleware(a.cfg.ListenAddr))
-		api.HandlerFromMux(si, r)
+		api.Mount(si, r)
 		r.Get("/ws", hub.ServeHTTP)
 		r.Get("/files", apiServer.ServeFile)
 	})
@@ -625,6 +642,20 @@ func (a *App) startMCP(
 	attachProv := mcp.NewAttachmentAdapter(notesSvc, dataDir)
 
 	mcpServer := mcp.NewServer(notesSvc, notesProv, searchProv, attachProv, acl, hub, a.cfg.Logger)
+	mcpServer.SetRefsProvider(mcp.NewRefsAdapter(
+		func(ctx context.Context, id notes.ID) ([]string, error) {
+			rows, err := a.indexer.RefsBySource(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]string, 0, len(rows))
+			for _, r := range rows {
+				out = append(out, r.TargetRef)
+			}
+			return out, nil
+		},
+		a.indexer.RefBacklinks,
+	))
 
 	srv, err := mcp.StartMCPListener(ctx, mcpServer, bindAddr, a.cfg.Logger)
 	if err != nil {
@@ -713,4 +744,38 @@ func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
 
 	a.cfg.DataDir = absCanonical
 	return a.initVaultSubsystemsOnly(ctx)
+}
+
+// newVaultEvents is the broadcaster a vault's service writes to. The
+// subgraph's subscription reads the same broadcasts the browser does, so the
+// reference changes the opening reconcile found are announced on it.
+func newVaultEvents(hub *wshub.Hub, deltas []notes.RefsDeltaFor) *graphql.Events {
+	events := graphql.NewEvents(hub)
+	for _, d := range deltas {
+		notes.BroadcastRefsChanged(events, d, "")
+	}
+	return events
+}
+
+// mountGraphQL serves the subgraph for this vault's service and index. A nil
+// indexer is left out rather than wrapped, so the resolver sees no index
+// instead of a typed nil.
+func (a *App) mountGraphQL(r chi.Router, notesSvc *notes.Service, events *graphql.Events) {
+	res := &graphql.Resolver{Notes: notesSvc, Events: events, Log: a.cfg.Logger}
+	if a.indexer != nil {
+		res.Index = a.indexer
+		res.Blobs = a.indexer
+	}
+	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(res, graphqlOriginHosts(a.cfg.ListenAddr)))
+}
+
+// graphqlOriginHosts is the host[:port] form of allowedOrigins, which the
+// websocket accept checks the Origin header against.
+func graphqlOriginHosts(listenAddr string) []string {
+	origins := allowedOrigins(listenAddr)
+	hosts := make([]string, 0, len(origins))
+	for _, o := range origins {
+		hosts = append(hosts, strings.TrimPrefix(o, "http://"))
+	}
+	return hosts
 }

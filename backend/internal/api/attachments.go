@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
@@ -102,6 +100,19 @@ func (s *Server) CreateAttachment(
 		return nil, fmt.Errorf("write attachment: %w", writeErr)
 	}
 
+	// Indexed now rather than at the next reconcile, so the reference the
+	// client inserts can name the upload by id straight away.
+	var blobID *string
+	if s.items != nil {
+		if rel, relErr := filepath.Rel(filepath.Join(s.dataDir, "notes"), absPath); relErr == nil {
+			if id, adoptErr := s.items.AdoptAttachment(ctx, filepath.ToSlash(rel)); adoptErr != nil {
+				s.log.Warn("CreateAttachment: blob adopt failed (reconcile heals)", "path", rel, "err", adoptErr)
+			} else {
+				blobID = &id
+			}
+		}
+	}
+
 	sniffEnd := 512
 	if len(data) < sniffEnd {
 		sniffEnd = len(data)
@@ -148,6 +159,7 @@ func (s *Server) CreateAttachment(
 		Category:    AttachmentUploadResultCategory(category),
 		IsImage:     isImage,
 		SizeBytes:   int64(len(data)),
+		BlobId:      blobID,
 	}, nil
 }
 
@@ -214,7 +226,7 @@ func (s *Server) lookupNoteByStringID(ctx context.Context, noteID string) (notes
 		return notes.NoteSummary{}, errors.New("no index")
 	}
 
-	id, err := uuid.Parse(noteID)
+	id, err := notes.ParseID(noteID)
 	if err != nil {
 		return notes.NoteSummary{}, fmt.Errorf("invalid note id: %w", err)
 	}

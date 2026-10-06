@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -66,7 +64,7 @@ func (s *Server) GetNoteByPath(
 	}
 
 	return GetNoteByPath200JSONResponse{
-		Id:        openapi_types.UUID(rec.ID),
+		Id:        rec.ID.String(),
 		Path:      rec.Path,
 		Title:     rec.Title,
 		UpdatedAt: time.Unix(rec.MTimeUnix, 0).UTC(),

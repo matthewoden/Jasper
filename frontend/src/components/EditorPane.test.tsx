@@ -157,7 +157,7 @@ vi.mock("../lib/notesApi", async (importActual) => {
         // real one is kept — stubbing it would only let the mock disagree
         // with the server about what a 409 looks like.
         ...(await importActual<typeof import("../lib/notesApi")>()),
-        ScratchpadUUID: "00000000-0000-4000-a000-000000000001",
+        ScratchpadID: "00000000000000000000000001",
         getNote: sharedGetNote,
         getNoteFresh: sharedGetNote,
         updateNote: vi.fn(),
@@ -217,7 +217,7 @@ vi.mock("./toast.utils", () => ({
     useToast: () => ({ toast: vi.fn() }),
 }));
 
-import { ScratchpadUUID, getNote, updateNote } from "../lib/notesApi";
+import { ScratchpadID, getNote, updateNote } from "../lib/notesApi";
 import { postNoteMove, treeResource } from "../lib/treeApi";
 import type { ApiError, Tree } from "../lib/treeApi";
 import { __resetAllControllersForTest } from "../lib/noteBufferController";
@@ -243,7 +243,7 @@ function okTree(notePath: string): GetTreeReturn {
             root: [
                 {
                     kind: "note",
-                    id: "00000000-0000-4000-a000-000000000001",
+                    id: "00000000000000000000000001",
                     path: notePath,
                     title: "scratchpad",
                     updated_at: "2025-01-01T00:00:00Z",
@@ -269,7 +269,7 @@ const FIXTURE_ETAG = "2025-01-01T00:00:00Z";
 function okGet(content: string): GetReturn {
     return {
         data: {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             content,
             updated_at: "2025-01-01T00:00:00Z",
@@ -283,7 +283,7 @@ function okGet(content: string): GetReturn {
 function okPut(): PutReturn {
     return {
         data: {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2025-01-01T00:00:00Z",
             etag: FIXTURE_ETAG,
@@ -311,7 +311,7 @@ function errPut(message: string): PutReturn {
 
 beforeEach(() => {
     // noteBufferController is a module-level singleton keyed by noteId (Plan
-    // 05); most tests in this file reuse ScratchpadUUID, so a controller
+    // 05); most tests in this file reuse ScratchpadID, so a controller
     // left over from a PRIOR test (its own debounce/content/saveState) would
     // otherwise leak into the next one. Reset before every test for the same
     // isolation guarantee the old per-render local state gave for free.
@@ -350,7 +350,7 @@ describe("<EditorPane />", () => {
             }) as ReturnType<typeof getNote>,
         );
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
         expect(editor.value).toBe("");
@@ -367,7 +367,7 @@ describe("<EditorPane />", () => {
     it("E2: GET error renders the locked failure copy", async () => {
         getNoteMock.mockResolvedValue(errGet("broken"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         expect(
@@ -386,7 +386,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -403,7 +403,7 @@ describe("<EditorPane />", () => {
         });
 
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "hello world",
             FIXTURE_ETAG,
         );
@@ -421,7 +421,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -437,7 +437,7 @@ describe("<EditorPane />", () => {
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadID, "edited", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -449,7 +449,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("hi"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -472,7 +472,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValueOnce(errPut("disk full"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -517,7 +517,7 @@ describe("<EditorPane />", () => {
                     }) as ReturnType<typeof updateNote>,
             );
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -553,7 +553,7 @@ describe("<EditorPane />", () => {
 
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
         expect(updateNoteMock).toHaveBeenLastCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "edit3",
             FIXTURE_ETAG,
         );
@@ -573,7 +573,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -607,14 +607,14 @@ describe("<EditorPane />", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "x2", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadID, "x2", FIXTURE_ETAG);
     });
 
     it("ignores plain 's' and other non-save keys (verified via autosave non-trigger)", async () => {
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -630,7 +630,7 @@ describe("<EditorPane />", () => {
         getNoteMock.mockResolvedValue(okGet("a"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} reindexing={true} />);
+        render(<EditorPane noteId={ScratchpadID} reindexing={true} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -686,7 +686,7 @@ describe("<EditorPane />", () => {
             // hijacked every other mounted pane's content — including this
             // pane, which should keep showing its own note.
             render(
-                <EditorPane noteId={ScratchpadUUID} paneActive={false} />,
+                <EditorPane noteId={ScratchpadID} paneActive={false} />,
             );
             await flushMicrotasks();
             await waitFor(() =>
@@ -705,7 +705,7 @@ describe("<EditorPane />", () => {
         updateNoteMock.mockResolvedValue(okPut());
 
         const { rerender } = render(
-            <EditorPane noteId="00000000-0000-4000-a000-000000000001" />,
+            <EditorPane noteId="00000000000000000000000001" />,
         );
         await flushMicrotasks();
         const editor = screen.getByLabelText(
@@ -713,7 +713,7 @@ describe("<EditorPane />", () => {
         ) as HTMLTextAreaElement;
         await waitFor(() =>
             expect(editor.value).toBe(
-                "content for 00000000-0000-4000-a000-000000000001",
+                "content for 00000000000000000000000001",
             ),
         );
 
@@ -732,13 +732,13 @@ describe("<EditorPane />", () => {
         );
         updateNoteMock.mockResolvedValue(okPut());
 
-        const { rerender } = render(<EditorPane noteId={ScratchpadUUID} />);
+        const { rerender } = render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
         ) as HTMLTextAreaElement;
         await waitFor(() =>
-            expect(editor.value).toBe(`content for ${ScratchpadUUID}`),
+            expect(editor.value).toBe(`content for ${ScratchpadID}`),
         );
 
         // Arm the debounce with note A's edited content…
@@ -790,7 +790,7 @@ type MoveReturn = Awaited<ReturnType<typeof postNoteMove>>;
 function okMove(path: string): MoveReturn {
     return {
         data: {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path,
             title: "title",
             updated_at: "2025-01-01T00:00:00Z",
@@ -811,7 +811,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         postNoteMoveMock.mockResolvedValue(okMove("new title.md"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -830,12 +830,12 @@ describe("<EditorPane /> — H1→filename binding", () => {
 
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
         expect(postNoteMoveMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "new title.md",
         );
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "# new title\n\nbody",
             FIXTURE_ETAG,
         );
@@ -848,7 +848,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         getNoteMock.mockResolvedValue(okGet("# Title\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -868,7 +868,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(postNoteMoveMock).not.toHaveBeenCalled();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "# Title\n\nbody changed",
             FIXTURE_ETAG,
         );
@@ -878,7 +878,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -898,7 +898,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(postNoteMoveMock).not.toHaveBeenCalled();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "# my/note\n\nbody",
             FIXTURE_ETAG,
         );
@@ -918,7 +918,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         );
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -960,7 +960,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         );
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -988,7 +988,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         getNoteMock.mockResolvedValue(okGet("# Original\n\nbody"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -1014,7 +1014,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         updateNoteMock.mockResolvedValue(okPut());
         getTreeMock.mockResolvedValue(okTree("my plan.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -1034,7 +1034,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         expect(postNoteMoveMock).not.toHaveBeenCalled();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "# MY PLAN\n\nbody",
             FIXTURE_ETAG,
         );
@@ -1049,7 +1049,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
     it("live tree path overrides the load-effect seed; H1 edit composes new path against the LIVE parent dir", async () => {
         getNoteMock.mockResolvedValue({
             data: {
-                id: ScratchpadUUID,
+                id: ScratchpadID,
                 path: "untitled.md", // stale — what the ref WOULD have cached
                 content: "# Original\n\nbody",
                 updated_at: "2025-01-01T00:00:00Z",
@@ -1064,7 +1064,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         );
         getTreeMock.mockResolvedValue(okTree("projects/manual.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -1085,7 +1085,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
 
         expect(postNoteMoveMock).toHaveBeenCalledTimes(1);
         expect(postNoteMoveMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "projects/renamed by editor.md",
         );
     });
@@ -1094,7 +1094,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
         getNoteMock.mockResolvedValue(okGet("# Title\n\nhello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -1115,7 +1115,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
 
         expect(postNoteMoveMock).not.toHaveBeenCalled();
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "# Title\n\nhello world",
             FIXTURE_ETAG,
         );
@@ -1130,7 +1130,7 @@ describe("<EditorPane /> — H1→filename binding", () => {
 
 
 describe("<EditorPane /> — WebSocket handlers", () => {
-    function renderEditorWithHandlers(noteId: string | null = ScratchpadUUID) {
+    function renderEditorWithHandlers(noteId: string | null = ScratchpadID) {
         const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
         const view = render(
             <EditorPane noteId={noteId} editorHandlersRef={handlersRef} />,
@@ -1149,7 +1149,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         fireEvent.change(editor, { target: { value: "edited content" } });
 
         const updatedPayload: WSNoteUpdatedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2026-05-06T13:00:00Z",
         };
@@ -1173,7 +1173,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
 
         fireEvent.change(editor, { target: { value: "edited" } });
         const updatedPayload: WSNoteUpdatedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2026-05-06T13:00:00Z",
         };
@@ -1188,7 +1188,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "edited",
             "2026-05-06T13:00:00Z",
         );
@@ -1207,7 +1207,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
 
         fireEvent.change(editor, { target: { value: "user edits" } });
         const updatedPayload: WSNoteUpdatedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2026-05-06T13:00:00Z",
         };
@@ -1240,7 +1240,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         getNoteMock.mockResolvedValue(okGet("fresh from server"));
 
         const updatedPayload: WSNoteUpdatedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2026-05-06T13:00:00Z",
         };
@@ -1268,7 +1268,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
 
         act(() => {
             handlersRef.current!.onNoteUpdated({
-                id: ScratchpadUUID,
+                id: ScratchpadID,
                 path: "scratchpad.md",
                 updated_at: "2026-05-06T13:00:00Z",
             });
@@ -1287,7 +1287,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         getNoteMock.mockResolvedValue(okGet("note A content"));
         const handlersRef: { current: EditorPaneHandlers | null } = { current: null };
         const { rerender } = render(
-            <EditorPane noteId={ScratchpadUUID} editorHandlersRef={handlersRef} />,
+            <EditorPane noteId={ScratchpadID} editorHandlersRef={handlersRef} />,
         );
         await flushMicrotasks();
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
@@ -1301,7 +1301,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         );
         act(() => {
             handlersRef.current!.onNoteUpdated({
-                id: ScratchpadUUID,
+                id: ScratchpadID,
                 path: "scratchpad.md",
                 updated_at: "2026-05-06T13:00:00Z",
             });
@@ -1347,7 +1347,7 @@ describe("<EditorPane /> — WebSocket handlers", () => {
         fireEvent.change(editor, { target: { value: "user typed work" } });
 
         const deletedPayload: WSNoteDeletedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
         };
         act(() => {
@@ -1448,7 +1448,7 @@ describe("<EditorPane /> — click-anywhere-to-type host", () => {
         const focusEndSpy = vi.fn();
         window.__jasperMockEditorFocusEnd = focusEndSpy;
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         await waitFor(() =>
             expect(
@@ -1468,7 +1468,7 @@ describe("<EditorPane /> — click-anywhere-to-type host", () => {
         const focusEndSpy = vi.fn();
         window.__jasperMockEditorFocusEnd = focusEndSpy;
 
-        const { container } = render(<EditorPane noteId={ScratchpadUUID} />);
+        const { container } = render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         await waitFor(() =>
             expect(
@@ -1503,7 +1503,7 @@ describe("<EditorPane /> — live H1 → sidebar label", () => {
         getNoteMock.mockResolvedValue(okGet("body only"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -1515,7 +1515,7 @@ describe("<EditorPane /> — live H1 → sidebar label", () => {
         });
         await flushMicrotasks();
 
-        expect(useTreeStore.getState().liveLabels[ScratchpadUUID]).toBe(
+        expect(useTreeStore.getState().liveLabels[ScratchpadID]).toBe(
             "My Title",
         );
     });
@@ -1525,10 +1525,10 @@ describe("<EditorPane /> — live H1 → sidebar label", () => {
         updateNoteMock.mockResolvedValue(okPut());
 
         useTreeStore.setState({
-            liveLabels: { [ScratchpadUUID]: "Original" },
+            liveLabels: { [ScratchpadID]: "Original" },
         });
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -1539,7 +1539,7 @@ describe("<EditorPane /> — live H1 → sidebar label", () => {
         await flushMicrotasks();
 
         expect(
-            useTreeStore.getState().liveLabels[ScratchpadUUID],
+            useTreeStore.getState().liveLabels[ScratchpadID],
         ).toBeUndefined();
     });
 
@@ -1583,7 +1583,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -1600,7 +1600,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "edited content",
             FIXTURE_ETAG,
         );
@@ -1619,7 +1619,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1644,7 +1644,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
                 });
                 expect(fetchMock).toHaveBeenCalledTimes(1);
                 expect(fetchMock).toHaveBeenCalledWith(
-                    `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+                    `/api/v1/notes/${encodeURIComponent(ScratchpadID)}`,
                     expect.objectContaining({
                         method: "PUT",
                         keepalive: true,
@@ -1680,7 +1680,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1699,7 +1699,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
                 RequestInit,
             ];
             expect(url).toBe(
-                `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+                `/api/v1/notes/${encodeURIComponent(ScratchpadID)}`,
             );
             expect(init.method).toBe("PUT");
             expect(init.keepalive).toBe(true);
@@ -1721,7 +1721,7 @@ describe("<EditorPane /> — save-on-blur lifecycle", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1779,7 +1779,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1800,7 +1800,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
                     RequestInit,
                 ];
                 expect(url).toBe(
-                    `/api/v1/notes/${encodeURIComponent(ScratchpadUUID)}`,
+                    `/api/v1/notes/${encodeURIComponent(ScratchpadID)}`,
                 );
                 expect(init.method).toBe("PUT");
                 expect(init.keepalive).toBe(true);
@@ -1825,7 +1825,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1857,7 +1857,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1894,7 +1894,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1931,7 +1931,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -1959,7 +1959,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2012,7 +2012,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2042,7 +2042,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2084,7 +2084,7 @@ describe("BL-04 keepalive-on-tab-close", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2117,7 +2117,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
         };
         render(
             <EditorPane
-                noteId={ScratchpadUUID}
+                noteId={ScratchpadID}
                 editorHandlersRef={handlersRef}
             />,
         );
@@ -2128,7 +2128,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
         fireEvent.change(editor, { target: { value: "user edits" } });
 
         const updatedPayload: WSNoteUpdatedPayload = {
-            id: ScratchpadUUID,
+            id: ScratchpadID,
             path: "scratchpad.md",
             updated_at: "2026-05-09T10:00:00Z",
         };
@@ -2151,7 +2151,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
 
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(1));
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "user edits",
             "2026-05-09T10:00:00Z",
         );
@@ -2169,7 +2169,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
         getNoteMock.mockReset();
         getNoteMock.mockResolvedValueOnce({
             data: {
-                id: ScratchpadUUID,
+                id: ScratchpadID,
                 path: "scratchpad.md",
                 content: "fresh server content",
                 updated_at: "2026-05-09T11:00:00Z",
@@ -2193,7 +2193,7 @@ describe("exhaustiveness + Save-anyway recovery", () => {
         fireEvent.click(screen.getByRole("button", { name: /Save anyway/i }));
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalledTimes(2));
         expect(updateNoteMock).toHaveBeenLastCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "user edits",
             "2026-05-09T11:00:00Z",
         );
@@ -2263,7 +2263,7 @@ describe("findNotePathInTree exhaustiveness", () => {
                                 children: [
                                     {
                                         kind: "note",
-                                        id: ScratchpadUUID,
+                                        id: ScratchpadID,
                                         path: "projects/jasper/note.md",
                                         title: "note",
                                         updated_at: "2025-01-01T00:00:00Z",
@@ -2278,7 +2278,7 @@ describe("findNotePathInTree exhaustiveness", () => {
             response: new Response(),
         } as GetTreeReturn);
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
         await waitFor(() => expect(editor.value).toBe("original"));
@@ -2294,7 +2294,7 @@ describe("connectionRestored flushes buffered edits", () => {
 
         useTreeStore.setState({ connectionStatus: "connected" });
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -2322,7 +2322,7 @@ describe("connectionRestored flushes buffered edits", () => {
 
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "edits during disconnect",
             FIXTURE_ETAG,
         );
@@ -2334,7 +2334,7 @@ describe("connectionRestored flushes buffered edits", () => {
 
         useTreeStore.setState({ connectionStatus: "reconnecting" });
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -2367,7 +2367,7 @@ describe("connectionRestored flushes buffered edits", () => {
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
 
-        rerender(<EditorPane noteId={ScratchpadUUID} />);
+        rerender(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         expect(updateNoteMock).not.toHaveBeenCalled();
     });
@@ -2378,7 +2378,7 @@ describe("connectionRestored flushes buffered edits", () => {
 
         useTreeStore.setState({ connectionStatus: "connected" });
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -2405,7 +2405,7 @@ describe("connectionRestored flushes buffered edits", () => {
 
         await waitFor(() => expect(updateNoteMock).toHaveBeenCalled());
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "buffered while reconnecting",
             FIXTURE_ETAG,
         );
@@ -2453,7 +2453,7 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2473,7 +2473,7 @@ describe("<EditorPane /> — BUG-01: saving tab dispatches tags:updated locally"
         getNoteMock.mockResolvedValue(okGet("hello"));
         updateNoteMock.mockResolvedValue(errPut("disk full"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2496,7 +2496,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         getNoteMock.mockResolvedValue(okGet("original content"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2515,7 +2515,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         getNoteMock.mockResolvedValue(okGet("original content"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2530,7 +2530,7 @@ describe("<EditorPane /> — BUG-03: handleEditorBlur no-op when userHasEdited i
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited content", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadID, "edited content", FIXTURE_ETAG);
     });
 });
 
@@ -2540,7 +2540,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         getNoteMock.mockResolvedValue(okGet("- [ ] task"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2552,7 +2552,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [x] task", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadID, "- [x] task", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -2564,7 +2564,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         getNoteMock.mockResolvedValue(okGet("- [ ] task"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2581,14 +2581,14 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         await flushMicrotasks();
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "- [ ] task edited", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadID, "- [ ] task edited", FIXTURE_ETAG);
     });
 
     it("CHK-01 multiple toggles in sequence each produce exactly one save", async () => {
         getNoteMock.mockResolvedValue(okGet("- [ ] task\n- [ ] task2"));
         updateNoteMock.mockResolvedValue(okPut());
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText("Note content") as HTMLTextAreaElement;
@@ -2600,7 +2600,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [ ] task2", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadID, "- [x] task\n- [ ] task2", FIXTURE_ETAG);
 
         await act(async () => {
             window.__jasperMockEditorToggle?.("- [x] task\n- [x] task2");
@@ -2608,7 +2608,7 @@ describe("<EditorPane /> — checkbox toggle immediate flush", () => {
         });
         await flushMicrotasks();
         expect(updateNoteMock).toHaveBeenCalledTimes(2);
-        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadUUID, "- [x] task\n- [x] task2", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenLastCalledWith(ScratchpadID, "- [x] task\n- [x] task2", FIXTURE_ETAG);
 
         await act(async () => {
             await vi.advanceTimersByTimeAsync(AUTOSAVE_DEBOUNCE_MS + 100);
@@ -2626,7 +2626,7 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2666,7 +2666,7 @@ describe("EP-keepalive-session — keepalive PUT carries X-Session-ID", () => {
         global.fetch = fetchMock as unknown as typeof fetch;
 
         try {
-            render(<EditorPane noteId={ScratchpadUUID} />);
+            render(<EditorPane noteId={ScratchpadID} />);
             await flushMicrotasks();
             const editor = screen.getByLabelText(
                 "Note content",
@@ -2699,7 +2699,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
     it("hidden=true sets display:none on the editor-pane root WITHOUT unmounting", async () => {
         getNoteMock.mockResolvedValue(okGet("base"));
 
-        render(<EditorPane noteId={ScratchpadUUID} hidden />);
+        render(<EditorPane noteId={ScratchpadID} hidden />);
         await flushMicrotasks();
 
         const pane = screen.getByTestId("editor-pane");
@@ -2711,7 +2711,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
     it("hidden=false renders the pane visible (display:flex)", async () => {
         getNoteMock.mockResolvedValue(okGet("base"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         expect(screen.getByTestId("editor-pane").style.display).toBe("flex");
@@ -2720,7 +2720,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
     it("isDeleted=true makes the editor read-only", async () => {
         getNoteMock.mockResolvedValue(okGet("base"));
 
-        render(<EditorPane noteId={ScratchpadUUID} isDeleted />);
+        render(<EditorPane noteId={ScratchpadID} isDeleted />);
         await flushMicrotasks();
 
         const editor = screen.getByLabelText(
@@ -2737,7 +2737,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
 
         render(
             <EditorPane
-                noteId={ScratchpadUUID}
+                noteId={ScratchpadID}
                 isDeleted
                 editorHandlersRef={handlersRef}
             />,
@@ -2746,7 +2746,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
 
         act(() => {
             handlersRef.current!.onNoteDeleted({
-                id: ScratchpadUUID,
+                id: ScratchpadID,
                 path: "scratchpad.md",
             });
         });
@@ -2757,7 +2757,7 @@ describe("<EditorPane /> — keep-alive (hidden / isDeleted)", () => {
 
 
 describe("<EditorPane /> — flush() ref method (TAB-13)", () => {
-    function renderWithFlush(noteId: string | null = ScratchpadUUID) {
+    function renderWithFlush(noteId: string | null = ScratchpadID) {
         const flushRef: { current: { flush: () => Promise<void> } | null } = {
             current: null,
         };
@@ -2784,7 +2784,7 @@ describe("<EditorPane /> — flush() ref method (TAB-13)", () => {
 
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
         expect(updateNoteMock).toHaveBeenCalledWith(
-            ScratchpadUUID,
+            ScratchpadID,
             "edited before close",
             FIXTURE_ETAG,
         );
@@ -2878,7 +2878,7 @@ describe("<EditorPane /> — coalescing OUTCOME (flush-dialog race, DEBT-01)", (
     // These assert on the SETTLED outcome of flush() when it coalesces into an
     // already in-flight save — NOT on updateNote call count (E6 already proves
     // call count; it does not catch the optimistic `{ ok: true }` race).
-    function renderWithFlush(noteId: string | null = ScratchpadUUID) {
+    function renderWithFlush(noteId: string | null = ScratchpadID) {
         const flushRef: { current: { flush: () => Promise<void> } | null } = {
             current: null,
         };
@@ -3089,7 +3089,7 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         getNoteMock.mockResolvedValue(okGet("# route"));
         getTreeMock.mockResolvedValue(okTree("docs/api/route.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const crumb = await screen.findByTestId("note-breadcrumb");
@@ -3115,7 +3115,7 @@ describe("<EditorPane /> breadcrumb (TAB-18)", () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         // Root note: single segment, no separators.
@@ -3135,7 +3135,7 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01)", () => {
         getTreeMock.mockResolvedValue(okTree("note.md"));
         bookmarkedNoteIds = new Set();
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const star = await screen.findByTestId("bookmark-star");
@@ -3147,9 +3147,9 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01)", () => {
     it("shows a filled, accent-colored star when the note IS bookmarked", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
-        bookmarkedNoteIds = new Set([ScratchpadUUID]);
+        bookmarkedNoteIds = new Set([ScratchpadID]);
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const star = await screen.findByTestId("bookmark-star");
@@ -3166,20 +3166,20 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01)", () => {
         getTreeMock.mockResolvedValue(okTree("note.md"));
         bookmarkedNoteIds = new Set();
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const star = await screen.findByTestId("bookmark-star");
         fireEvent.click(star);
 
-        expect(toggleBookmarkMock).toHaveBeenCalledWith(ScratchpadUUID);
+        expect(toggleBookmarkMock).toHaveBeenCalledWith(ScratchpadID);
     });
 
     it("does not render a clickable star when the pane is hidden", async () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} hidden />);
+        render(<EditorPane noteId={ScratchpadID} hidden />);
         await flushMicrotasks();
 
         await screen.findByTestId("note-breadcrumb");
@@ -3190,7 +3190,7 @@ describe("<EditorPane /> breadcrumb bookmark star (BOOK-01)", () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} paneActive={false} />);
+        render(<EditorPane noteId={ScratchpadID} paneActive={false} />);
         await flushMicrotasks();
 
         await screen.findByTestId("note-breadcrumb");
@@ -3231,7 +3231,7 @@ describe("<EditorPane /> responsive top-chrome cluster", () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const cluster = await screen.findByTestId("editor-top-chrome-cluster");
@@ -3250,7 +3250,7 @@ describe("<EditorPane /> responsive top-chrome cluster", () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         await screen.findByTestId("note-breadcrumb");
@@ -3264,7 +3264,7 @@ describe("<EditorPane /> responsive top-chrome cluster", () => {
         getNoteMock.mockResolvedValue(okGet("# note"));
         getTreeMock.mockResolvedValue(okTree("note.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         await screen.findByTestId("note-breadcrumb");
@@ -3280,7 +3280,7 @@ describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename titl
         getNoteMock.mockResolvedValue(okGet("# My Heading\n\nbody"));
         getTreeMock.mockResolvedValue(okTree("my heading.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const title = await screen.findByTestId("editor-title-element");
@@ -3291,7 +3291,7 @@ describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename titl
         getNoteMock.mockResolvedValue(okGet("## Reading surface\n\nno level-one heading here"));
         getTreeMock.mockResolvedValue(okTree("reading surface demo.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const title = await screen.findByTestId("editor-title-element");
@@ -3303,7 +3303,7 @@ describe("<EditorPane /> inline title fallback (READ-01 / Obsidian filename titl
         getNoteMock.mockResolvedValue(okGet("plain body, no heading"));
         getTreeMock.mockResolvedValue(okTree("docs/api/route notes.md"));
 
-        render(<EditorPane noteId={ScratchpadUUID} />);
+        render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         const title = await screen.findByTestId("editor-title-element");
@@ -3322,7 +3322,7 @@ describe("<EditorPane /> — global saveState ownership", () => {
         useTreeStore.getState().setSaveState(marker);
 
         const { rerender } = render(
-            <EditorPane noteId={ScratchpadUUID} hidden />,
+            <EditorPane noteId={ScratchpadID} hidden />,
         );
         await flushMicrotasks();
         const editor = screen.getByLabelText(
@@ -3341,7 +3341,7 @@ describe("<EditorPane /> — global saveState ownership", () => {
         expect(useTreeStore.getState().saveState).toBe(marker);
 
         // Pane becomes visible → it now owns the global indicator.
-        rerender(<EditorPane noteId={ScratchpadUUID} />);
+        rerender(<EditorPane noteId={ScratchpadID} />);
         await waitFor(() =>
             expect(useTreeStore.getState().saveState.status).toBe("saved"),
         );
@@ -3355,7 +3355,7 @@ describe("<EditorPane /> — autosaveMs prop updates after mount", () => {
         updateNoteMock.mockResolvedValue(okPut());
 
         // Mount without autosaveMs — the config fetch has not resolved yet.
-        const { rerender } = render(<EditorPane noteId={ScratchpadUUID} />);
+        const { rerender } = render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         const editor = screen.getByLabelText(
             "Note content",
@@ -3363,7 +3363,7 @@ describe("<EditorPane /> — autosaveMs prop updates after mount", () => {
         await waitFor(() => expect(editor.value).toBe("content"));
 
         // Config resolves with a 500ms interval.
-        rerender(<EditorPane noteId={ScratchpadUUID} autosaveMs={500} />);
+        rerender(<EditorPane noteId={ScratchpadID} autosaveMs={500} />);
 
         fireEvent.change(editor, { target: { value: "edited" } });
         await act(async () => {
@@ -3373,7 +3373,7 @@ describe("<EditorPane /> — autosaveMs prop updates after mount", () => {
         // Under the mount-only capture the ref stayed pinned to 2000ms and
         // nothing would have saved by 600ms.
         expect(updateNoteMock).toHaveBeenCalledTimes(1);
-        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadUUID, "edited", FIXTURE_ETAG);
+        expect(updateNoteMock).toHaveBeenCalledWith(ScratchpadID, "edited", FIXTURE_ETAG);
     });
 });
 
@@ -3385,9 +3385,9 @@ describe("<EditorPane /> — Outline store lifecycle (RSIDE-01)", () => {
 
     it("clears outlineHeadings + scrollToHeading when the owning pane unmounts (last tab closed)", async () => {
         getNoteMock.mockResolvedValue(okGet("# Title"));
-        useTreeStore.setState({ activeNoteId: ScratchpadUUID });
+        useTreeStore.setState({ activeNoteId: ScratchpadID });
 
-        const { unmount } = render(<EditorPane noteId={ScratchpadUUID} />);
+        const { unmount } = render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
 
         // The become-active effect registered this pane's scroll handler.
@@ -3407,9 +3407,9 @@ describe("<EditorPane /> — Outline store lifecycle (RSIDE-01)", () => {
 
     it("does NOT clobber the store when another pane has already re-registered", async () => {
         getNoteMock.mockResolvedValue(okGet("# Title"));
-        useTreeStore.setState({ activeNoteId: ScratchpadUUID });
+        useTreeStore.setState({ activeNoteId: ScratchpadID });
 
-        const { unmount } = render(<EditorPane noteId={ScratchpadUUID} />);
+        const { unmount } = render(<EditorPane noteId={ScratchpadID} />);
         await flushMicrotasks();
         expect(useOutlineStore.getState().scrollToHeading).not.toBeNull();
 

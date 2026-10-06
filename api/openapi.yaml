@@ -3,7 +3,7 @@ info:
   title: Jasper API
   version: 0.2.0
   description: |
-    Jasper HTTP API: notes CRUD keyed by UUID, the file-tree projection,
+    Jasper HTTP API: notes CRUD keyed by ULID, the file-tree projection,
     admin endpoints (migration status, full re-index) backing DATA-10, and
     tags, backlinks and wiki-link search-titles
     (TAGS-03, TAGS-04, TAGS-06, TAGS-07, LINKS-06, LINKS-08).
@@ -22,9 +22,10 @@ tags:
   - { name: config, description: "User configuration (DESIGN.md §11) — theme, daily notes, editor preferences" }
   - { name: tags, description: "Tag browser, rename, delete (TAGS-03, TAGS-04, TAGS-06, TAGS-07)" }
   - { name: backlinks, description: "Backlinks panel and wiki-link autocomplete (LINKS-06, LINKS-08)" }
+  - { name: items, description: "Items: anything a reference can point at — a note, a blob, or a foreign id — looked up by universal ref" }
   - { name: sharing, description: "OS file-manager integration: reveal a note path in Finder / Explorer (SHARE-01)" }
   - { name: mcp, description: "MCP write-grant ACL: per-folder grants with two-tier model (MCP-01)" }
-  - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by UUID, group into virtual folders (BOOK-01, BOOK-03, BOOK-04)" }
+  - { name: bookmarks, description: "Note bookmarks + bookmark folders: pin notes by ULID, group into virtual folders (BOOK-01, BOOK-03, BOOK-04)" }
   - { name: setup, description: "First-run wizard: status, data-dir validation, submit (INSTALL-07)" }
   - { name: vault, description: "Vault registry: current vault, recent vaults, open/create/forget (ADR-001, VAULT-01)" }
 paths:
@@ -84,7 +85,7 @@ paths:
     get:
       tags: [notes]
       operationId: getNoteById
-      summary: Read a note by UUID
+      summary: Read a note by ULID
       responses:
         "200":
           description: Note found
@@ -93,7 +94,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Note"
         "404":
-          description: Note not found (unknown UUID)
+          description: Note not found (unknown ULID)
           content:
             application/json:
               schema:
@@ -101,7 +102,7 @@ paths:
     put:
       tags: [notes]
       operationId: putNoteById
-      summary: Replace the content of a note by UUID
+      summary: Replace the content of a note by ULID
       parameters:
         - name: If-Match
           in: header
@@ -146,7 +147,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Note not found (unknown UUID)
+          description: Note not found (unknown ULID)
           content:
             application/json:
               schema:
@@ -166,17 +167,17 @@ paths:
     delete:
       tags: [notes]
       operationId: deleteNoteById
-      summary: Delete a note by UUID (TREE-06)
+      summary: Delete a note by ULID (TREE-06)
       description: |
-        Delete the note identified by UUID. Removes the underlying `.md` file
+        Delete the note identified by ULID. Removes the underlying `.md` file
         atomically and clears the SQLite index row in the same write transaction.
-        404 when the UUID is unknown; 500 when the FS / SQLite operation fails
+        404 when the ULID is unknown; 500 when the FS / SQLite operation fails
         and the two stores would be left inconsistent.
       responses:
         "204":
           description: Deleted
         "404":
-          description: Note not found (unknown UUID)
+          description: Note not found (unknown ULID)
           content:
             application/json:
               schema:
@@ -221,7 +222,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Note not found (unknown UUID)
+          description: Note not found (unknown ULID)
           content:
             application/json:
               schema:
@@ -745,7 +746,7 @@ paths:
         user confirms the content-count copy. Path is
         passed as a query parameter so URL-encoding handles `/` separators
         cleanly — folders have no SQLite identity and so cannot be addressed by
-        UUID.
+        ULID.
       parameters:
         - name: path
           in: query
@@ -985,7 +986,140 @@ paths:
               schema:
                 $ref: "#/components/schemas/BacklinksResponse"
         "404":
-          description: Note not found (unknown UUID)
+          description: Note not found (unknown ULID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /refs/backlinks:
+    get:
+      tags: [backlinks]
+      operationId: getRefBacklinks
+      summary: List notes that reference a target, native or foreign
+      description: |
+        Backlinks for any universal ref: a foreign id such as
+        `ado:workitem/12345`, a note as `jasper:note/<ulid>` (which also
+        covers title links that resolve to it), an unresolved title as
+        `jasper:title/<title>`, or a blob as `jasper:blob/<id>`. One row per
+        source note. Excerpts are not included; the linked-mentions panel
+        keeps reading `/notes/{id}/backlinks` for those.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: The target ref, exactly as it appears in `[[...]]`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 2048
+      responses:
+        "200":
+          description: Source notes referencing the target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefBacklinksResponse"
+  /items/batch:
+    post:
+      tags: [items]
+      operationId: postItemsBatch
+      summary: Resolve a batch of refs to their current state
+      description: |
+        For each id, what it is and whether it still exists. Native ids
+        (`jasper:note/...`, a bare ULID, `jasper:blob/...`, `sha256-...`)
+        resolve against the index and the tombstones; `jasper:title/...`
+        resolves through the registry; any other well-formed ref is foreign
+        and comes back as a raw stub with status UNKNOWN. Order matches the
+        request. Previews are batched here so an editor pass costs one call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ItemsBatchRequest"
+      responses:
+        "200":
+          description: One item per requested id, in request order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemsBatchResponse"
+        "400":
+          description: Malformed request (missing ids, or more than 200)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /items/search:
+    get:
+      tags: [items]
+      operationId: getItemsSearch
+      summary: Search notes and blobs by name for the @ picker
+      description: |
+        Notes match on title, blobs on file name, both case-insensitively.
+        Results carry the universal ref to insert. Empty `q` lists the most
+        recently modified notes.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 200 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Matching items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemSearchResponse"
+  /blobs/{blobId}:
+    get:
+      tags: [items]
+      operationId: getBlob
+      summary: Stream a blob by its content id
+      description: |
+        Serves the first live path holding these bytes, through the same
+        hardened path resolution as the attachments route. The client sniffs
+        the type from the name it shows.
+      parameters:
+        - name: blobId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^sha256-[0-9a-f]{16,64}$' }
+      responses:
+        "200":
+          description: Binary stream
+          content:
+            application/octet-stream: {}
+        "404":
+          description: No live path holds this blob
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /notes/{id}/refs:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [backlinks]
+      operationId: getNoteRefs
+      summary: List the references a note makes
+      description: |
+        One row per distinct target, in document order of first occurrence,
+        in universal form: a foreign ref as written, a title link as
+        `jasper:note/<id>` once resolved or `jasper:title/<title>` until
+        then, an embed by id as `jasper:blob/<id>`.
+      responses:
+        "200":
+          description: The note's references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteRefsResponse"
+        "404":
+          description: Note not found (unknown ULID)
           content:
             application/json:
               schema:
@@ -1334,7 +1468,7 @@ paths:
     post:
       tags: [bookmarks]
       operationId: postBookmark
-      summary: Bookmark a note by UUID, optionally into a folder (BOOK-01, BOOK-03)
+      summary: Bookmark a note by ULID, optionally into a folder (BOOK-01, BOOK-03)
       description: |
         Adds a new bookmark row for note_id. Rejects an unknown/forged
         note_id with 404 — validated against the notes registry, not
@@ -1969,7 +2103,7 @@ paths:
       description: |
         Deep-link fallback. Used by the `?path=<rel>` URL
         parameter when the canonical `/notes/{id}` form is not available
-        (e.g. someone shares a permalink across machines and the UUIDs
+        (e.g. someone shares a permalink across machines and the ULIDs
         differ but the path is stable). Server canonicalizes `path` via
         the same DATA-11 rules as the rest of the API.
       parameters:
@@ -2005,10 +2139,10 @@ components:
       name: id
       in: path
       required: true
-      description: UUID of the note
+      description: ULID of the note
       schema:
         type: string
-        format: uuid
+        pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
     BookmarkId:
       name: id
       in: path
@@ -2044,8 +2178,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: "00000000-0000-4000-a000-000000000001"
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          example: "00000000000000000000000001"
         path:
           type: string
           description: Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
@@ -2072,7 +2206,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
         path:
           type: string
         updated_at:
@@ -2093,7 +2227,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
         path:
           type: string
           description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
@@ -2126,7 +2260,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
         path:
           type: string
           description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
@@ -2155,7 +2289,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
         path:
           type: string
           description: Canonicalized relative path under notes/ (NFC + lowercase per DATA-11)
@@ -2323,7 +2457,7 @@ components:
           description: Discriminator value identifying this node as a note.
         id:
           type: string
-          format: uuid
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
         path:
           type: string
           description: Canonical relative path under notes/ (NFC + lowercase per DATA-11)
@@ -2448,6 +2582,12 @@ components:
               # EDIT-01 — auto-close brackets/quotes in CM6.
               type: boolean
               default: true
+            idNoteLinks:
+              # The @ picker inserts [[jasper:note/<id>|Title]] instead of
+              # [[Title]]: the link survives a rename without a rewrite, at
+              # the cost of an id in the prose. Off by default.
+              type: boolean
+              default: false
             foldGutter:
               # EDIT-03 — heading/list code-folding gutter.
               type: boolean
@@ -2585,6 +2725,8 @@ components:
               type: boolean
             autoPair:
               type: boolean
+            idNoteLinks:
+              type: boolean
             foldGutter:
               type: boolean
             lineNumbers:
@@ -2640,7 +2782,7 @@ components:
           example: "not_found"
         message:
           type: string
-          example: "no note with id 00000000-0000-4000-a000-000000000001"
+          example: "no note with id 00000000000000000000000001"
     TagWithCount:
       type: object
       required: [name, count]
@@ -2692,8 +2834,8 @@ components:
           type: array
           items:
             type: string
-            format: uuid
-          description: UUIDs of notes whose frontmatter was rewritten.
+            pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULIDs of notes whose frontmatter was rewritten.
     TagDeleteResponse:
       type: object
       required: [old_name, touched_note_ids]
@@ -2705,8 +2847,8 @@ components:
           type: array
           items:
             type: string
-            format: uuid
-          description: UUIDs of notes whose frontmatter was rewritten (tag removed).
+            pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULIDs of notes whose frontmatter was rewritten (tag removed).
     AttachmentUploadResult:
       type: object
       required: [filename, path, content_type, category, is_image, size_bytes]
@@ -2717,6 +2859,7 @@ components:
         category:     { type: string, enum: [image, pdf, video, audio, archive, other] }
         is_image:     { type: boolean }
         size_bytes:   { type: integer, format: int64 }
+        blob_id:      { type: string, description: "The content id the index gave the upload, for an embed by id (jasper:blob/<id>)." }
     BacklinkRow:
       type: object
       required: [source_id, source_title, source_path, excerpts]
@@ -2730,8 +2873,8 @@ components:
       properties:
         source_id:
           type: string
-          format: uuid
-          description: UUID of the note containing the `[[...]]` reference.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULID of the note containing the `[[...]]` reference.
         source_title:
           type: string
           description: Title of the source note (first H1 or filename without .md).
@@ -2768,8 +2911,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: UUID of the matching note.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULID of the matching note.
         title:
           type: string
           description: Title of the matching note (first H1 or filename without .md).
@@ -2820,8 +2963,147 @@ components:
           type: array
           items:
             type: string
-            format: uuid
-          description: UUIDs of notes whose frontmatter was rewritten.
+            pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULIDs of notes whose frontmatter was rewritten.
+    RefBacklinkRow:
+      type: object
+      required: [source_id, source_title, source_path, display, embed]
+      description: One note that references the requested target.
+      properties:
+        source_id:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+        source_title:
+          type: string
+        source_path:
+          type: string
+        display:
+          type: string
+          description: The alias the first occurrence shows, or empty.
+        embed:
+          type: boolean
+          description: True when the first occurrence is an embed (`![[...]]`).
+    RefBacklinksResponse:
+      type: object
+      required: [backlinks]
+      properties:
+        backlinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RefBacklinkRow"
+    ItemsBatchRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 0
+          maxItems: 200
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2048
+    Item:
+      type: object
+      required: [id, kind, status, title]
+      description: |
+        What a ref points at right now. A DELETED item carries its last
+        known title and path from the tombstone; an UNKNOWN one carries the
+        raw ref as its title.
+      properties:
+        id:
+          type: string
+          description: The id as requested.
+        kind:
+          type: string
+          enum: [note, blob, foreign]
+        status:
+          type: string
+          enum: [OK, UNKNOWN, DELETED]
+        title:
+          type: string
+        path:
+          type: string
+          description: Current (or, when DELETED, last) vault-relative path. Absent for foreign ids.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last modification (or, when DELETED, deletion time).
+        excerpt:
+          type: string
+          description: The first stretch of a note's body text, plain, at most 200 characters.
+        replaced_by:
+          type: string
+          description: For a DELETED blob whose bytes changed in place, the blob id that took over the path.
+    ItemsBatchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+    WSRefsChangedPayload:
+      type: object
+      required: [source_id, added, removed]
+      description: |
+        Broadcast payload for `refs:changed`: the set of targets a note
+        references changed on save. Lists hold universal refs.
+      properties:
+        source_id:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+        added:
+          type: array
+          items: { type: string }
+        removed:
+          type: array
+          items: { type: string }
+    ItemSearchHit:
+      type: object
+      required: [ref, kind, title, path]
+      properties:
+        ref:
+          type: string
+          description: The universal ref to insert (`jasper:note/<id>` or `jasper:blob/<id>`).
+        kind:
+          type: string
+          enum: [note, blob]
+        title:
+          type: string
+          description: Note title, or the blob's file name.
+        path:
+          type: string
+    ItemSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemSearchHit"
+    NoteRef:
+      type: object
+      required: [target_ref, display, embed, position]
+      properties:
+        target_ref:
+          type: string
+        display:
+          type: string
+          description: The alias the first occurrence shows, or empty.
+        embed:
+          type: boolean
+        position:
+          type: integer
+          description: Byte offset of the first occurrence; -1 for a frontmatter ref.
+    NoteRefsResponse:
+      type: object
+      required: [refs]
+      properties:
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteRef"
     WSLinksRewrittenPayload:
       type: object
       required: [old_title, new_title, touched_note_ids]
@@ -2840,8 +3122,8 @@ components:
           type: array
           items:
             type: string
-            format: uuid
-          description: UUIDs of notes whose content was rewritten.
+            pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULIDs of notes whose content was rewritten.
         error:
           type: boolean
           description: "True when the rewrite failed partway; the rename was rolled back and the client should surface the error banner."
@@ -2871,6 +3153,7 @@ components:
             - "tags:updated"
             - "tags:rewritten"
             - "links:rewritten"
+            - "refs:changed"
             - "reindex:started"
             - "reindex:complete"
             - "migration:status"
@@ -2893,7 +3176,7 @@ components:
       type: object
       required: [id, path, title, updated_at]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
         path: { type: string }
         title: { type: string }
         updated_at: { type: string, format: date-time }
@@ -2901,14 +3184,14 @@ components:
       type: object
       required: [id, path, updated_at]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
         path: { type: string }
         updated_at: { type: string, format: date-time }
     WSNoteDeletedPayload:
       type: object
       required: [id, path]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
         path: { type: string }
     WSNoteMovedPayload:
       type: object
@@ -2919,7 +3202,7 @@ components:
       # every move; this field exposes it on the wire.
       required: [id, old_path, new_path, updated_at, title]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$' }
         old_path: { type: string }
         new_path: { type: string }
         updated_at: { type: string, format: date-time }
@@ -3092,7 +3375,7 @@ components:
     Bookmark:
       type: object
       required: [id, note_id, folder_id, order]
-      description: A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's UUID.
+      description: A single pinned note (BOOK-01). Keyed by its own opaque id, not the note's ULID.
       properties:
         id:
           type: string
@@ -3100,8 +3383,8 @@ components:
           description: Opaque id of the bookmark row.
         note_id:
           type: string
-          format: uuid
-          description: UUID of the bookmarked note (survives note rename/move — BOOK-04).
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULID of the bookmarked note (survives note rename/move — BOOK-04).
         folder_id:
           type: string
           format: uuid
@@ -3186,8 +3469,8 @@ components:
       properties:
         note_id:
           type: string
-          format: uuid
-          description: UUID of the note to bookmark. Validated against the notes registry server-side.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+          description: ULID of the note to bookmark. Validated against the notes registry server-side.
         folder_id:
           type: string
           format: uuid

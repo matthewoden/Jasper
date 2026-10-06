@@ -42,7 +42,7 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 	}
 	t.Cleanup(func() { _ = pair.Close() })
 
-	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql"} {
+	for _, name := range []string{"001_initial.sql", "002_tags_backlinks.sql", "003_fts.sql", "006_birthtime.sql", "007_ulid_cutover.sql", "008_tombstones.sql", "009_blobs.sql", "010_refs.sql"} {
 		data, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", name, err)
@@ -71,7 +71,7 @@ func newSearchTestServer(t *testing.T, seeds []seedNote) *Server {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	return NewServerWithIndex(svc, nil, nil, idx, nil, logger, "")
+	return NewServerWithIndex(svc, nil, nil, idx, nil, logger, root)
 }
 
 func TestSearchHandler(t *testing.T) {

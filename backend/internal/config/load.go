@@ -125,6 +125,7 @@ func decodeEditor(raw map[string]json.RawMessage, path string, log *slog.Logger,
 	decodeField(nested, "autosaveMs", "editor.autosaveMs", path, &cfg.AutosaveMs, log)
 	decodeField(nested, "showProperties", "editor.showProperties", path, &cfg.ShowProperties, log)
 	decodeField(nested, "autoPair", "editor.autoPair", path, &cfg.AutoPair, log)
+	decodeField(nested, "idNoteLinks", "editor.idNoteLinks", path, &cfg.IDNoteLinks, log)
 	decodeField(nested, "foldGutter", "editor.foldGutter", path, &cfg.FoldGutter, log)
 	decodeField(nested, "lineNumbers", "editor.lineNumbers", path, &cfg.LineNumbers, log)
 	decodeField(nested, "lineWidth", "editor.lineWidth", path, &cfg.LineWidth, log)

@@ -3,13 +3,12 @@ package notes
 import (
 	"testing"
 
-	"github.com/google/uuid"
 	"golang.org/x/text/unicode/norm"
 )
 
 func newTestRegistry() *Registry {
 	return &Registry{
-		byID:    make(map[uuid.UUID]string),
+		byID:    make(map[ID]string),
 		byTitle: make(map[string][]NoteRecord),
 	}
 }
@@ -19,7 +18,7 @@ func newTestRegistry() *Registry {
 func TestRegistryFindByTitle_SingleMatch(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.AddRecord(id, "notes/Foo.md", "foo")
 
 	got := r.FindByTitle("foo", "")
@@ -54,7 +53,7 @@ func TestRegistryFindByTitle_NoMatch(t *testing.T) {
 func TestRegistryFindByTitle_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.AddRecord(id, "notes/Foo.md", "foo")
 
 	got := r.FindByTitle("FOO", "")
@@ -71,7 +70,7 @@ func TestRegistryFindByTitle_CaseInsensitive(t *testing.T) {
 func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id := uuid.New()
+	id := NewID()
 
 	nfcTitle := norm.NFC.String("café")
 	r.AddRecord(id, "notes/Café.md", nfcTitle)
@@ -92,9 +91,9 @@ func TestRegistryFindByTitle_NFCNormalization(t *testing.T) {
 func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	idA := uuid.New()
-	idB := uuid.New()
-	idC := uuid.New()
+	idA := NewID()
+	idB := NewID()
+	idC := NewID()
 
 	r.AddRecord(idA, "notes/a/foo.md", "foo")
 	r.AddRecord(idB, "notes/b/foo.md", "foo")
@@ -128,9 +127,9 @@ func TestRegistryFindByTitle_SameFolderBias(t *testing.T) {
 func TestRegistryFindByTitle_AlphabeticalNoSourceFolder(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	idA := uuid.New()
-	idB := uuid.New()
-	idC := uuid.New()
+	idA := NewID()
+	idB := NewID()
+	idC := NewID()
 
 	r.AddRecord(idC, "notes/z/foo.md", "foo")
 	r.AddRecord(idA, "notes/a/foo.md", "foo")
@@ -158,7 +157,7 @@ func TestRegistryFindByTitle_AlphabeticalNoSourceFolder(t *testing.T) {
 func TestRegistryAddRecord_RemoveUpdatesTitle(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.AddRecord(id, "notes/Foo.md", "foo")
 
 	got := r.FindByTitle("foo", "")
@@ -182,8 +181,8 @@ func TestRegistryAddRecord_RemoveUpdatesTitle(t *testing.T) {
 func TestRegistryHydrate_PopulatesMultipleTitles(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id1 := uuid.New()
-	id2 := uuid.New()
+	id1 := NewID()
+	id2 := NewID()
 	r.Hydrate([]NoteSummary{
 		{ID: id1, Path: "notes/foo.md", Title: "foo"},
 		{ID: id2, Path: "notes/bar.md", Title: "bar"},
@@ -213,7 +212,7 @@ func TestRegistryHydrate_PopulatesMultipleTitles(t *testing.T) {
 func TestRegistryHydrate_PopulatesTitleIndex(t *testing.T) {
 	t.Parallel()
 	r := &Registry{}
-	id := uuid.New()
+	id := NewID()
 
 	r.Hydrate([]NoteSummary{
 		{ID: id, Path: "notes/foo.md", Title: "Foo"},
@@ -233,7 +232,7 @@ func TestRegistryHydrate_PopulatesTitleIndex(t *testing.T) {
 func TestRegistryRename_UpdatesTitleMap(t *testing.T) {
 	t.Parallel()
 	r := newTestRegistry()
-	id := uuid.New()
+	id := NewID()
 	r.AddRecord(id, "notes/old/foo.md", "foo")
 
 	r.Rename(id, "notes/new/foo.md")

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	openapi_types "github.com/oapi-codegen/runtime/types"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // GetNoteBacklinks implements GET /api/v1/notes/{id}/backlinks.
@@ -17,7 +17,7 @@ func (s *Server) GetNoteBacklinks(
 	ctx context.Context,
 	req GetNoteBacklinksRequestObject,
 ) (GetNoteBacklinksResponseObject, error) {
-	id := req.Id
+	id := notes.ID(req.Id)
 
 	if s.index == nil {
 		return GetNoteBacklinks200JSONResponse{Backlinks: []BacklinkRow{}}, nil
@@ -25,7 +25,7 @@ func (s *Server) GetNoteBacklinks(
 
 	summaries, err := s.index.List(ctx)
 	if err != nil {
-		s.log.Error("GetNoteBacklinks: list failed", "id", openapi_types.UUID(id).String(), "err", err)
+		s.log.Error("GetNoteBacklinks: list failed", "id", id.String(), "err", err)
 		return nil, errors.New("could not check note existence")
 	}
 	found := false
@@ -41,14 +41,14 @@ func (s *Server) GetNoteBacklinks(
 
 	rows, err := s.index.GetBacklinks(ctx, id)
 	if err != nil {
-		s.log.Error("GetNoteBacklinks: index error", "id", openapi_types.UUID(id).String(), "err", err)
+		s.log.Error("GetNoteBacklinks: index error", "id", id.String(), "err", err)
 		return nil, errors.New("could not load backlinks")
 	}
 
 	out := make([]BacklinkRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, BacklinkRow{
-			SourceId:    openapi_types.UUID(r.SourceID),
+			SourceId:    r.SourceID.String(),
 			SourceTitle: r.SourceTitle,
 			SourcePath:  r.SourcePath,
 			Excerpts:    r.Excerpts,

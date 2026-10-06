@@ -24,6 +24,7 @@ import {
 import { StateEffect } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
+import { chipModel, flushWantedItems, isRefTarget, RefChipWidget, refItemsResolved, wantItem } from "./refChip";
 
 
 /**
@@ -143,10 +144,23 @@ const wikilinkMatcher = new MatchDecorator({
     const lineNum = view.state.doc.lineAt(from).number;
     if (cursorLines.has(lineNum)) return;
 
-    const rawTitle = match[1];
+    const rawTitle = match[1].trim();
     const alias = match[2];
-    const displayText = alias ?? rawTitle;
 
+    if (isRefTarget(rawTitle)) {
+      // The `!` of an embed sits just before the match; the chip covers it.
+      const embed = from > 0 && view.state.doc.sliceString(from - 1, from) === "!";
+      const model = chipModel(rawTitle, alias ?? null);
+      if (model.state === "pending") wantItem(rawTitle);
+      add(
+        embed ? from - 1 : from,
+        to,
+        Decoration.replace({ widget: new RefChipWidget(rawTitle, alias ?? null, embed, model) }),
+      );
+      return;
+    }
+
+    const displayText = alias ?? rawTitle;
     const { titles, idMap } = getResolvedTitlesSnapshot();
     const lower = rawTitle.normalize("NFC").toLowerCase();
     const resolved = titles.has(lower);
@@ -176,6 +190,7 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
 
     constructor(view: EditorView) {
       this.decorations = wikilinkMatcher.createDeco(view);
+      flushWantedItems(view);
     }
 
     update(u: ViewUpdate) {
@@ -184,10 +199,11 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
         return;
       }
       const titlesRefreshed = u.transactions.some((tr) =>
-        tr.effects.some((e) => e.is(resolvedTitlesChanged)),
+        tr.effects.some((e) => e.is(resolvedTitlesChanged) || e.is(refItemsResolved)),
       );
       if (titlesRefreshed) {
         this.decorations = wikilinkMatcher.createDeco(u.view);
+        flushWantedItems(u.view);
         return;
       }
       if (
@@ -197,6 +213,7 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
         syntaxTree(u.startState) !== syntaxTree(u.state)
       ) {
         this.decorations = wikilinkMatcher.updateDeco(u, this.decorations);
+        flushWantedItems(u.view);
       }
     }
   },

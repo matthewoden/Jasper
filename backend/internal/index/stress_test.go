@@ -14,6 +14,7 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
 	"github.com/matthewoden/jasper/backend/internal/index"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 	"github.com/matthewoden/jasper/backend/migrations"
 )
 
@@ -42,7 +43,9 @@ func TestStress_5000Note_FullReconcile_NoBusy(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		body := fmt.Sprintf("# Note %d\n\nbody body body\n", i)
+		// Seeded with ids, as a migrated vault is; the concurrent writers below
+		// drop them so a slice of the pass has to mint and write.
+		body := fmt.Sprintf("---\nid: %s\n---\n# Note %d\n\nbody body body\n", notes.NewID(), i)
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}

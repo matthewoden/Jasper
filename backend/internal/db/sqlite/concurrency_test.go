@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // TestConcurrentWrites_5000Notes_NoBusy drives 5,000 INSERTs across NumCPU
@@ -81,7 +81,7 @@ func TestConcurrentWrites_5000Notes_NoBusy(t *testing.T) {
 					errCh <- fmt.Errorf("BeginImmediate: %w", err)
 					return
 				}
-				id := uuid.New().String()
+				id := notes.NewID().String()
 				path := fmt.Sprintf("note-%07d.md", start+i)
 				_, err = tx.ExecContext(ctx,
 					`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
@@ -209,7 +209,7 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 		ctx,
 		`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
          VALUES (?,?,?,?,?,?,?,?)`,
-		uuid.New().String(), "seed.md", "seed", now, 0, "", now, now,
+		notes.NewID().String(), "seed.md", "seed", now, 0, "", now, now,
 	); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestConcurrentWrites_BeginImmediateDoesNotDeadlockReaders(t *testing.T) {
 			ctx,
 			`INSERT INTO notes(id,path,title,mtime_unix,size_bytes,checksum_sha256,created_at,updated_at)
              VALUES (?,?,?,?,?,?,?,?)`,
-			uuid.New().String(), "during-readers.md", "x", now, 0, "", now, now,
+			notes.NewID().String(), "during-readers.md", "x", now, 0, "", now, now,
 		); err != nil {
 			_ = tx.Rollback()
 			writerDone <- fmt.Errorf("insert: %w", err)
