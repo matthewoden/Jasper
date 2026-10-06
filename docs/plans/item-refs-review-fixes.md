@@ -165,6 +165,10 @@ It has no dependency on the other jobs. Check it with a push to the branch once 
 
 `graphql/handler.go:31` turns introspection on. Federation composition reads the SDL from `api/graphql`, not from introspection, so nothing needs it. Turn it off; it isn't needed on a server that should stay quiet. There is no dev-mode flag to gate it on, so it is simply removed.
 
+## Later
+
+- **Cmd-Shift-Y doesn't open the raw frontmatter view under Playwright, and possibly not for users.** Found 2026-10-05 while writing B2's E2E. The keydown reaches `.cm-content`, but no binding handles it (`defaultPrevented` stays false), even for an event carrying `keyCode` 89. In jsdom, CodeMirror resolves `Mod-Shift-y` correctly on a Mac platform, even beside `sharedDocRegistry`'s `Mod-y` redo binding, so something in the mounted editor takes the key first. `phase6.5-uat.spec.ts` only warns when the toggle fails, which hid this. Until it's fixed, B2's read-only `id` line has vitest coverage only.
+
 ## Not acting on
 
 - Lefthook now runs serially, and `perf-check.sh` gained `--vault`/`--bind`. Both were deliberate fixes made during implementation.
