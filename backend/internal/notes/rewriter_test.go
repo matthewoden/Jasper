@@ -236,3 +236,10 @@ func TestRewriteTagsArray_PreservesIDLine(t *testing.T) {
 		}
 	}
 }
+
+func TestRewriteTagsArray_FourHyphenCloserIsNotFrontmatter(t *testing.T) {
+	in := []byte("---\ntags: [foo]\n----\nbody")
+	if got := rewriteTagsArray(in, "foo", "bar"); string(got) != string(in) {
+		t.Errorf("rewriteTagsArray = %q; want unchanged", got)
+	}
+}

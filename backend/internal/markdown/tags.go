@@ -131,22 +131,11 @@ func ExtractBodyTags(content []byte) []string {
 }
 
 func stripFrontmatterBlock(content []byte) []byte {
-	openFence := []byte("---\n")
-	if !bytes.HasPrefix(content, openFence) {
-		if !bytes.HasPrefix(content, []byte("---")) {
-			return content
-		}
-	}
-
-	rest := content[len(openFence):]
-
-	closeFence := []byte("\n---")
-	idx := bytes.Index(rest, closeFence)
-	if idx < 0 {
+	_, fenceEnd, ok := FrontmatterYAML(content)
+	if !ok {
 		return content
 	}
-
-	after := rest[idx+len(closeFence):]
+	after := content[fenceEnd:]
 	if len(after) > 0 && after[0] == '\n' {
 		after = after[1:]
 	}
@@ -157,19 +146,12 @@ func stripFrontmatterBlock(content []byte) []byte {
 // empty canonical list writes "tags: []" rather than omitting the key.
 //
 // Lives here rather than in notes so Service.Update can call it without an
-// import cycle, and does its own range extraction to stay a leaf package.
+// import cycle.
 func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) {
-	openFence := []byte("---\n")
-	if !bytes.HasPrefix(content, openFence) {
+	yamlBody, fenceEnd, ok := FrontmatterYAML(content)
+	if !ok {
 		return content, nil
 	}
-	rest := content[len(openFence):]
-	closeFence := []byte("\n---")
-	idx := bytes.Index(rest, closeFence)
-	if idx < 0 {
-		return content, nil
-	}
-	yamlBody := rest[:idx]
 
 	var node yaml.Node
 	if err := yaml.Unmarshal(yamlBody, &node); err != nil || node.Kind == 0 {
@@ -233,12 +215,11 @@ func RewriteFrontmatterTags(content []byte, canonical []string) ([]byte, error) 
 	}
 	newYAML = bytes.TrimRight(newYAML, "\n")
 
-	fmEnd := len(openFence) + idx + len(closeFence)
 	var out bytes.Buffer
 	out.WriteString("---\n")
 	out.Write(newYAML)
 	out.WriteString("\n---")
-	out.Write(content[fmEnd:])
+	out.Write(content[fenceEnd:])
 	return out.Bytes(), nil
 }
 

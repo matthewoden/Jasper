@@ -211,3 +211,22 @@ func TestInjectFrontmatterScaffold_NilEquivalence(t *testing.T) {
 			title, title, string(fromInject), string(fromNew))
 	}
 }
+
+// A four-hyphen closer is outside the contract, so every scanner must see the
+// whole file as body, the same as HasFrontmatter does.
+func TestFenceScanners_FourHyphenCloserIsBody(t *testing.T) {
+	in := []byte("---\n#a\ntags: [foo]\n----\n#b")
+	if HasFrontmatter(in) {
+		t.Fatal("HasFrontmatter = true; want false")
+	}
+	if got := ExtractBodyForFTS(in); got != string(in) {
+		t.Errorf("ExtractBodyForFTS = %q; want the whole file", got)
+	}
+	if got := ExtractBodyTags(in); len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("ExtractBodyTags = %v; want [a b]", got)
+	}
+	got, err := RewriteFrontmatterTags(in, []string{"bar"})
+	if err != nil || string(got) != string(in) {
+		t.Errorf("RewriteFrontmatterTags = %q, %v; want unchanged, nil", got, err)
+	}
+}
