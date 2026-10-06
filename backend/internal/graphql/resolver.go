@@ -11,14 +11,22 @@ import (
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
-// Resolver carries what the subgraph reads from. Blobs is the concrete
-// indexer, which alone knows attachments; nil when there is no index yet.
+// Resolver carries what the subgraph reads from. Blobs is nil when there is
+// no index yet.
 type Resolver struct {
 	Notes  *notes.Service
 	Index  notes.Index
-	Blobs  *index.Indexer
+	Blobs  ItemsIndex
 	Events *Events
 	Log    *slog.Logger
+}
+
+// ItemsIndex is what the subgraph reads about attachments and a note's
+// outgoing references, which notes.Index does not carry.
+type ItemsIndex interface {
+	GetBlob(ctx context.Context, id string) (index.Blob, bool, error)
+	RefsBySource(ctx context.Context, sourceID notes.ID) ([]index.NoteRef, error)
+	SearchBlobNames(ctx context.Context, q string, limit int) ([]index.BlobHit, error)
 }
 
 // canonicalRef is the ref an item answers to: a bare note or blob id is

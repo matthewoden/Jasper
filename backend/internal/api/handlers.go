@@ -33,6 +33,7 @@ type Server struct {
 	status      migrate.StatusProvider
 	runner      *migrate.Runner
 	index       notes.Index
+	items       itemsIndex
 	broadcaster notes.Broadcaster
 	log         *slog.Logger
 
@@ -96,6 +97,7 @@ func NewServerWithIndex(
 		registry = notesSvc.Registry()
 	}
 	return &Server{
+		items:       itemsIndexOf(index),
 		notes:       notesSvc,
 		status:      status,
 		runner:      runner,

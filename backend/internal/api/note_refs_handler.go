@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
@@ -17,11 +16,10 @@ func (s *Server) GetNoteRefs(
 	if _, ok := s.notes.LookupSummary(id); !ok {
 		return GetNoteRefs404JSONResponse(newError("not_found", "note not found")), nil
 	}
-	idx, ok := s.index.(*index.Indexer)
-	if !ok || idx == nil {
+	if s.items == nil {
 		return GetNoteRefs200JSONResponse{Refs: []NoteRef{}}, nil
 	}
-	rows, err := idx.RefsBySource(ctx, id)
+	rows, err := s.items.RefsBySource(ctx, id)
 	if err != nil {
 		s.log.Error("GetNoteRefs: index error", "id", req.Id, "err", err)
 		return nil, errors.New("could not load references")

@@ -49,8 +49,8 @@ func (s *Server) GetItemsSearch(
 	for _, h := range hits {
 		out = append(out, ItemSearchHit{Ref: notes.RefForNote(h.ID), Kind: ItemSearchHitKindNote, Title: h.Title, Path: h.Path})
 	}
-	if idx, ok := s.index.(*index.Indexer); ok && q != "" {
-		blobs, err := idx.SearchBlobNames(ctx, q, limit)
+	if s.items != nil && q != "" {
+		blobs, err := s.items.SearchBlobNames(ctx, q, limit)
 		if err != nil {
 			s.log.Error("GetItemsSearch: blob search", "q", q, "err", err)
 			return nil, errors.New("search failed")
@@ -68,11 +68,10 @@ func (s *Server) GetBlob(
 	ctx context.Context,
 	req GetBlobRequestObject,
 ) (GetBlobResponseObject, error) {
-	idx, ok := s.index.(*index.Indexer)
-	if !ok || idx == nil {
+	if s.items == nil {
 		return GetBlob404JSONResponse(newError("not_found", "blob not found")), nil
 	}
-	blob, found, err := idx.GetBlob(ctx, req.BlobId)
+	blob, found, err := s.items.GetBlob(ctx, req.BlobId)
 	if err != nil {
 		s.log.Error("GetBlob: lookup", "id", req.BlobId, "err", err)
 		return nil, errors.New("could not read blob")
