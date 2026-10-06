@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
+	"github.com/matthewoden/jasper/backend/internal/notes"
 )
 
 // Blob is a distinct sequence of attachment bytes, identified by content.
@@ -175,10 +176,8 @@ func sniffMime(absPath string) string {
 	return http.DetectContentType(head[:n])
 }
 
-const blobIDPrefix = "sha256-"
-
-func shortBlobID(digest string) string { return blobIDPrefix + digest[:16] }
-func fullBlobID(digest string) string  { return blobIDPrefix + digest }
+func shortBlobID(digest string) string { return notes.BlobIDPrefix + digest[:16] }
+func fullBlobID(digest string) string  { return notes.BlobIDPrefix + digest }
 
 // adoptBlob records that path now holds the bytes with the given digest. The
 // id is the digest's 16-hex prefix unless another digest already owns that

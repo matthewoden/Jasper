@@ -50,13 +50,12 @@ var headingMarkerRE = regexp.MustCompile(`(?m)^#{1,6}[ \t]+`)
 // LookupItem resolves a note or blob id, bare or jasper:-prefixed. Anything
 // it cannot name is UNKNOWN; anything the tombstones remember is DELETED.
 func (x *Indexer) LookupItem(ctx context.Context, id string) (notes.ItemInfo, error) {
+	ref, err := notes.ParseItemRef(id)
 	switch {
-	case strings.HasPrefix(id, "jasper:blob/"):
-		return x.lookupBlobItem(ctx, id, strings.TrimPrefix(id, "jasper:blob/"))
-	case strings.HasPrefix(id, blobIDPrefix):
-		return x.lookupBlobItem(ctx, id, id)
-	case strings.HasPrefix(id, "jasper:note/"):
-		return x.lookupNoteItem(ctx, id, strings.TrimPrefix(id, "jasper:note/"))
+	case err == nil && ref.Native() && ref.Kind == notes.RefKindBlob:
+		return x.lookupBlobItem(ctx, id, ref.ID)
+	case err == nil && ref.Native() && ref.Kind == notes.RefKindNote:
+		return x.lookupNoteItem(ctx, id, ref.ID)
 	default:
 		return x.lookupNoteItem(ctx, id, id)
 	}

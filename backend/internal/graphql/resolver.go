@@ -25,21 +25,16 @@ type Resolver struct {
 // given its jasper: prefix, a title ref resolves to the note it names, and
 // anything else is returned as written.
 func (r *Resolver) canonicalRef(id string) string {
-	id = strings.TrimSpace(id)
-	switch {
-	case strings.HasPrefix(id, "jasper:title/"):
-		if noteID, ok := r.Notes.ResolveTitle(strings.TrimPrefix(id, "jasper:title/"), ""); ok {
+	ref, err := notes.ParseItemRef(id)
+	if err != nil {
+		return strings.TrimSpace(id)
+	}
+	if ref.Native() && ref.Kind == notes.RefKindTitle {
+		if noteID, ok := r.Notes.ResolveTitle(ref.ID, ""); ok {
 			return notes.RefForNote(noteID)
 		}
-		return id
-	case strings.HasPrefix(id, "sha256-"):
-		return notes.RefForBlob(id)
-	case !strings.Contains(id, ":"):
-		if parsed, err := notes.ParseID(id); err == nil {
-			return notes.RefForNote(parsed)
-		}
 	}
-	return id
+	return ref.String()
 }
 
 // resolveItem answers item(id) for any ref, with a nil Item for a native id
@@ -84,8 +79,8 @@ func (r *Resolver) toBlob(ctx context.Context, info notes.ItemInfo) (model.Item,
 		Title: info.Title, UpdatedAt: optTime(info.UpdatedAt), Paths: []string{},
 		ReplacedBy: optString(info.ReplacedBy),
 	}
-	if info.Status == notes.ItemStatusOK && r.Blobs != nil {
-		blob, ok, err := r.Blobs.GetBlob(ctx, strings.TrimPrefix(info.ID, "jasper:blob/"))
+	if ref, err := notes.ParseItemRef(info.ID); err == nil && info.Status == notes.ItemStatusOK && r.Blobs != nil {
+		blob, ok, err := r.Blobs.GetBlob(ctx, ref.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +96,11 @@ func (r *Resolver) toBlob(ctx context.Context, info notes.ItemInfo) (model.Item,
 
 // noteID is the ULID behind a Note's universal ref.
 func noteID(ref string) (notes.ID, bool) {
-	id, err := notes.ParseID(strings.TrimPrefix(ref, "jasper:note/"))
+	parsed, err := notes.ParseItemRef(ref)
+	if err != nil || parsed.Kind != notes.RefKindNote {
+		return "", false
+	}
+	id, err := notes.ParseID(parsed.ID)
 	return id, err == nil
 }
 

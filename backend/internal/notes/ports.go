@@ -3,6 +3,8 @@ package notes
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/matthewoden/jasper/backend/internal/markdown"
@@ -278,23 +280,30 @@ type RefBacklink struct {
 	Embed       bool
 }
 
-// Item kinds and statuses, as the items API and the GraphQL schema spell them.
-const (
-	ItemKindNote    = "note"
-	ItemKindBlob    = "blob"
-	ItemKindForeign = "foreign"
+// ItemKind is what an item is, spelled as the items API and GraphQL spell it.
+type ItemKind string
 
-	ItemStatusOK      = "OK"
-	ItemStatusUnknown = "UNKNOWN"
-	ItemStatusDeleted = "DELETED"
+// ItemStatus is whether an item exists, spelled as the items API and GraphQL
+// spell it.
+type ItemStatus string
+
+// Item kinds and statuses.
+const (
+	ItemKindNote    ItemKind = "note"
+	ItemKindBlob    ItemKind = "blob"
+	ItemKindForeign ItemKind = "foreign"
+
+	ItemStatusOK      ItemStatus = "OK"
+	ItemStatusUnknown ItemStatus = "UNKNOWN"
+	ItemStatusDeleted ItemStatus = "DELETED"
 )
 
 // ItemInfo is what an id points at right now. A deleted item carries its
 // last title and path from the tombstone.
 type ItemInfo struct {
 	ID         string
-	Kind       string
-	Status     string
+	Kind       ItemKind
+	Status     ItemStatus
 	Title      string
 	Path       string
 	UpdatedAt  time.Time
@@ -302,11 +311,65 @@ type ItemInfo struct {
 	ReplacedBy string
 }
 
+// The native reference namespace and its kinds, and the prefix every blob id
+// carries.
+const (
+	RefNamespace = "jasper"
+	RefKindNote  = "note"
+	RefKindBlob  = "blob"
+	RefKindTitle = "title"
+	BlobIDPrefix = "sha256-"
+)
+
+// ErrNotARef reports a string that is neither a reference nor a bare note or
+// blob id.
+var ErrNotARef = errors.New("not a reference")
+
+// ItemRef is a parsed reference, ns:kind/id. A file: ref has no kind.
+type ItemRef struct {
+	Namespace string
+	Kind      string
+	ID        string
+}
+
+func (r ItemRef) String() string {
+	if r.Kind == "" {
+		return r.Namespace + ":" + r.ID
+	}
+	return r.Namespace + ":" + r.Kind + "/" + r.ID
+}
+
+// Native reports whether the ref names something in this vault.
+func (r ItemRef) Native() bool { return r.Namespace == RefNamespace }
+
+// ParseItemRef parses a reference, or a bare note or blob id into its jasper:
+// form. It checks grammar only: a well-formed ref may name nothing.
+func ParseItemRef(s string) (ItemRef, error) {
+	s = strings.TrimSpace(s)
+	switch {
+	case strings.HasPrefix(s, BlobIDPrefix):
+		return ItemRef{Namespace: RefNamespace, Kind: RefKindBlob, ID: s}, nil
+	case !strings.Contains(s, ":"):
+		id, err := ParseID(s)
+		if err != nil {
+			return ItemRef{}, fmt.Errorf("%q: %w", s, ErrNotARef)
+		}
+		return ItemRef{Namespace: RefNamespace, Kind: RefKindNote, ID: id.String()}, nil
+	case !markdown.IsRefTarget(s):
+		return ItemRef{}, fmt.Errorf("%q: %w", s, ErrNotARef)
+	}
+	ns, rest, _ := strings.Cut(s, ":")
+	if kind, id, ok := strings.Cut(rest, "/"); ok && ns != "file" {
+		return ItemRef{Namespace: ns, Kind: kind, ID: id}, nil
+	}
+	return ItemRef{Namespace: ns, ID: rest}, nil
+}
+
 // RefForNote is the universal ref of a note id.
-func RefForNote(id ID) string { return "jasper:note/" + id.String() }
+func RefForNote(id ID) string { return ItemRef{RefNamespace, RefKindNote, id.String()}.String() }
 
 // RefForTitle is the universal ref of a title link that does not resolve.
-func RefForTitle(title string) string { return "jasper:title/" + title }
+func RefForTitle(title string) string { return ItemRef{RefNamespace, RefKindTitle, title}.String() }
 
 // RefForBlob is the universal ref of a blob id.
-func RefForBlob(id string) string { return "jasper:blob/" + id }
+func RefForBlob(id string) string { return ItemRef{RefNamespace, RefKindBlob, id}.String() }

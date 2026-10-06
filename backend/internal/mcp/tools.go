@@ -625,19 +625,16 @@ func (s *Server) registerBacklinks() {
 		if target == "" {
 			return nil, BacklinksResult{}, errors.New("backlinks: id is required")
 		}
+		ref, err := notes.ParseItemRef(target)
 		switch {
-		case strings.HasPrefix(target, "jasper:title/"):
-			if id, ok := s.notesSvc.ResolveTitle(strings.TrimPrefix(target, "jasper:title/"), ""); ok {
+		case err == nil && ref.Native() && ref.Kind == notes.RefKindTitle:
+			if id, ok := s.notesSvc.ResolveTitle(ref.ID, ""); ok {
 				target = notes.RefForNote(id)
 			}
-		case strings.HasPrefix(target, "sha256-"):
-			target = notes.RefForBlob(target)
+		case err == nil:
+			target = ref.String()
 		case !strings.Contains(target, ":"):
-			id, err := notes.ParseID(target)
-			if err != nil {
-				return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
-			}
-			target = notes.RefForNote(id)
+			return nil, BacklinksResult{}, fmt.Errorf("backlinks: %w", err)
 		}
 		rows, err := s.refsSvc.Backlinks(ctx, target)
 		if err != nil {
