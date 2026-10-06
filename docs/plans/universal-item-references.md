@@ -98,7 +98,10 @@ The investigation turned these up. Each has a recommended default, which the pla
 
 **N1. Who owns the `Item` entity interface?** *(Blocks phase 3's composition test.)*
 In Apollo Federation 2.3, an interface carrying `@key` may be declared as an entity interface in **one** subgraph only. That subgraph must define *every* implementing type, and other subgraphs contribute fields through `type Item @key(fields: "id") @interfaceObject`. If the planner and BusyTown each also declare `interface Item @key`, composition fails. The spec's line that "the gateway's entity resolution overrides `ForeignRef`" doesn't match how entity resolution works either: a type is resolved by the subgraphs that define it, not overridden across names.
-*Recommendation:* settle ownership before story 3.4. Two options fit. (a) One subgraph owns `Item` and every concrete type, and the rest use `@interfaceObject`. (b) `Item` is a value interface (`@shareable`, no `@key`) that each subgraph implements on its own entity types, with cross-system lookup done through `Query.item(id)` routed by namespace. Option (b) fits "each system owns its own types". Phase 3 builds against a local stub of whichever is chosen. *Confidence: high on the composition rule, but verify it against `@apollo/composition` in the story 3.4 spike before building on it.*
+*Resolved 2026-10-05* by a composition spike in the graphos repo, recorded as its [ADR-0001](../../../graphos/docs/adr/0001-item-is-a-value-interface-and-the-shell-routes-ids.md). No spike is needed in story 3.4. The outcome:
+- Option (a) fails to compose: an entity interface may live in one subgraph, and that subgraph must define every implementing type. Option (b) composes, and is the decision: **`Item` is a value interface with no `@key`**, declared identically in every subgraph from `graphos/schema/item.graphql`; `@key(fields: "id")` goes on `Note`, `Blob` and every other concrete type. `ForeignRef` and `Action` carry `@shareable` because more than one subgraph defines them.
+- The spike also showed that a root field shared across subgraphs is served by *one* of them; the router never unions or fans out. So "`Query.item(id)` routed by namespace" is done by the **shell subgraph**, which owns the supergraph's `item`/`items` and returns entity stubs that the router hydrates from Jasper via `_entities`. **Jasper's own root fields are namespaced**: `jasperItem(id)`, `jasperItems(ids)`, `jasperBacklinks(id)`, `jasperSearch(q, kinds, limit)`, with the resolution rules unchanged. The `jasperItem` pair keeps Jasper usable without a gateway; the other two are what the shell's picker and backlinks panel query, alongside the other subgraphs' fields, in one operation.
+- `references` and `backlinks` return `ForeignRef` for foreign ids as planned. Later, Jasper may include the generated `graphos/schema/stubs.graphql` to return typed stubs the router fills in; the two are compatible, so this is not phase 3 work.
 
 **N2. The spec's phase 3 says "read and write Jasper by id", but the SDL has no `Mutation` type.**
 *Recommendation:* keep phase 3 read-only plus subscription. Writes go through REST (frontend) and MCP (agents), both of which accept the new ids. Add mutations only when a consumer needs them.
@@ -284,8 +287,8 @@ The frontend stays on REST until phase 4.
 - The browser WebSocket hub is unchanged.
 
 ### 3.4 Federation
-- **Spike first:** resolve N1 against `@apollo/composition` (run from a dev-only npm script).
-- Then implement `_service` and `_entities`, and a composition test against a local stub schema defining `bt:` and `ado:` entities.
+- N1 is resolved (§5); build the shape it fixes: value interface `Item` from `graphos/schema/item.graphql`, `@key(fields: "id")` on `Note` and `Blob`, `@shareable` on `ForeignRef` and `Action`, root fields `jasperItem`, `jasperItems`, `jasperBacklinks`, `jasperSearch`.
+- Implement `_service` and `_entities`, and a composition test that runs `graphos compose` (or `npx wgc router compose`) against the shell subgraph's SDL from the graphos repo. gqlgen's emitted `extend schema @link(...)` is stripped by `graphos compose`; Jasper does nothing about it.
 - *Tests:* acceptance criterion 11.
 
 ### 3.5 MCP additions
@@ -303,10 +306,11 @@ The frontend stays on REST until phase 4.
 This waits until a gateway exists. It covers:
 - the `gateway.url` config
 - a server-side gateway proxy, so CSP stays intact (§3, ADR-0027)
-- picker fan-out to the gateway
-- foreign previews and resolved foreign backlinks
+- picker fan-out to the gateway: one operation that selects every subgraph's `<ns>Search` field, merged and ranked client-side (the router runs the selections in parallel and returns partial data when a subgraph is down, which is the raw-chip case)
+- foreign previews through the gateway's `items(ids)`, and resolved foreign backlinks through the other subgraphs' `<ns>Backlinks` fields
 - a raw-chip fallback after 1 s
 - a banner when the gateway rejects requests
+- optionally, including `graphos/schema/stubs.graphql` so `references` returns typed stubs instead of `ForeignRef`
 
 Acceptance criterion 14 lands here.
 
@@ -340,7 +344,7 @@ Acceptance criterion 14 lands here.
 - **Reconcile now writes files.** It was read-only on `notes/` until now. A manual refresh that mints an id into a note open in an editor makes that tab's etag stale. A clean tab reloads, and a dirty tab shows the save-conflict banner, as [ADR-0011](../adr/0011-manual-refresh-over-filesystem-watcher.md) already specifies for refresh. Acceptable, but cover it with an E2E test.
 - **Retyping UUIDs to ULIDs touches ~40 backend sites and ~25 OpenAPI sites.** It is mechanical but broad. Do it as story 1.1 on its own, ahead of any behavior change, so the diff can be reviewed as a pure retype.
 - **Cold hashing of large attachment sets** could break the 5 s startup gate on a full rebuild. Measure it in 1.6. If needed, hash in the background and serve blob ids as `UNKNOWN` until the hash completes.
-- **The federation design (N1) is unsettled**, and is the most likely cause of phase 3 rework. That is why the spike comes first.
+- **The federation shape is fixed by graphos ADR-0001, not by Jasper.** The residual risk is drift: Jasper's `Item`, `Action` and enum definitions must stay equivalent to `graphos/schema/item.graphql`, and its root fields must keep the `jasper` prefix. The composition test in 3.4 is the guard.
 
 ---
 

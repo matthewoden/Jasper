@@ -12,7 +12,7 @@ The plan is the source of truth. It contains the story breakdown (§6–§8), th
 
 Recorded in plan §1. In short: **ULID ids** (not UUID, not carry-forward), **no `body` ACL** on GraphQL, **id-based blob embeds** `![[jasper:blob/sha256-…|name]]` for new uploads, planning lives in the repo doc (no tracker tickets were filed).
 
-For the plan's *new* open questions (§5, N1–N12): **take each recommended default without asking**, with one exception — **N1 (who owns the `Item` entity interface)** is a spike inside story 3.4. Run the spike, pick option (b) (value interface, `@shareable`, no `@key` on the interface; `@key` on the concrete types) if composition confirms option (a) would conflict, and record the choice in the ADR-0006 amendment. Only ask the owner if the spike shows *neither* option composes.
+For the plan's *new* open questions (§5, N1–N12): **take each recommended default without asking.** N1 (who owns the `Item` interface) was resolved on 2026-10-05 by a composition spike in the graphos repo (its ADR-0001): `Item` is a value interface with no `@key`, `@key` goes on the concrete types, `ForeignRef` and `Action` are `@shareable`, and Jasper's root fields are `jasperItem`, `jasperItems`, `jasperBacklinks`, `jasperSearch`. No spike in story 3.4; record the choice in the ADR-0006 amendment and point at the graphos ADR.
 
 ## Facts the investigation established (don't re-investigate)
 
