@@ -84,6 +84,16 @@ export function useResolvedTitleSet(): {
 }
 
 
+/**
+ * The title part of a title link's target. Splits at the last `#`, as the
+ * backend's goldmark parser does; never call it on a ref target.
+ */
+export function wikilinkTitle(target: string): string {
+  const hash = target.lastIndexOf("#");
+  return hash < 0 ? target : target.slice(0, hash);
+}
+
+
 export interface WikilinkResolution {
   resolved: boolean;
   targetId: string | null;

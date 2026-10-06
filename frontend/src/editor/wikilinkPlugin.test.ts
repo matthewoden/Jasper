@@ -98,6 +98,19 @@ describe("wikilinkPlugin", () => {
     expect(decos[0].widget?.rawTitle).toBe("Foo");
   });
 
+  it("[[Foo#Bar]] off-cursor with 'foo' resolved → resolved widget showing the full target", () => {
+    const doc = "see [[Foo#Bar]] for more\nsome text on line 2";
+    const cursorPos = doc.indexOf("\nsome") + 1;
+    const view = makeView(doc, cursorPos, new Set(["foo"]));
+    views.push(view);
+
+    const decos = collectWikilinkDecos(view);
+    expect(decos.length).toBe(1);
+    expect(decos[0].widget?.isResolved).toBe(true);
+    expect(decos[0].widget?.displayText).toBe("Foo#Bar");
+    expect(decos[0].widget?.rawTitle).toBe("Foo");
+  });
+
   it("P2: [[Foo]] off-cursor, 'foo' NOT in resolvedTitles → cm-wiki-link-pending widget", () => {
     const doc = "see [[Foo]] for more\nsome text on line 2";
     const cursorPos = doc.indexOf("\nsome") + 1;
