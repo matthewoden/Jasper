@@ -34,13 +34,12 @@ func TestCheckNoteIDs(t *testing.T) {
 	}
 
 	writeVaultNote(t, dir, "missing.md", "# Missing\n")
-	writeVaultNote(t, dir, "win.md", "---\r\ntags: []\r\n---\r\n")
 	writeVaultNote(t, dir, "twin.md", "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\n---\n# Twin\n")
 	c := checkNoteIDs(dir)
 	if c.Status != "fail" {
 		t.Fatalf("want fail, got %+v", c)
 	}
-	for _, want := range []string{"1 missing an id", "jasper migrate-ids", "win.md", "ok.md, twin.md"} {
+	for _, want := range []string{"1 missing an id", "jasper migrate-ids", "ok.md, twin.md"} {
 		if !strings.Contains(c.Hint, want) {
 			t.Errorf("hint %q lacks %q", c.Hint, want)
 		}

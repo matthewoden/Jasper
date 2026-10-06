@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"errors"
 	"testing"
 )
 
@@ -82,10 +81,7 @@ func TestWithID(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := WithID([]byte(tc.input), testULID)
-			if err != nil {
-				t.Fatalf("WithID: %v", err)
-			}
+			got := WithID([]byte(tc.input), testULID)
 			if string(got) != tc.want {
 				t.Errorf("WithID(%q)\n got: %q\nwant: %q", tc.input, got, tc.want)
 			}
@@ -95,9 +91,8 @@ func TestWithID(t *testing.T) {
 			if v, ok := ReadID(got); !ok || v != testULID {
 				t.Errorf("ReadID(result) = %q, %v; want %q", v, ok, testULID)
 			}
-			again, err := WithID(got, testULID)
-			if err != nil || string(again) != string(got) {
-				t.Errorf("WithID is not idempotent: %q, %v", again, err)
+			if again := WithID(got, testULID); string(again) != string(got) {
+				t.Errorf("WithID is not idempotent: %q", again)
 			}
 		})
 	}
@@ -105,23 +100,35 @@ func TestWithID(t *testing.T) {
 
 func TestWithID_AlreadyCorrectIsUnchanged(t *testing.T) {
 	in := []byte("---\nid: " + testULID + "\ntags: []\n---\nbody\n")
-	got, err := WithID(in, testULID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := WithID(in, testULID)
 	if &got[0] != &in[0] {
 		t.Errorf("WithID copied content that already carried the id")
 	}
 }
 
-func TestWithID_RefusesCRLF(t *testing.T) {
+func TestWithID_NormalizesCRLFFrontmatter(t *testing.T) {
 	in := "---\r\ntags: []\r\n---\r\nbody\r\n"
-	got, err := WithID([]byte(in), testULID)
-	if !errors.Is(err, ErrCRLFFrontmatter) {
-		t.Fatalf("err = %v, want ErrCRLFFrontmatter", err)
+	got := WithID([]byte(in), testULID)
+	if want := "---\nid: " + testULID + "\ntags: []\n---\nbody\r\n"; string(got) != want {
+		t.Errorf("WithID\n got: %q\nwant: %q", got, want)
 	}
-	if string(got) != in {
-		t.Errorf("content changed on refusal: %q", got)
+}
+
+func TestNormalizeFrontmatterEOL(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"LF is untouched", "---\ntags: []\n---\nbody\r\n", "---\ntags: []\n---\nbody\r\n"},
+		{"CRLF block, CRLF body", "---\r\ntags: []\r\n---\r\nbody\r\n", "---\ntags: []\n---\nbody\r\n"},
+		{"closer at EOF", "---\r\ntags: []\r\n---", "---\ntags: []\n---"},
+		{"unclosed is untouched", "---\r\ntags: []\r\nbody\r\n", "---\r\ntags: []\r\nbody\r\n"},
+		{"four-hyphen closer is untouched", "---\r\ntags: []\r\n----\r\n", "---\r\ntags: []\r\n----\r\n"},
+		{"no frontmatter", "# T\r\n", "# T\r\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeFrontmatterEOL([]byte(tc.in)); string(got) != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -145,7 +152,7 @@ func TestReadID(t *testing.T) {
 		{"first of duplicates wins", "---\nid: a\nid: b\n---\n", "a", true},
 		{"nested key is ignored", "---\nmeta:\n  id: inner\n---\n", "", false},
 		{"id-prefixed key is ignored", "---\nidentity: x\n---\n", "", false},
-		{"CRLF is outside the contract", "---\r\nid: " + testULID + "\r\n---\r\n", "", false},
+		{"CRLF block", "---\r\nid: " + testULID + "\r\n---\r\n", testULID, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

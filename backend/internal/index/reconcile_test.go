@@ -30,11 +30,7 @@ func writeNote(t *testing.T, notesDir, rel, content string, mtime time.Time) {
 		if rel == notes.ScratchpadRelPath {
 			id = notes.ScratchpadID
 		}
-		withID, err := markdown.WithID([]byte(content), id.String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		content = string(withID)
+		content = string(markdown.WithID([]byte(content), id.String()))
 	}
 	writeNoteRaw(t, notesDir, rel, content, mtime)
 }

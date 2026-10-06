@@ -2,19 +2,36 @@ package markdown
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 )
 
-// ErrCRLFFrontmatter is returned by WithID for a file whose frontmatter uses
-// CRLF line endings. Such a block is outside FrontmatterCanonicalContract, and
-// inserting an LF line into it would leave the file half-converted.
-var ErrCRLFFrontmatter = errors.New("markdown: frontmatter uses CRLF line endings")
+// NormalizeFrontmatterEOL rewrites a CRLF frontmatter block, fences included,
+// to LF so it meets FrontmatterCanonicalContract. The body keeps its line
+// endings, and anything that is not a closed CRLF block is returned as is.
+func NormalizeFrontmatterEOL(content []byte) []byte {
+	if !bytes.HasPrefix(content, []byte("---\r\n")) {
+		return content
+	}
+	offset := len("---\r\n")
+	for offset < len(content) {
+		end := len(content)
+		if nl := bytes.IndexByte(content[offset:], '\n'); nl >= 0 {
+			end = offset + nl + 1
+		}
+		if line := bytes.TrimSuffix(bytes.TrimSuffix(content[offset:end], []byte("\n")), []byte("\r")); string(line) == "---" {
+			block := bytes.ReplaceAll(content[:end], []byte("\r\n"), []byte("\n"))
+			return append(block, content[end:]...)
+		}
+		offset = end
+	}
+	return content
+}
 
 // ReadID returns the value of the top-level `id` key as written in the
 // frontmatter, and whether the key is present. The value is not validated;
 // the caller decides what a well-formed id is.
 func ReadID(content []byte) (string, bool) {
+	content = NormalizeFrontmatterEOL(content)
 	closeAt, ok := frontmatterClose(content)
 	if !ok {
 		return "", false
@@ -29,12 +46,11 @@ func ReadID(content []byte) (string, bool) {
 // frontmatter and is otherwise byte-identical. An existing `id` line is
 // replaced in place and any duplicates are dropped; a missing one is inserted
 // as the first key; a file without frontmatter gains the minimal block
-// `---\nid: <id>\n---\n`. Content that already carries the id is returned
-// unchanged, so callers can detect a no-op with bytes.Equal.
-func WithID(content []byte, id string) ([]byte, error) {
-	if bytes.HasPrefix(content, []byte("---\r\n")) {
-		return content, ErrCRLFFrontmatter
-	}
+// `---\nid: <id>\n---\n`. A CRLF block is normalized to LF first. Content
+// that already carries the id is returned unchanged, so callers can detect a
+// no-op with bytes.Equal.
+func WithID(content []byte, id string) []byte {
+	content = NormalizeFrontmatterEOL(content)
 	line := "id: " + id + "\n"
 
 	closeAt, ok := frontmatterClose(content)
@@ -43,7 +59,7 @@ func WithID(content []byte, id string) ([]byte, error) {
 		out = append(out, "---\n"...)
 		out = append(out, line...)
 		out = append(out, "---\n"...)
-		return append(out, content...), nil
+		return append(out, content...)
 	}
 
 	lines := idLines(content, closeAt)
@@ -51,10 +67,10 @@ func WithID(content []byte, id string) ([]byte, error) {
 		out := make([]byte, 0, len(content)+len(line))
 		out = append(out, content[:len("---\n")]...)
 		out = append(out, line...)
-		return append(out, content[len("---\n"):]...), nil
+		return append(out, content[len("---\n"):]...)
 	}
 	if len(lines) == 1 && string(content[lines[0].start:lines[0].end]) == line {
-		return content, nil
+		return content
 	}
 
 	out := make([]byte, 0, len(content)+len(line))
@@ -65,7 +81,7 @@ func WithID(content []byte, id string) ([]byte, error) {
 		out = append(out, content[cursor:dup.start]...)
 		cursor = dup.end
 	}
-	return append(out, content[cursor:]...), nil
+	return append(out, content[cursor:]...)
 }
 
 type lineSpan struct{ start, end int }

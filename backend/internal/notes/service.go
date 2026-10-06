@@ -134,17 +134,14 @@ func (s *Service) Update(ctx context.Context, id ID, content string, ifMatch str
 		}
 	}
 
+	content = string(markdown.NormalizeFrontmatterEOL([]byte(content)))
 	if content != "" && !markdown.HasFrontmatter([]byte(content)) {
 		content = "---\ntags: []\n---\n\n" + content
 	}
 	// The id belongs to the server: whatever the client did to the line, the
 	// note keeps the id it is known by. The rewrite comes back in the response
 	// like a tag rewrite does.
-	if withID, err := markdown.WithID([]byte(content), id.String()); err != nil {
-		s.log.Warn("notes.Update: id not written into content", "id", id.String(), "err", err)
-	} else {
-		content = string(withID)
-	}
+	content = string(markdown.WithID([]byte(content), id.String()))
 
 	if err := s.files.WriteAtomic(relPath, []byte(content)); err != nil {
 		return Note{}, fmt.Errorf("notes.Update(%s): write: %w", id, err)
@@ -306,7 +303,7 @@ func (s *Service) createInternal(ctx context.Context, parentPath, title, body, d
 	scaffoldContent = append(scaffoldContent, scaffold...)
 	scaffoldContent = append(scaffoldContent, body...)
 	// The scaffold is LF, so the only refusal WithID knows cannot happen here.
-	scaffoldContent, _ = markdown.WithID(scaffoldContent, id.String())
+	scaffoldContent = markdown.WithID(scaffoldContent, id.String())
 	canonPath := canonicalRelPath(relPath)
 	if err := s.files.WriteAtomic(canonPath, scaffoldContent); err != nil {
 		if delErr := s.files.DeleteFile(relPath); delErr != nil {
