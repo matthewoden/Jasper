@@ -10,8 +10,16 @@ import (
 	"time"
 )
 
-// Anything a reference can point at. The id is the universal ref
-// (jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref as written).
+// Anything whose owner offers actions right now. Each mutation names a
+// mutation on the owning subgraph that takes the item id as its only required
+// argument.
+type Actionable interface {
+	IsActionable()
+	GetActions() []Action
+}
+
+// Anything a reference can point at. The id is the universal ref:
+// <ns>:<kind>/<native>.
 type Item interface {
 	IsItem()
 	GetID() string
@@ -21,6 +29,33 @@ type Item interface {
 	GetTitle() string
 	// Last modification; for a DELETED item, the deletion time.
 	GetUpdatedAt() *time.Time
+}
+
+// Anything with a deep link into the owning UI or an external site.
+type Linkable interface {
+	IsLinkable()
+	GetURL() *string
+}
+
+// Anything with a kind-specific state the shell colours through its per-kind
+// table: running, merged, active.
+type Stateful interface {
+	IsStateful()
+	GetState() *string
+}
+
+// Anything a time lane can place. A run has startsAt; an event has both.
+type Timed interface {
+	IsTimed()
+	GetStartsAt() *time.Time
+	GetEndsAt() *time.Time
+}
+
+type Action struct {
+	ID       string     `json:"id"`
+	Label    string     `json:"label"`
+	Kind     ActionKind `json:"kind"`
+	Mutation string     `json:"mutation"`
 }
 
 type Backlink struct {
@@ -123,6 +158,63 @@ type Query struct {
 type Subscription struct {
 }
 
+type ActionKind string
+
+const (
+	ActionKindNavigate ActionKind = "NAVIGATE"
+	ActionKindMutate   ActionKind = "MUTATE"
+	ActionKindSpawn    ActionKind = "SPAWN"
+)
+
+var AllActionKind = []ActionKind{
+	ActionKindNavigate,
+	ActionKindMutate,
+	ActionKindSpawn,
+}
+
+func (e ActionKind) IsValid() bool {
+	switch e {
+	case ActionKindNavigate, ActionKindMutate, ActionKindSpawn:
+		return true
+	}
+	return false
+}
+
+func (e ActionKind) String() string {
+	return string(e)
+}
+
+func (e *ActionKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ActionKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ActionKind", str)
+	}
+	return nil
+}
+
+func (e ActionKind) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ActionKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ActionKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type ItemChangeKind string
 
 const (
@@ -184,23 +276,25 @@ func (e ItemChangeKind) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Output-only, so the supergraph is the union of every subgraph's values.
+// Each subgraph lists only the kinds it owns, plus FOREIGN for its stub.
 type ItemKind string
 
 const (
+	ItemKindForeign ItemKind = "FOREIGN"
 	ItemKindNote    ItemKind = "NOTE"
 	ItemKindBlob    ItemKind = "BLOB"
-	ItemKindForeign ItemKind = "FOREIGN"
 )
 
 var AllItemKind = []ItemKind{
+	ItemKindForeign,
 	ItemKindNote,
 	ItemKindBlob,
-	ItemKindForeign,
 }
 
 func (e ItemKind) IsValid() bool {
 	switch e {
-	case ItemKindNote, ItemKindBlob, ItemKindForeign:
+	case ItemKindForeign, ItemKindNote, ItemKindBlob:
 		return true
 	}
 	return false

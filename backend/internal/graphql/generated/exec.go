@@ -40,6 +40,13 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Action struct {
+		ID       func(childComplexity int) int
+		Kind     func(childComplexity int) int
+		Label    func(childComplexity int) int
+		Mutation func(childComplexity int) int
+	}
+
 	Backlink struct {
 		Display func(childComplexity int) int
 		Embed   func(childComplexity int) int
@@ -92,10 +99,10 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		Backlinks          func(childComplexity int, id string) int
-		Item               func(childComplexity int, id string) int
-		Items              func(childComplexity int, ids []string) int
-		SearchItems        func(childComplexity int, q string, limit *int) int
+		JasperBacklinks    func(childComplexity int, id string) int
+		JasperItem         func(childComplexity int, id string) int
+		JasperItems        func(childComplexity int, ids []string) int
+		JasperSearch       func(childComplexity int, q string, limit *int) int
 		__resolve__service func(childComplexity int) int
 		__resolve_entities func(childComplexity int, representations []map[string]any) int
 	}
@@ -124,10 +131,10 @@ type NoteResolver interface {
 	Backlinks(ctx context.Context, obj *model.Note) ([]model.Backlink, error)
 }
 type QueryResolver interface {
-	Item(ctx context.Context, id string) (model.Item, error)
-	Items(ctx context.Context, ids []string) ([]model.Item, error)
-	Backlinks(ctx context.Context, id string) ([]model.Backlink, error)
-	SearchItems(ctx context.Context, q string, limit *int) ([]model.Item, error)
+	JasperItem(ctx context.Context, id string) (model.Item, error)
+	JasperItems(ctx context.Context, ids []string) ([]model.Item, error)
+	JasperBacklinks(ctx context.Context, id string) ([]model.Backlink, error)
+	JasperSearch(ctx context.Context, q string, limit *int) ([]model.Item, error)
 }
 type SubscriptionResolver interface {
 	ItemChanged(ctx context.Context) (<-chan *model.ItemChange, error)
@@ -150,6 +157,31 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := newExecutionContext(nil, e, nil)
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Action.id":
+		if e.ComplexityRoot.Action.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Action.ID(childComplexity), true
+	case "Action.kind":
+		if e.ComplexityRoot.Action.Kind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Action.Kind(childComplexity), true
+	case "Action.label":
+		if e.ComplexityRoot.Action.Label == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Action.Label(childComplexity), true
+	case "Action.mutation":
+		if e.ComplexityRoot.Action.Mutation == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Action.Mutation(childComplexity), true
 
 	case "Backlink.display":
 		if e.ComplexityRoot.Backlink.Display == nil {
@@ -365,51 +397,50 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Note.UpdatedAt(childComplexity), true
 
-	case "Query.backlinks":
-		if e.ComplexityRoot.Query.Backlinks == nil {
+	case "Query.jasperBacklinks":
+		if e.ComplexityRoot.Query.JasperBacklinks == nil {
 			break
 		}
 
-		args, err := ec.field_Query_backlinks_args(ctx, rawArgs)
+		args, err := ec.field_Query_jasperBacklinks_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Backlinks(childComplexity, args["id"].(string)), true
-
-	case "Query.item":
-		if e.ComplexityRoot.Query.Item == nil {
+		return e.ComplexityRoot.Query.JasperBacklinks(childComplexity, args["id"].(string)), true
+	case "Query.jasperItem":
+		if e.ComplexityRoot.Query.JasperItem == nil {
 			break
 		}
 
-		args, err := ec.field_Query_item_args(ctx, rawArgs)
+		args, err := ec.field_Query_jasperItem_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Item(childComplexity, args["id"].(string)), true
-	case "Query.items":
-		if e.ComplexityRoot.Query.Items == nil {
+		return e.ComplexityRoot.Query.JasperItem(childComplexity, args["id"].(string)), true
+	case "Query.jasperItems":
+		if e.ComplexityRoot.Query.JasperItems == nil {
 			break
 		}
 
-		args, err := ec.field_Query_items_args(ctx, rawArgs)
+		args, err := ec.field_Query_jasperItems_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.Items(childComplexity, args["ids"].([]string)), true
-	case "Query.searchItems":
-		if e.ComplexityRoot.Query.SearchItems == nil {
+		return e.ComplexityRoot.Query.JasperItems(childComplexity, args["ids"].([]string)), true
+	case "Query.jasperSearch":
+		if e.ComplexityRoot.Query.JasperSearch == nil {
 			break
 		}
 
-		args, err := ec.field_Query_searchItems_args(ctx, rawArgs)
+		args, err := ec.field_Query_jasperSearch_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Query.SearchItems(childComplexity, args["q"].(string), args["limit"].(*int)), true
+		return e.ComplexityRoot.Query.JasperSearch(childComplexity, args["q"].(string), args["limit"].(*int)), true
 	case "Query._service":
 		if e.ComplexityRoot.Query.__resolve__service == nil {
 			break
@@ -526,13 +557,12 @@ func newExecutionContext(
 }
 
 var sources = []*ast.Source{
-	{Name: "../../../../api/graphql/schema.graphqls", Input: `# Jasper's federation contract: how another system reads Jasper by id.
+	{Name: "../../../../api/graphql/schema.graphqls", Input: `# Jasper's subgraph: how another system reads Jasper by id.
 #
-# Item is a value interface, not an entity interface: each subgraph keys its
-# own concrete types and implements Item on them, so no subgraph has to own
-# every implementation (Apollo Federation 2.3 requires exactly that of an
-# interface carrying @key). Cross-system lookup goes through Query.item,
-# routed by the ref's namespace.
+# Everything from DateTime to Action is graphos's shared Item contract,
+# verbatim from api/graphql/graphos/item.graphql; contract_test.go holds it
+# there. Root fields carry the jasper prefix because the shell subgraph owns
+# the supergraph's item and items.
 #
 # Reads only. Writes go through REST and MCP, which accept the same ids.
 
@@ -553,15 +583,17 @@ enum ItemStatus {
   DELETED
 }
 
+"""
+Output-only, so the supergraph is the union of every subgraph's values.
+Each subgraph lists only the kinds it owns, plus FOREIGN for its stub.
+"""
 enum ItemKind {
-  NOTE
-  BLOB
   FOREIGN
 }
 
 """
-Anything a reference can point at. The id is the universal ref
-(jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref as written).
+Anything a reference can point at. The id is the universal ref:
+<ns>:<kind>/<native>.
 """
 interface Item {
   id: ID!
@@ -571,6 +603,56 @@ interface Item {
   title: String!
   "Last modification; for a DELETED item, the deletion time."
   updatedAt: DateTime
+}
+
+"""
+Anything a time lane can place. A run has startsAt; an event has both.
+"""
+interface Timed {
+  startsAt: DateTime
+  endsAt: DateTime
+}
+
+"""
+Anything with a kind-specific state the shell colours through its per-kind
+table: running, merged, active.
+"""
+interface Stateful {
+  state: String
+}
+
+"""
+Anything with a deep link into the owning UI or an external site.
+"""
+interface Linkable {
+  url: String
+}
+
+"""
+Anything whose owner offers actions right now. Each mutation names a
+mutation on the owning subgraph that takes the item id as its only required
+argument.
+"""
+interface Actionable {
+  actions: [Action!]!
+}
+
+enum ActionKind {
+  NAVIGATE
+  MUTATE
+  SPAWN
+}
+
+type Action @shareable {
+  id: ID!
+  label: String!
+  kind: ActionKind!
+  mutation: String!
+}
+
+extend enum ItemKind {
+  NOTE
+  BLOB
 }
 
 type Note implements Item @key(fields: "id") {
@@ -609,7 +691,7 @@ type Blob implements Item @key(fields: "id") {
 A reference into another system, returned as written. Jasper can say who
 references it, not what it is.
 """
-type ForeignRef implements Item {
+type ForeignRef implements Item @shareable {
   id: ID!
   kind: ItemKind!
   status: ItemStatus!
@@ -627,13 +709,13 @@ type Backlink {
 
 type Query {
   "Resolve one ref: a universal ref, a bare note or blob id, or jasper:title/<title>."
-  item(id: ID!): Item
+  jasperItem(id: ID!): Item
   "Resolve several refs at once; order matches the request, missing as null."
-  items(ids: [ID!]!): [Item]!
+  jasperItems(ids: [ID!]!): [Item]!
   "Who references a target, native or foreign."
-  backlinks(id: ID!): [Backlink!]!
+  jasperBacklinks(id: ID!): [Backlink!]
   "Notes by title and body, blobs by file name."
-  searchItems(q: String!, limit: Int = 20): [Item!]!
+  jasperSearch(q: String!, limit: Int = 20): [Item!]
 }
 
 enum ItemChangeKind {
@@ -988,7 +1070,7 @@ func (ec *executionContext) field_Query__entities_args(ctx context.Context, rawA
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_backlinks_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Query_jasperBacklinks_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
@@ -1002,7 +1084,7 @@ func (ec *executionContext) field_Query_backlinks_args(ctx context.Context, rawA
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_item_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Query_jasperItem_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
@@ -1016,7 +1098,7 @@ func (ec *executionContext) field_Query_item_args(ctx context.Context, rawArgs m
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_items_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Query_jasperItems_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "ids",
@@ -1030,7 +1112,7 @@ func (ec *executionContext) field_Query_items_args(ctx context.Context, rawArgs 
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_searchItems_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Query_jasperSearch_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "q",
@@ -1111,6 +1193,98 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ***************************** args.gotpl *****************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _Action_id(ctx context.Context, field graphql.CollectedField, obj *model.Action) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Action_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Action_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Action", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _Action_label(ctx context.Context, field graphql.CollectedField, obj *model.Action) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Action_label(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Label, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Action_label(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Action", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _Action_kind(ctx context.Context, field graphql.CollectedField, obj *model.Action) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Action_kind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.ActionKind) graphql.Marshaler {
+			return ec.marshalNActionKind2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐActionKind(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Action_kind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Action", field, false, false, errors.New("field of type ActionKind does not have child fields"))
+}
+
+func (ec *executionContext) _Action_mutation(ctx context.Context, field graphql.CollectedField, obj *model.Action) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Action_mutation(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Mutation, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Action_mutation(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Action", field, false, false, errors.New("field of type String does not have child fields"))
+}
 
 func (ec *executionContext) _Backlink_source(ctx context.Context, field graphql.CollectedField, obj *model.Backlink) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -1931,17 +2105,17 @@ func (ec *executionContext) fieldContext_Note_backlinks(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_item(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_jasperItem(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Query_item(ctx, field)
+			return ec.fieldContext_Query_jasperItem(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Item(ctx, fc.Args["id"].(string))
+			return ec.Resolvers.Query().JasperItem(ctx, fc.Args["id"].(string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v model.Item) graphql.Marshaler {
@@ -1951,7 +2125,7 @@ func (ec *executionContext) _Query_item(ctx context.Context, field graphql.Colle
 		false,
 	)
 }
-func (ec *executionContext) fieldContext_Query_item(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_jasperItem(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -1968,24 +2142,24 @@ func (ec *executionContext) fieldContext_Query_item(ctx context.Context, field g
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_item_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Query_jasperItem_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_items(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_jasperItems(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Query_items(ctx, field)
+			return ec.fieldContext_Query_jasperItems(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Items(ctx, fc.Args["ids"].([]string))
+			return ec.Resolvers.Query().JasperItems(ctx, fc.Args["ids"].([]string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []model.Item) graphql.Marshaler {
@@ -1995,7 +2169,7 @@ func (ec *executionContext) _Query_items(ctx context.Context, field graphql.Coll
 		true,
 	)
 }
-func (ec *executionContext) fieldContext_Query_items(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_jasperItems(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -2012,34 +2186,34 @@ func (ec *executionContext) fieldContext_Query_items(ctx context.Context, field 
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_items_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Query_jasperItems_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_backlinks(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_jasperBacklinks(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Query_backlinks(ctx, field)
+			return ec.fieldContext_Query_jasperBacklinks(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().Backlinks(ctx, fc.Args["id"].(string))
+			return ec.Resolvers.Query().JasperBacklinks(ctx, fc.Args["id"].(string))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []model.Backlink) graphql.Marshaler {
-			return ec.marshalNBacklink2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐBacklinkᚄ(ctx, selections, v)
+			return ec.marshalOBacklink2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐBacklinkᚄ(ctx, selections, v)
 		},
 		true,
-		true,
+		false,
 	)
 }
-func (ec *executionContext) fieldContext_Query_backlinks(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_jasperBacklinks(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -2056,34 +2230,34 @@ func (ec *executionContext) fieldContext_Query_backlinks(ctx context.Context, fi
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_backlinks_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Query_jasperBacklinks_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_searchItems(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Query_jasperSearch(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
 		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return ec.fieldContext_Query_searchItems(ctx, field)
+			return ec.fieldContext_Query_jasperSearch(ctx, field)
 		},
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Query().SearchItems(ctx, fc.Args["q"].(string), fc.Args["limit"].(*int))
+			return ec.Resolvers.Query().JasperSearch(ctx, fc.Args["q"].(string), fc.Args["limit"].(*int))
 		},
 		nil,
 		func(ctx context.Context, selections ast.SelectionSet, v []model.Item) graphql.Marshaler {
-			return ec.marshalNItem2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItemᚄ(ctx, selections, v)
+			return ec.marshalOItem2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItemᚄ(ctx, selections, v)
 		},
 		true,
-		true,
+		false,
 	)
 }
-func (ec *executionContext) fieldContext_Query_searchItems(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_jasperSearch(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -2100,7 +2274,7 @@ func (ec *executionContext) fieldContext_Query_searchItems(ctx context.Context, 
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_searchItems_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Query_jasperSearch_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3377,6 +3551,19 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    ************************** interface.gotpl ***************************
 
+func (ec *executionContext) _Actionable(ctx context.Context, sel ast.SelectionSet, obj model.Actionable) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of Actionable must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _Item(ctx context.Context, sel ast.SelectionSet, obj model.Item) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -3411,6 +3598,45 @@ func (ec *executionContext) _Item(ctx context.Context, sel ast.SelectionSet, obj
 	}
 }
 
+func (ec *executionContext) _Linkable(ctx context.Context, sel ast.SelectionSet, obj model.Linkable) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of Linkable must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _Stateful(ctx context.Context, sel ast.SelectionSet, obj model.Stateful) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of Stateful must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _Timed(ctx context.Context, sel ast.SelectionSet, obj model.Timed) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of Timed must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) __Entity(ctx context.Context, sel ast.SelectionSet, obj fedruntime.Entity) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -3441,6 +3667,59 @@ func (ec *executionContext) __Entity(ctx context.Context, sel ast.SelectionSet, 
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
+
+var actionImplementors = []string{"Action"}
+
+func (ec *executionContext) _Action(ctx context.Context, sel ast.SelectionSet, obj *model.Action) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, actionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Action")
+		case "id":
+			out.Values[i] = ec._Action_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "label":
+			out.Values[i] = ec._Action_label(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "kind":
+			out.Values[i] = ec._Action_kind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "mutation":
+			out.Values[i] = ec._Action_mutation(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
 
 var backlinkImplementors = []string{"Backlink"}
 
@@ -3966,7 +4245,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Query")
-		case "item":
+		case "jasperItem":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -3975,7 +4254,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_item(ctx, field)
+				res = ec._Query_jasperItem(ctx, field)
 				if res == graphql.RequiredNull {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -3988,7 +4267,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "items":
+		case "jasperItems":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -3997,7 +4276,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_items(ctx, field)
+				res = ec._Query_jasperItems(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -4010,7 +4289,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "backlinks":
+		case "jasperBacklinks":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -4019,8 +4298,8 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_backlinks(ctx, field)
-				if res == graphql.Null {
+				res = ec._Query_jasperBacklinks(ctx, field)
+				if res == graphql.RequiredNull {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
 				return res
@@ -4032,7 +4311,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "searchItems":
+		case "jasperSearch":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -4041,8 +4320,8 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_searchItems(ctx, field)
-				if res == graphql.Null {
+				res = ec._Query_jasperSearch(ctx, field)
+				if res == graphql.RequiredNull {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
 				return res
@@ -4583,6 +4862,16 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
+func (ec *executionContext) unmarshalNActionKind2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐActionKind(ctx context.Context, v any) (model.ActionKind, error) {
+	var res model.ActionKind
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNActionKind2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐActionKind(ctx context.Context, sel ast.SelectionSet, v model.ActionKind) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNBacklink2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐBacklink(ctx context.Context, sel ast.SelectionSet, v model.Backlink) graphql.Marshaler {
 	return ec._Backlink(ctx, sel, &v)
 }
@@ -4726,22 +5015,6 @@ func (ec *executionContext) marshalNItem2ᚕgithubᚗcomᚋmatthewodenᚋjasper�
 		fc.Result = &v[i]
 		return ec.marshalOItem2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItem(ctx, sel, v[i])
 	})
-
-	return ret
-}
-
-func (ec *executionContext) marshalNItem2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItemᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Item) graphql.Marshaler {
-	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
-		fc := graphql.GetFieldContext(ctx)
-		fc.Result = &v[i]
-		return ec.marshalNItem2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItem(ctx, sel, v[i])
-	})
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
 
 	return ret
 }
@@ -5202,6 +5475,25 @@ func (ec *executionContext) marshalNfederation__Scope2ᚕᚕstringᚄ(ctx contex
 	return ret
 }
 
+func (ec *executionContext) marshalOBacklink2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐBacklinkᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Backlink) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNBacklink2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐBacklink(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v any) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -5291,6 +5583,25 @@ func (ec *executionContext) marshalOItem2githubᚗcomᚋmatthewodenᚋjasperᚋb
 		return graphql.Null
 	}
 	return ec._Item(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOItem2ᚕgithubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItemᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Item) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNItem2githubᚗcomᚋmatthewodenᚋjasperᚋbackendᚋinternalᚋgraphqlᚋmodelᚐItem(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOString2string(ctx context.Context, v any) (string, error) {

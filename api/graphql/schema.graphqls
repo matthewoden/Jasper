@@ -1,10 +1,9 @@
-# Jasper's federation contract: how another system reads Jasper by id.
+# Jasper's subgraph: how another system reads Jasper by id.
 #
-# Item is a value interface, not an entity interface: each subgraph keys its
-# own concrete types and implements Item on them, so no subgraph has to own
-# every implementation (Apollo Federation 2.3 requires exactly that of an
-# interface carrying @key). Cross-system lookup goes through Query.item,
-# routed by the ref's namespace.
+# Everything from DateTime to Action is graphos's shared Item contract,
+# verbatim from api/graphql/graphos/item.graphql; contract_test.go holds it
+# there. Root fields carry the jasper prefix because the shell subgraph owns
+# the supergraph's item and items.
 #
 # Reads only. Writes go through REST and MCP, which accept the same ids.
 
@@ -25,15 +24,17 @@ enum ItemStatus {
   DELETED
 }
 
+"""
+Output-only, so the supergraph is the union of every subgraph's values.
+Each subgraph lists only the kinds it owns, plus FOREIGN for its stub.
+"""
 enum ItemKind {
-  NOTE
-  BLOB
   FOREIGN
 }
 
 """
-Anything a reference can point at. The id is the universal ref
-(jasper:note/<ulid>, jasper:blob/<id>, or a foreign ref as written).
+Anything a reference can point at. The id is the universal ref:
+<ns>:<kind>/<native>.
 """
 interface Item {
   id: ID!
@@ -43,6 +44,56 @@ interface Item {
   title: String!
   "Last modification; for a DELETED item, the deletion time."
   updatedAt: DateTime
+}
+
+"""
+Anything a time lane can place. A run has startsAt; an event has both.
+"""
+interface Timed {
+  startsAt: DateTime
+  endsAt: DateTime
+}
+
+"""
+Anything with a kind-specific state the shell colours through its per-kind
+table: running, merged, active.
+"""
+interface Stateful {
+  state: String
+}
+
+"""
+Anything with a deep link into the owning UI or an external site.
+"""
+interface Linkable {
+  url: String
+}
+
+"""
+Anything whose owner offers actions right now. Each mutation names a
+mutation on the owning subgraph that takes the item id as its only required
+argument.
+"""
+interface Actionable {
+  actions: [Action!]!
+}
+
+enum ActionKind {
+  NAVIGATE
+  MUTATE
+  SPAWN
+}
+
+type Action @shareable {
+  id: ID!
+  label: String!
+  kind: ActionKind!
+  mutation: String!
+}
+
+extend enum ItemKind {
+  NOTE
+  BLOB
 }
 
 type Note implements Item @key(fields: "id") {
@@ -81,7 +132,7 @@ type Blob implements Item @key(fields: "id") {
 A reference into another system, returned as written. Jasper can say who
 references it, not what it is.
 """
-type ForeignRef implements Item {
+type ForeignRef implements Item @shareable {
   id: ID!
   kind: ItemKind!
   status: ItemStatus!
@@ -99,13 +150,13 @@ type Backlink {
 
 type Query {
   "Resolve one ref: a universal ref, a bare note or blob id, or jasper:title/<title>."
-  item(id: ID!): Item
+  jasperItem(id: ID!): Item
   "Resolve several refs at once; order matches the request, missing as null."
-  items(ids: [ID!]!): [Item]!
+  jasperItems(ids: [ID!]!): [Item]!
   "Who references a target, native or foreign."
-  backlinks(id: ID!): [Backlink!]!
+  jasperBacklinks(id: ID!): [Backlink!]
   "Notes by title and body, blobs by file name."
-  searchItems(q: String!, limit: Int = 20): [Item!]!
+  jasperSearch(q: String!, limit: Int = 20): [Item!]
 }
 
 enum ItemChangeKind {

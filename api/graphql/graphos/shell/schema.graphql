@@ -1,0 +1,62 @@
+# The shell subgraph: workspaces, and the supergraph's item/items.
+#
+# item and items are the only unprefixed root fields in the supergraph. The
+# shell answers them from the kinds registry with an entity stub the router
+# hydrates from the owner; it holds no item data but its own workspaces.
+
+extend enum ItemKind {
+  WORKSPACE
+}
+
+"""
+A saved arrangement: an ordered list of panes, each a view over a query.
+Any service can create one; BusyTown does per run.
+"""
+type Workspace implements Item & Actionable @key(fields: "id") {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  title: String!
+  updatedAt: DateTime
+  actions: [Action!]!
+  panes: [Pane!]!
+  createdAt: DateTime!
+}
+
+type Pane {
+  "A view from the registry: row, collection, timelane, detail, editor."
+  view: String!
+  "A GraphQL fragment over the namespaced search fields, or empty."
+  query: String!
+  "Explicit ids the pane shows, in order."
+  ids: [ID!]!
+}
+
+input PaneInput {
+  view: String!
+  query: String = ""
+  ids: [ID!]! = []
+}
+
+type Query {
+  "Any id: routed to its owner by kind through the kinds registry."
+  item(id: ID!): Item
+  "Several ids at once; order matches the request, unknown kinds as null."
+  items(ids: [ID!]!): [Item]!
+  shellItem(id: ID!): Item
+  shellItems(ids: [ID!]!): [Item]!
+  "Workspaces with a pane that lists the id. Nullable so a down subgraph nulls its field, not the response."
+  shellBacklinks(id: ID!): [Item!]
+  "Workspaces by title. Nullable for the same reason."
+  shellSearch(q: String!, limit: Int = 20): [Item!]
+}
+
+type Mutation {
+  createWorkspace(title: String!, panes: [PaneInput!]!): Workspace!
+  deleteWorkspace(id: ID!): Boolean!
+}
+
+type Subscription {
+  "Every workspace change, as it happens; narrowed to ids when given."
+  shellItemChanged(ids: [ID!]): Item!
+}
