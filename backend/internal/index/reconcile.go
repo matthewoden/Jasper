@@ -44,7 +44,9 @@ func (x *Indexer) ReconcileWithRegistry(ctx context.Context, mode Mode, registry
 	if mode != ModeFull && mode != ModeIncremental {
 		return ReconcileResult{}, fmt.Errorf("indexer: unknown mode %q", mode)
 	}
+	x.reconcileMu.Lock()
 	res, err := x.reconcile(ctx, mode, registry)
+	x.reconcileMu.Unlock()
 
 	if repairErr := x.checkAndRepairFTSDivergence(ctx); repairErr != nil {
 		x.Log.Error("FTS5 divergence repair failed (non-fatal)", "err", repairErr)

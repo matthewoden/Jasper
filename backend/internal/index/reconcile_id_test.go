@@ -417,3 +417,31 @@ func TestReconcile_ReportsRefsDeltas(t *testing.T) {
 		t.Errorf("delta = %+v", d)
 	}
 }
+
+// Concurrent passes would each settle ids against a stale snapshot of the
+// index and redo every write; they run one at a time.
+func TestReconcile_ConcurrentPassesDoNotOverlap(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+	writeNoteRaw(t, notesDir, "a.md", "# Alpha\n", time.Unix(1700000000, 0))
+
+	done := make(chan struct{})
+	idx.afterWalk = func() {
+		idx.afterWalk = nil
+		go func() {
+			defer close(done)
+			if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
+				t.Errorf("second Reconcile: %v", err)
+			}
+		}()
+		select {
+		case <-done:
+			t.Error("a second reconcile ran to completion inside the first")
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if _, err := idx.Reconcile(context.Background(), ModeIncremental); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	<-done
+}

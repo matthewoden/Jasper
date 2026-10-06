@@ -6,6 +6,7 @@ package index
 
 import (
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/matthewoden/jasper/backend/internal/db/sqlite"
@@ -40,6 +41,9 @@ type Indexer struct {
 	Log      *slog.Logger
 
 	nowUnix func() int64
+	// reconcileMu runs passes one at a time: each settles ids against a
+	// snapshot of the index, which a concurrent pass would make stale.
+	reconcileMu sync.Mutex
 	// afterWalk runs between reconcile's read pass and its id writes; tests only.
 	afterWalk func()
 }
