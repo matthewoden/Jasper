@@ -120,8 +120,6 @@ jobs:
   compose-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
 
@@ -137,4 +135,6 @@ jobs:
           key: compose-check-${{ runner.os }}-${{ hashFiles('scripts/compose-check.sh') }}
 
       - name: Subgraph composes with the stubs
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: make compose-check
