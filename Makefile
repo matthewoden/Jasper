@@ -1,4 +1,4 @@
-.PHONY: gen gen-check build test lint dev lock gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e compose-check
+.PHONY: gen gen-check build test lint dev lock gen-go gen-ts print-port perf-check perf-vault test-systemd-e2e compose-check vendor-graphos
 
 # Canonical port resolver. Returns server.port from
 # the active vault's <vault>/.jasper/config.json (or $JASPER_CONFIG),
@@ -23,10 +23,14 @@ perf-vault:
 	@rm -rf _perf-vault
 	@bash scripts/generate-perf-vault.sh _perf-vault 5000
 
-# Federation gate: the subgraph composes with the stub subgraphs under
-# api/graphql/stubs (acceptance criterion 11). Needs node and, once, network.
+# Federation gate: the subgraph composes with the shell subgraph vendored
+# from graphos under api/graphql/graphos (acceptance criterion 11).
 compose-check:
-	@bash scripts/compose-check.sh
+	@cd scripts/compose-check && go run . ../../api/graphql
+
+# Refresh api/graphql/graphos from a graphos checkout ($GRAPHOS, default ../graphos).
+vendor-graphos:
+	@bash scripts/vendor-graphos.sh
 
 gen: gen-go gen-ts
 

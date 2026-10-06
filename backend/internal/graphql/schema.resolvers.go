@@ -56,13 +56,13 @@ func (r *noteResolver) Backlinks(ctx context.Context, obj *model.Note) ([]model.
 	return r.backlinksFor(ctx, obj.ID)
 }
 
-// Item is the resolver for the item field.
-func (r *queryResolver) Item(ctx context.Context, id string) (model.Item, error) {
+// JasperItem is the resolver for the jasperItem field.
+func (r *queryResolver) JasperItem(ctx context.Context, id string) (model.Item, error) {
 	return r.resolveItem(ctx, id)
 }
 
-// Items is the resolver for the items field.
-func (r *queryResolver) Items(ctx context.Context, ids []string) ([]model.Item, error) {
+// JasperItems is the resolver for the jasperItems field.
+func (r *queryResolver) JasperItems(ctx context.Context, ids []string) ([]model.Item, error) {
 	out := make([]model.Item, 0, len(ids))
 	for _, id := range ids {
 		item, err := r.resolveItem(ctx, id)
@@ -74,13 +74,13 @@ func (r *queryResolver) Items(ctx context.Context, ids []string) ([]model.Item, 
 	return out, nil
 }
 
-// Backlinks is the resolver for the backlinks field.
-func (r *queryResolver) Backlinks(ctx context.Context, id string) ([]model.Backlink, error) {
+// JasperBacklinks is the resolver for the jasperBacklinks field.
+func (r *queryResolver) JasperBacklinks(ctx context.Context, id string) ([]model.Backlink, error) {
 	return r.backlinksFor(ctx, r.canonicalRef(id))
 }
 
-// SearchItems is the resolver for the searchItems field.
-func (r *queryResolver) SearchItems(ctx context.Context, q string, limit *int) ([]model.Item, error) {
+// JasperSearch is the resolver for the jasperSearch field.
+func (r *queryResolver) JasperSearch(ctx context.Context, q string, limit *int) ([]model.Item, error) {
 	n := 20
 	if limit != nil && *limit > 0 {
 		n = min(*limit, 100)
@@ -103,7 +103,7 @@ func (r *queryResolver) SearchItems(ctx context.Context, q string, limit *int) (
 		// An empty or malformed query lists by title instead; FTS5 reports some
 		// syntax errors as plain SQL errors, so any failure falls back.
 		if err != nil && !errors.Is(err, notes.ErrFTSQuerySyntax) && r.Log != nil {
-			r.Log.Debug("searchItems: fts failed; listing by title", "q", q, "err", err)
+			r.Log.Debug("jasperSearch: fts failed; listing by title", "q", q, "err", err)
 		}
 		results, terr := r.Index.SearchTitles(ctx, q, min(n, 50))
 		if terr != nil {

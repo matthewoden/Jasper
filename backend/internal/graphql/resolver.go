@@ -45,7 +45,7 @@ func (r *Resolver) canonicalRef(id string) string {
 	return ref.String()
 }
 
-// resolveItem answers item(id) for any ref, with a nil Item for a native id
+// resolveItem answers jasperItem(id) for any ref, with a nil Item for a native id
 // that is neither known nor remembered.
 func (r *Resolver) resolveItem(ctx context.Context, id string) (model.Item, error) {
 	ref := r.canonicalRef(id)

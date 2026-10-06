@@ -1,0 +1,90 @@
+# The shared Item contract. Every subgraph declares these definitions
+# verbatim, then adds its own ItemKind values, its concrete types, and its
+# namespaced root fields. See docs/adr/0001.
+#
+# Item is a value interface: no @key here, @key(fields: "id") on every
+# concrete type. It carries only what every item has. Anything a view needs
+# beyond that is a shape interface below, implemented by the kinds that
+# have it.
+#
+# No @link line: Cosmo treats the federation directives as built-in, and
+# composition-go fails on the directive. `graphos compose` strips it from
+# subgraphs whose codegen emits one.
+
+"""
+RFC 3339 timestamp, UTC.
+"""
+scalar DateTime
+
+enum ItemStatus {
+  OK
+  UNKNOWN
+  DELETED
+}
+
+"""
+Output-only, so the supergraph is the union of every subgraph's values.
+Each subgraph lists only the kinds it owns, plus FOREIGN for its stub.
+"""
+enum ItemKind {
+  FOREIGN
+}
+
+"""
+Anything a reference can point at. The id is the universal ref:
+<ns>:<kind>/<native>.
+"""
+interface Item {
+  id: ID!
+  kind: ItemKind!
+  status: ItemStatus!
+  "Current title; for a DELETED item, the last one known."
+  title: String!
+  "Last modification; for a DELETED item, the deletion time."
+  updatedAt: DateTime
+}
+
+"""
+Anything a time lane can place. A run has startsAt; an event has both.
+"""
+interface Timed {
+  startsAt: DateTime
+  endsAt: DateTime
+}
+
+"""
+Anything with a kind-specific state the shell colours through its per-kind
+table: running, merged, active.
+"""
+interface Stateful {
+  state: String
+}
+
+"""
+Anything with a deep link into the owning UI or an external site.
+"""
+interface Linkable {
+  url: String
+}
+
+"""
+Anything whose owner offers actions right now. Each mutation names a
+mutation on the owning subgraph that takes the item id as its only required
+argument.
+"""
+interface Actionable {
+  actions: [Action!]!
+}
+
+enum ActionKind {
+  NAVIGATE
+  MUTATE
+  SPAWN
+}
+
+type Action @shareable {
+  id: ID!
+  label: String!
+  kind: ActionKind!
+  mutation: String!
+}

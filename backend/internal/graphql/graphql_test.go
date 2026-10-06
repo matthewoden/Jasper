@@ -138,13 +138,13 @@ func TestItemResolution(t *testing.T) {
 	ctx := context.Background()
 
 	for _, id := range []string{alpha.String(), notes.RefForNote(alpha), "jasper:title/Alpha"} {
-		data := f.query(t, `query($id: ID!) { item(id: $id) { `+itemFields+` ... on Note { body } } }`, map[string]any{"id": id})
-		item, _ := data["item"].(map[string]any)
+		data := f.query(t, `query($id: ID!) { jasperItem(id: $id) { `+itemFields+` ... on Note { body } } }`, map[string]any{"id": id})
+		item, _ := data["jasperItem"].(map[string]any)
 		if item == nil || item["id"] != notes.RefForNote(alpha) || item["status"] != "OK" || item["title"] != "Alpha" || item["kind"] != "NOTE" {
-			t.Fatalf("item(%s) = %+v", id, item)
+			t.Fatalf("jasperItem(%s) = %+v", id, item)
 		}
 		if !strings.Contains(item["body"].(string), "The body.") || item["path"] != "alpha.md" || !strings.HasPrefix(item["excerpt"].(string), "Alpha The body") {
-			t.Errorf("item(%s) detail = %+v", id, item)
+			t.Errorf("jasperItem(%s) detail = %+v", id, item)
 		}
 		refs, _ := item["refs"].([]any)
 		if len(refs) != 2 || refs[0] != notes.RefForNote(beta) || refs[1] != "ado:workitem/42" {
@@ -153,25 +153,25 @@ func TestItemResolution(t *testing.T) {
 	}
 
 	// Beta is referenced by Alpha through a title link.
-	data := f.query(t, `query($id: ID!) { item(id: $id) { ... on Note { backlinks { source { id title } display } } } backlinks(id: $id) { source { title } } }`, map[string]any{"id": beta.String()})
-	item := data["item"].(map[string]any)
+	data := f.query(t, `query($id: ID!) { jasperItem(id: $id) { ... on Note { backlinks { source { id title } display } } } jasperBacklinks(id: $id) { source { title } } }`, map[string]any{"id": beta.String()})
+	item := data["jasperItem"].(map[string]any)
 	bl := item["backlinks"].([]any)
 	if len(bl) != 1 || bl[0].(map[string]any)["source"].(map[string]any)["title"] != "Alpha" {
 		t.Errorf("beta backlinks = %v", bl)
 	}
-	if top := data["backlinks"].([]any); len(top) != 1 {
-		t.Errorf("Query.backlinks = %v", top)
+	if top := data["jasperBacklinks"].([]any); len(top) != 1 {
+		t.Errorf("Query.jasperBacklinks = %v", top)
 	}
 
-	// A move keeps the id and item(id) answers with the new path.
+	// A move keeps the id and jasperItem(id) answers with the new path.
 	if _, err := f.svc.CreateFolder(ctx, "", "moved"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.svc.Move(ctx, alpha, "moved/alpha.md"); err != nil {
 		t.Fatal(err)
 	}
-	data = f.query(t, `query($id: ID!) { item(id: $id) { ... on Note { id path } } }`, map[string]any{"id": alpha.String()})
-	if item := data["item"].(map[string]any); item["path"] != "moved/alpha.md" || item["id"] != notes.RefForNote(alpha) {
+	data = f.query(t, `query($id: ID!) { jasperItem(id: $id) { ... on Note { id path } } }`, map[string]any{"id": alpha.String()})
+	if item := data["jasperItem"].(map[string]any); item["path"] != "moved/alpha.md" || item["id"] != notes.RefForNote(alpha) {
 		t.Errorf("after move = %+v", item)
 	}
 
@@ -183,10 +183,10 @@ func TestItemResolution(t *testing.T) {
 	if err := f.svc.Delete(ctx, beta); err != nil {
 		t.Fatal(err)
 	}
-	data = f.query(t, `query($ids: [ID!]!) { items(ids: $ids) { `+itemFields+` } }`, map[string]any{
+	data = f.query(t, `query($ids: [ID!]!) { jasperItems(ids: $ids) { `+itemFields+` } }`, map[string]any{
 		"ids": []string{"ado:workitem/42", notes.RefForBlob(blob), blob, notes.RefForNote(notes.NewID()), beta.String(), "jasper:title/Nobody"},
 	})
-	items := data["items"].([]any)
+	items := data["jasperItems"].([]any)
 	if len(items) != 6 {
 		t.Fatalf("items = %v", items)
 	}
@@ -207,35 +207,35 @@ func TestItemResolution(t *testing.T) {
 	if deleted["status"] != "DELETED" || deleted["title"] != "Beta" || deleted["path"] != "beta.md" || deleted["updatedAt"] == nil {
 		t.Errorf("deleted = %+v", deleted)
 	}
-	data = f.query(t, `query($id: ID!) { item(id: $id) { ... on Note { body } } }`, map[string]any{"id": beta.String()})
-	if body := data["item"].(map[string]any)["body"]; body != nil {
+	data = f.query(t, `query($id: ID!) { jasperItem(id: $id) { ... on Note { body } } }`, map[string]any{"id": beta.String()})
+	if body := data["jasperItem"].(map[string]any)["body"]; body != nil {
 		t.Errorf("deleted note body = %v, want null", body)
 	}
 }
 
-func TestSearchItems(t *testing.T) {
+func TestJasperSearch(t *testing.T) {
 	f := newFixture(t)
 	f.write(t, "roadmap.md", "# Roadmap\n\nplanning the quarter\n")
 	f.write(t, "notes.md", "# Notes\n\nnothing about plans\n")
 	f.write(t, "attachments/roadmap-chart.png", "png")
 	f.reindex(t)
 
-	data := f.query(t, `query($q: String!) { searchItems(q: $q, limit: 10) { id kind title } }`, map[string]any{"q": "roadmap"})
-	hits := data["searchItems"].([]any)
+	data := f.query(t, `query($q: String!) { jasperSearch(q: $q, limit: 10) { id kind title } }`, map[string]any{"q": "roadmap"})
+	hits := data["jasperSearch"].([]any)
 	var got []string
 	for _, h := range hits {
 		m := h.(map[string]any)
 		got = append(got, m["kind"].(string)+":"+m["title"].(string))
 	}
 	if strings.Join(got, ",") != "NOTE:Roadmap,BLOB:roadmap-chart.png" {
-		t.Errorf("searchItems = %v", got)
+		t.Errorf("jasperSearch = %v", got)
 	}
-	data = f.query(t, `query { searchItems(q: "") { kind } }`, nil)
-	if n := len(data["searchItems"].([]any)); n != 2 {
+	data = f.query(t, `query { jasperSearch(q: "") { kind } }`, nil)
+	if n := len(data["jasperSearch"].([]any)); n != 2 {
 		t.Errorf("empty query = %d items, want the two notes", n)
 	}
-	data = f.query(t, `query { searchItems(q: "\"unbalanced") { kind title } }`, nil)
-	if _, ok := data["searchItems"].([]any); !ok {
+	data = f.query(t, `query { jasperSearch(q: "\"unbalanced") { kind title } }`, nil)
+	if _, ok := data["jasperSearch"].([]any); !ok {
 		t.Errorf("malformed FTS query should fall back, got %v", data)
 	}
 }
@@ -248,13 +248,27 @@ func TestFederationServiceAndEntities(t *testing.T) {
 
 	data := f.query(t, `{ _service { sdl } }`, nil)
 	sdl := data["_service"].(map[string]any)["sdl"].(string)
-	for _, want := range []string{"interface Item", "type Note implements Item @key(fields: \"id\")", "type Blob implements Item @key(fields: \"id\")", "type ForeignRef implements Item"} {
+	for _, want := range []string{
+		"interface Item {",
+		"type Note implements Item @key(fields: \"id\")",
+		"type Blob implements Item @key(fields: \"id\")",
+		"type ForeignRef implements Item @shareable",
+		"type Action @shareable",
+		"jasperBacklinks(id: ID!): [Backlink!]\n",
+		"jasperSearch(q: String!, limit: Int = 20): [Item!]\n",
+	} {
 		if !strings.Contains(sdl, want) {
 			t.Errorf("sdl lacks %q", want)
 		}
 	}
 	if strings.Contains(sdl, "interface Item @key") {
 		t.Errorf("Item must be a value interface, not an entity interface")
+	}
+	// The shell subgraph owns the supergraph's unprefixed item/items.
+	for _, banned := range []string{"  item(", "  items(", "  backlinks(id", "  searchItems("} {
+		if strings.Contains(sdl, banned) {
+			t.Errorf("sdl declares root field %q, which collides with the shell", strings.TrimSpace(banned))
+		}
 	}
 
 	data = f.query(t, `query($reps: [_Any!]!) { _entities(representations: $reps) { ... on Note { id title } ... on Blob { id } } }`, map[string]any{
