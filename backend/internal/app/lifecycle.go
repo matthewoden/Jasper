@@ -291,11 +291,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	// The subgraph's subscription reads the same broadcasts the browser does.
-	events := graphql.NewEvents(hub)
-	for _, d := range reconciled.Deltas {
-		notes.BroadcastRefsChanged(events, d, "")
-	}
+	events := newVaultEvents(hub, reconciled.Deltas)
 	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
@@ -343,7 +339,7 @@ func (a *App) bootPerVaultSubsystems(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
-	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(a.graphqlResolver(notesSvc, events), graphqlOriginHosts(a.cfg.ListenAddr)))
+	a.mountGraphQL(r, notesSvc, events)
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
@@ -504,11 +500,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	a.mu.Unlock()
 
 	files := fsstore.NewStore(notesDir)
-	// The subgraph's subscription reads the same broadcasts the browser does.
-	events := graphql.NewEvents(hub)
-	for _, d := range reconciled.Deltas {
-		notes.BroadcastRefsChanged(events, d, "")
-	}
+	events := newVaultEvents(hub, reconciled.Deltas)
 	notesSvc := notes.NewService(files, a.indexer, events, a.cfg.Logger)
 
 	if a.indexer != nil && status.State != migrate.StateUnrecoverable {
@@ -541,7 +533,7 @@ func (a *App) initVaultSubsystemsOnly(ctx context.Context) error {
 	r.Use(securityHeadersMiddleware)
 	r.Use(requestLogger(a.cfg.Logger))
 	r.Use(hostAllowlistMiddleware(a.cfg.ListenAddr))
-	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(a.graphqlResolver(notesSvc, events), graphqlOriginHosts(a.cfg.ListenAddr)))
+	a.mountGraphQL(r, notesSvc, events)
 	si := api.NewStrictHandler(apiServer, nil)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBodyBytes(maxAttachmentBodyBytes))
@@ -754,16 +746,27 @@ func (a *App) OpenVault(ctx context.Context, absCanonical string) error {
 	return a.initVaultSubsystemsOnly(ctx)
 }
 
-// graphqlResolver wires the subgraph to this vault's service and index. A
-// nil indexer is left out rather than wrapped, so the resolver sees no index
-// instead of a typed nil.
-func (a *App) graphqlResolver(notesSvc *notes.Service, events *graphql.Events) *graphql.Resolver {
-	r := &graphql.Resolver{Notes: notesSvc, Events: events, Log: a.cfg.Logger}
-	if a.indexer != nil {
-		r.Index = a.indexer
-		r.Blobs = a.indexer
+// newVaultEvents is the broadcaster a vault's service writes to. The
+// subgraph's subscription reads the same broadcasts the browser does, so the
+// reference changes the opening reconcile found are announced on it.
+func newVaultEvents(hub *wshub.Hub, deltas []notes.RefsDeltaFor) *graphql.Events {
+	events := graphql.NewEvents(hub)
+	for _, d := range deltas {
+		notes.BroadcastRefsChanged(events, d, "")
 	}
-	return r
+	return events
+}
+
+// mountGraphQL serves the subgraph for this vault's service and index. A nil
+// indexer is left out rather than wrapped, so the resolver sees no index
+// instead of a typed nil.
+func (a *App) mountGraphQL(r chi.Router, notesSvc *notes.Service, events *graphql.Events) {
+	res := &graphql.Resolver{Notes: notesSvc, Events: events, Log: a.cfg.Logger}
+	if a.indexer != nil {
+		res.Index = a.indexer
+		res.Blobs = a.indexer
+	}
+	r.With(csrfOriginMiddleware(a.cfg.ListenAddr)).Handle("/graphql", graphql.NewHandler(res, graphqlOriginHosts(a.cfg.ListenAddr)))
 }
 
 // graphqlOriginHosts is the host[:port] form of allowedOrigins, which the
