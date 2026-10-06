@@ -85,8 +85,9 @@ func rewriteTagsArray(content []byte, oldName, newName string) []byte {
 	return out.Bytes()
 }
 
-// RewriteWikilinksAST rewrites [[old]] and [[old|alias]] case-insensitively,
-// preserving the alias.
+// RewriteWikilinksAST rewrites [[old]], [[old#fragment]] and their aliased
+// forms case-insensitively, preserving the fragment and alias. Ref-shaped
+// targets are not titles and are left alone.
 //
 // Splices in REVERSE source order so earlier byte offsets stay valid. Code
 // spans and fenced blocks are skipped for free — goldmark puts no wikilink
@@ -108,7 +109,8 @@ func RewriteWikilinksAST(content []byte, oldTitle, newTitle string) []byte {
 
 	type span struct {
 		start, end int
-		alias      []byte
+		prefix     string
+		suffix     string
 	}
 	var spans []span
 
@@ -121,6 +123,13 @@ func RewriteWikilinksAST(content []byte, oldTitle, newTitle string) []byte {
 			return goldmarkAst.WalkContinue, nil
 		}
 		if !strings.EqualFold(string(wl.Target), oldTitle) {
+			return goldmarkAst.WalkContinue, nil
+		}
+		var suffix string
+		if wl.Fragment != nil {
+			suffix = "#" + string(wl.Fragment)
+		}
+		if markdown.IsRefTarget(string(wl.Target) + suffix) {
 			return goldmarkAst.WalkContinue, nil
 		}
 
@@ -136,13 +145,16 @@ func RewriteWikilinksAST(content []byte, oldTitle, newTitle string) []byte {
 
 		end := child.Segment.Stop + 2
 
-		raw := content[start:end]
-		var alias []byte
-		if pipeIdx := bytes.IndexByte(raw[2:], '|'); pipeIdx >= 0 {
-			alias = raw[2+pipeIdx+1 : len(raw)-2]
+		prefix := "[["
+		if wl.Embed {
+			prefix = "![["
+		}
+		raw := content[start+len(prefix) : end-2]
+		if pipeIdx := bytes.IndexByte(raw, '|'); pipeIdx >= 0 {
+			suffix += string(raw[pipeIdx:])
 		}
 
-		spans = append(spans, span{start: start, end: end, alias: alias})
+		spans = append(spans, span{start: start, end: end, prefix: prefix, suffix: suffix})
 		return goldmarkAst.WalkContinue, nil
 	})
 
@@ -154,13 +166,7 @@ func RewriteWikilinksAST(content []byte, oldTitle, newTitle string) []byte {
 
 	out := append([]byte(nil), content...)
 	for _, s := range spans {
-		var replacement []byte
-		if s.alias != nil {
-			replacement = []byte("[[" + newTitle + "|" + string(s.alias) + "]]")
-		} else {
-			replacement = []byte("[[" + newTitle + "]]")
-		}
-
+		replacement := []byte(s.prefix + newTitle + s.suffix + "]]")
 		out = append(out[:s.start:s.start], append(replacement, out[s.end:]...)...)
 	}
 	return out
