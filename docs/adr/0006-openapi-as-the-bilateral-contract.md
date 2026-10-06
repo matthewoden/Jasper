@@ -1,6 +1,6 @@
 # ADR-0006 — OpenAPI 3.1 is the bilateral contract; both sides are generated
 
-**Status:** Accepted (locked in `DESIGN.md` §2). **Amended 2026-10-04:** a second generated contract, the GraphQL SDL, for other systems.
+**Status:** Accepted (locked in `DESIGN.md` §2). **Amended 2026-10-04:** a second generated contract, the GraphQL SDL, for other systems. **Amended 2026-10-06:** its federation shape follows graphos ADR-0001.
 
 ## Context
 
@@ -40,7 +40,16 @@ Decisions recorded with it:
 
 - **Reads only.** `item`, `items`, `backlinks`, `searchItems` and the `itemChanged` subscription. Writes stay on REST (the frontend) and MCP (agents), which accept the same ids. Mutations arrive when a consumer needs them.
 - **`body` has no gate.** MCP reads are already global ([ADR-0013](./0013-mcp-always-on-grant-gated.md)); a read gate that exists in one surface and not the other would be no gate.
-- **`Item` is a value interface.** Apollo Federation 2.3 lets only one subgraph declare an interface carrying `@key`, and that subgraph must then define every implementation; `@apollo/composition` confirmed that two subgraphs each declaring `interface Item @key` fail to compose. So `Item` carries no key, each subgraph keys its own concrete types and implements `Item` on them, and cross-system lookup goes through `Query.item`, routed by a ref's namespace. `make compose-check` composes the subgraph with stub `ado:` and `bt:` subgraphs under `api/graphql/stubs/`.
+- **`Item` is a value interface.** Apollo Federation 2.3 lets only one subgraph declare an interface carrying `@key`, and that subgraph must then define every implementation; `@apollo/composition` confirmed that two subgraphs each declaring `interface Item @key` fail to compose. So `Item` carries no key, each subgraph keys its own concrete types and implements `Item` on them, and cross-system lookup goes through `Query.item`, routed by a ref's namespace. `make compose-check` composes the subgraph with stub `ado:` and `bt:` subgraphs under `api/graphql/stubs/`. *(The lookup, the root field names and the composition check are superseded by the 2026-10-06 amendment.)*
 - **Same port, POST and websocket only.** `/graphql` sits behind the CSRF origin middleware like every other route. There is no GET transport, so a cross-site `<img>` or link cannot run a query; the subscription runs over `graphql-transport-ws` with the websocket accept checking Origin against the loopback hosts.
 - **One event source.** The subscription is a tee on the service's `Broadcaster`: every broadcast goes to the browser hub first and then to subscribers, so the two audiences never disagree about what happened.
 - **Cost.** With `CGO_ENABLED=0`, the binary grows from 30.4 MB to 32.4 MB. `gqlgen` adds no CGo and uses the `coder/websocket` Jasper already ships (bumped 1.8.14 → 1.8.15).
+
+## Amendment (2026-10-06) — the shell routes ids; Jasper's root fields are namespaced
+
+The 2026-10-04 amendment assumed every subgraph would serve `item(id)` and a gateway would route it by namespace. A composition spike in the graphos repo showed the router does no such thing: a root field shared by several subgraphs is served by one of them, never unioned or fanned out. The outcome is recorded in graphos [ADR-0001](../../../graphos/docs/adr/0001-item-is-a-value-interface-and-the-shell-routes-ids.md), and Jasper takes the shape it fixes:
+
+- **The shell subgraph owns the supergraph's `item(id)` and `items(ids)`.** It maps an id's kind to a type and returns an entity stub; the router hydrates it from Jasper through `_entities`. Jasper never routes.
+- **Jasper's root fields are `jasperItem`, `jasperItems`, `jasperBacklinks` and `jasperSearch`.** Unprefixed names would collide with the shell's. `jasperBacklinks` and `jasperSearch` return nullable lists: under GraphQL null propagation, a non-null root field that errors nulls the whole response, so a failing Jasper would blank the shell's search instead of only its own field. `itemChanged` is unchanged.
+- **The shared declarations come from graphos verbatim.** `Item`, `ItemStatus`, `ItemKind`, `DateTime`, the shape interfaces (`Timed`, `Stateful`, `Linkable`, `Actionable`) and `Action` are copied from `graphos/schema/item.graphql`; Jasper adds `NOTE` and `BLOB` with `extend enum`. `Action` and `ForeignRef` are `@shareable` because other subgraphs define them too. A value interface merges across subgraphs, so a definition that drifts stops the supergraph composing.
+- **Graphos's SDL is vendored, not fetched.** `api/graphql/graphos/` holds `item.graphql` and the shell subgraph's SDL, with the graphos commit they came from; `make vendor-graphos` refreshes them. A test holds Jasper's shared block to the vendored copy, and `make compose-check` composes Jasper with the shell through `composition-go`, the composer graphos's gateway uses. A cross-repo checkout in CI was the alternative; vendoring keeps the check offline and free of cross-repo credentials, at the cost of noticing graphos changes only on a refresh.

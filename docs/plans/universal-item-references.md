@@ -289,6 +289,7 @@ The frontend stays on REST until phase 4.
 ### 3.4 Federation
 - N1 is resolved (§5); build the shape it fixes: value interface `Item` from `graphos/schema/item.graphql`, `@key(fields: "id")` on `Note` and `Blob`, `@shareable` on `ForeignRef` and `Action`, root fields `jasperItem`, `jasperItems`, `jasperBacklinks`, `jasperSearch`.
 - Implement `_service` and `_entities`, and a composition test that runs `graphos compose` (or `npx wgc router compose`) against the shell subgraph's SDL from the graphos repo. gqlgen's emitted `extend schema @link(...)` is stripped by `graphos compose`; Jasper does nothing about it.
+- *Done 2026-10-06.* The shell SDL and `item.graphql` are vendored under `api/graphql/graphos/` (`make vendor-graphos`); `make compose-check` runs `composition-go` against them, and `contract_test.go` holds the shared block verbatim.
 - *Tests:* acceptance criterion 11.
 
 ### 3.5 MCP additions
@@ -297,7 +298,7 @@ The frontend stays on REST until phase 4.
 - Tool descriptions say "note ULID", not "UUID".
 
 ### 3.6 Records
-- Amend ADR-0006.
+- Amend ADR-0006. *Done 2026-10-06.*
 
 ---
 
@@ -330,7 +331,7 @@ Acceptance criterion 14 lands here.
 | 8 | Editing a PNG yields a new blob id; the old one gets a tombstone with `replacedBy` | 1.6 | |
 | 9 | Deleted → `DELETED` with last title; unknown → `UNKNOWN` | 1.5, 3.2 | |
 | 10 | `body` refused outside AI-read folders | — | **Dropped** (§1) |
-| 11 | Subgraph composes against the stub | 3.4 | Blocked on N1 |
+| 11 | Subgraph composes against the stub | 3.4 | Composes with graphos's shell subgraph |
 | 12 | 10k × 20 refs indexes within budget; backlinks under 10 ms | 2.9 | |
 | 13 | `@` picker inserts the right form; chip and hover card | 2.5, 2.6 | |
 | 14 | Unreachable gateway → raw chip within 1 s | Phase 4 | |
