@@ -8,6 +8,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { spawnJasper, type JasperHandle } from "./helpers/binary";
+import { withoutIDLine } from "./helpers/noteIdLine";
 import { apiCreateNote, waitForConnected } from "./helpers/phase7Helpers";
 
 const NOTE_CONTENT = `---
@@ -118,7 +119,7 @@ async function getNoteContent(page: Page, baseURL: string, noteId: string): Prom
   const resp = await page.request.get(`${baseURL}/api/v1/notes/${noteId}`);
   expect(resp.status()).toBe(200);
   const data = (await resp.json()) as { content?: string };
-  return data.content ?? "";
+  return withoutIDLine(data.content ?? "");
 }
 
 /** Clicks near the left edge of the title's rendered text — lands the caret at/near column 0. */

@@ -583,7 +583,7 @@ test.describe("R4-1 (@r4-1) create_note atomic regression", () => {
 
     const filePath = path.join(notesRoot, "projects", "r4-1-atomic.md");
     const onDisk = await fs.readFile(filePath, "utf8");
-    const wantPrefix = "---\ntags: []\n---\n\n# r4-1-atomic\n\n";
+    const wantPrefix = `---\nid: ${successResult.structuredContent?.id}\ntags: []\n---\n\n# r4-1-atomic\n\n`;
     expect(
       onDisk.startsWith(wantPrefix),
       `file missing canonical scaffold prefix.\n got=${JSON.stringify(onDisk)}\n want prefix=${JSON.stringify(wantPrefix)}`,
