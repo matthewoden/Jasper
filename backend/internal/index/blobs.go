@@ -63,7 +63,7 @@ func WalkAttachments(ctx context.Context, notesDir string, yield func(FileMeta) 
 		if err != nil {
 			return nil
 		}
-		canonical, err := fsstore.Canonicalize(notesDir, rel)
+		canonical, err := fsstore.ContainedPath(notesDir, rel)
 		if err != nil {
 			return nil
 		}

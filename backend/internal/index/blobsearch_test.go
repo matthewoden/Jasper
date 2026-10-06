@@ -21,7 +21,7 @@ func TestSearchBlobNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 2 || hits[0].Path != "attachments/holiday photo.png" || hits[1].Path != "proj/attachments/photo-2.png" {
+	if len(hits) != 2 || hits[0].Path != "attachments/Holiday Photo.png" || hits[1].Path != "proj/attachments/photo-2.png" {
 		t.Errorf("hits = %+v, want the two photo files, newest first, matched on name not folder", hits)
 	}
 	if hits[0].ID == "" || hits[0].ID == hits[1].ID {
