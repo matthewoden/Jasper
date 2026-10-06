@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/index"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -109,14 +109,12 @@ func InjectNoteIDs(ctx context.Context, notesDir string, dryRun bool, log *slog.
 // marker. It runs after the schema migrations and before reconcile, so the
 // first reconcile on an upgraded vault already reads ids from disk.
 func InjectNoteIDsMigration(ctx context.Context, writerDB *sql.DB, notesDir string, log *slog.Logger) error {
-	var dummy string
-	err := writerDB.QueryRowContext(ctx,
-		`SELECT version FROM schema_migrations WHERE version = ?`, NoteIDMarker).Scan(&dummy)
-	if err == nil {
-		return nil
+	done, err := migrate.Marker(ctx, writerDB, NoteIDMarker)
+	if err != nil {
+		return fmt.Errorf("note ids migration: %w", err)
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("note ids migration: check marker: %w", err)
+	if done {
+		return nil
 	}
 
 	log.Info("note ids migration: starting walk", "dir", notesDir)
@@ -124,11 +122,8 @@ func InjectNoteIDsMigration(ctx context.Context, writerDB *sql.DB, notesDir stri
 	if err != nil {
 		return err
 	}
-	if _, err := writerDB.ExecContext(ctx,
-		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
-		NoteIDMarker, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("note ids migration: record marker: %w", err)
+	if err := migrate.RecordMarker(ctx, writerDB, NoteIDMarker); err != nil {
+		return fmt.Errorf("note ids migration: %w", err)
 	}
 	log.Info("note ids migration: complete",
 		"scanned", report.Scanned,

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/matthewoden/jasper/backend/internal/db/migrate"
 	"github.com/matthewoden/jasper/backend/internal/fsstore"
 	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
@@ -54,18 +54,13 @@ func InjectFrontmatterScaffoldMigration(
 	notesDir string,
 	log *slog.Logger,
 ) error {
-	var dummy string
-	err := writerDB.QueryRowContext(
-		ctx,
-		`SELECT version FROM schema_migrations WHERE version = ?`,
-		FrontmatterScaffoldMarker,
-	).Scan(&dummy)
-	if err == nil {
+	done, err := migrate.Marker(ctx, writerDB, FrontmatterScaffoldMarker)
+	if err != nil {
+		return fmt.Errorf("frontmatter migration: %w", err)
+	}
+	if done {
 		log.Info("frontmatter scaffold migration already complete; skipping")
 		return nil
-	}
-	if err != sql.ErrNoRows {
-		return fmt.Errorf("frontmatter migration: check marker: %w", err)
 	}
 
 	log.Info("frontmatter scaffold migration: starting walk", "dir", notesDir)
@@ -121,12 +116,8 @@ func InjectFrontmatterScaffoldMigration(
 		return walkErr
 	}
 
-	if _, err := writerDB.ExecContext(
-		ctx,
-		`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
-		FrontmatterScaffoldMarker, time.Now().Unix(),
-	); err != nil {
-		return fmt.Errorf("frontmatter migration: record marker: %w", err)
+	if err := migrate.RecordMarker(ctx, writerDB, FrontmatterScaffoldMarker); err != nil {
+		return fmt.Errorf("frontmatter migration: %w", err)
 	}
 
 	log.Info("frontmatter scaffold migration: complete",
