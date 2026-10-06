@@ -8,6 +8,7 @@
  */
 import { client } from "../api/client";
 import type { components } from "../api/schema";
+import { isRefTarget, parseRef } from "./itemRef";
 import { createKeyedResource, subscribe } from "./resources";
 
 export type Item = components["schemas"]["Item"];
@@ -137,8 +138,7 @@ export const noteRefsResource = createKeyedResource("noteRefs", getNoteRefs, {
 
 /** The namespace of a universal ref (`ado` for `ado:workitem/1`), or "" for a title. */
 export function refNamespace(ref: string): string {
-  const colon = ref.indexOf(":");
-  return colon > 0 ? ref.slice(0, colon) : "";
+  return isRefTarget(ref) ? parseRef(ref).namespace : "";
 }
 
 /** Foreign refs by namespace, namespaces alphabetical, refs in document order. */

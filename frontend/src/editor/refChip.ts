@@ -9,37 +9,9 @@
 import { StateEffect } from "@codemirror/state";
 import { EditorView, WidgetType } from "@codemirror/view";
 import { peekItem, resolveItems, type Item } from "../lib/itemsApi";
+import { parseRef } from "../lib/itemRef";
 
-
-const REF_RE = /^[a-z]+:[a-z]+\/.+$/;
-const FILE_RE = /^file:.+$/;
-
-/** The reference grammar: ns:kind/id, with file: as the one kind-less prefix. */
-export function isRefTarget(target: string): boolean {
-  return REF_RE.test(target) || FILE_RE.test(target);
-}
-
-export interface ParsedRef {
-  raw: string;
-  namespace: string;
-  /** For jasper: refs, "note", "blob" or "title"; otherwise the foreign kind. */
-  kind: string;
-  id: string;
-}
-
-export function parseRef(raw: string): ParsedRef {
-  if (FILE_RE.test(raw) && !REF_RE.test(raw)) {
-    return { raw, namespace: "file", kind: "file", id: raw.slice("file:".length) };
-  }
-  const colon = raw.indexOf(":");
-  const slash = raw.indexOf("/", colon);
-  return {
-    raw,
-    namespace: raw.slice(0, colon),
-    kind: raw.slice(colon + 1, slash),
-    id: raw.slice(slash + 1),
-  };
-}
+export { isRefTarget, parseRef, type ParsedRef } from "../lib/itemRef";
 
 /** The note id a ref navigates to, when it is a native note ref. */
 export function noteIdOfRef(raw: string): string | null {
