@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -27,8 +26,6 @@ type NoteIDReport struct {
 	Scanned int
 	// Written lists the notes that were given an id, or would be on a dry run.
 	Written []string
-	// CRLF lists notes skipped because their frontmatter is CRLF.
-	CRLF []string
 	// Duplicates maps an id to every note carrying it when there is more
 	// than one. The walk never resolves these; reconcile does, with the
 	// index's knowledge of which path held the id first.
@@ -70,15 +67,7 @@ func InjectNoteIDs(ctx context.Context, notesDir string, dryRun bool, log *slog.
 		if strings.ToLower(rel) == notes.ScratchpadRelPath {
 			id = notes.ScratchpadID
 		}
-		updated, err := markdown.WithID(content, id.String())
-		if errors.Is(err, markdown.ErrCRLFFrontmatter) {
-			report.CRLF = append(report.CRLF, rel)
-			log.Warn("note ids: CRLF frontmatter; not writing an id", "path", rel)
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("note ids: %s: %w", rel, err)
-		}
+		updated := markdown.WithID(content, id.String())
 		report.Written = append(report.Written, rel)
 		if dryRun {
 			return nil
@@ -101,7 +90,6 @@ func InjectNoteIDs(ctx context.Context, notesDir string, dryRun bool, log *slog.
 		}
 	}
 	sort.Strings(report.Written)
-	sort.Strings(report.CRLF)
 	return report, nil
 }
 
@@ -128,7 +116,6 @@ func InjectNoteIDsMigration(ctx context.Context, writerDB *sql.DB, notesDir stri
 	log.Info("note ids migration: complete",
 		"scanned", report.Scanned,
 		"written", len(report.Written),
-		"crlf_skipped", len(report.CRLF),
 		"duplicate_ids", len(report.Duplicates))
 	return nil
 }

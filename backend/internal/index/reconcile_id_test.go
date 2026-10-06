@@ -280,21 +280,35 @@ func TestReconcile_MalformedIDIsReplaced(t *testing.T) {
 	}
 }
 
-// N7: a CRLF note is indexed but never written to.
-func TestReconcile_CRLFNoteIsNotWritten(t *testing.T) {
+// A CRLF note gets its id like any other; its frontmatter becomes LF.
+func TestReconcile_CRLFNoteGetsID(t *testing.T) {
 	t.Parallel()
 	idx, notesDir := newReconcileFixture(t)
-	content := "---\r\ntags: []\r\n---\r\n# Windows\r\n"
+	writeNoteRaw(t, notesDir, "w.md", "---\r\ntags: []\r\n---\r\n# Windows\r\n", time.Unix(1700000000, 0))
+	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	id := rowsByPath(t, idx)["w.md"].ID
+	if got, want := readNote(t, notesDir, "w.md"), "---\nid: "+id.String()+"\ntags: []\n---\n# Windows\r\n"; got != want {
+		t.Errorf("file\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// A CRLF note that already carries an id keeps it.
+func TestReconcile_CRLFNoteKeepsItsID(t *testing.T) {
+	t.Parallel()
+	idx, notesDir := newReconcileFixture(t)
+	const id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+	content := "---\r\nid: " + id + "\r\ntags: []\r\n---\r\n# Windows\r\n"
 	writeNoteRaw(t, notesDir, "w.md", content, time.Unix(1700000000, 0))
 	if _, err := idx.Reconcile(context.Background(), ModeFull); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if got := readNote(t, notesDir, "w.md"); got != content {
-		t.Errorf("CRLF note was rewritten: %q", got)
+	if got := rowsByPath(t, idx)["w.md"].ID.String(); got != id {
+		t.Errorf("indexed under %s, want %s", got, id)
 	}
-	rows := rowsByPath(t, idx)
-	if _, err := notes.ParseID(rows["w.md"].ID.String()); err != nil {
-		t.Errorf("CRLF note indexed under %q", rows["w.md"].ID)
+	if got := readNote(t, notesDir, "w.md"); got != content {
+		t.Errorf("note was rewritten: %q", got)
 	}
 }
 

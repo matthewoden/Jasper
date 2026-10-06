@@ -2596,11 +2596,7 @@ func TestServiceUpdate_RefreshesTitleIndex(t *testing.T) {
 // withScratchpadID is what Update writes for content handed to the scratchpad:
 // the id line the server forces, and otherwise the content as given.
 func withScratchpadID(content string) string {
-	out, err := markdown.WithID([]byte(content), ScratchpadID.String())
-	if err != nil {
-		panic(err)
-	}
-	return string(out)
+	return string(markdown.WithID([]byte(content), ScratchpadID.String()))
 }
 
 func (*fakeIndex) RefBacklinks(_ context.Context, _ string) ([]RefBacklink, error) {

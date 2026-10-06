@@ -69,10 +69,10 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 			}
 		}
 	}
-	if want := []string{".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md"}; strings.Join(dry.Written, ",") != strings.Join(want, ",") {
+	if want := []string{".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md", "win.md"}; strings.Join(dry.Written, ",") != strings.Join(want, ",") {
 		t.Errorf("dry run Written = %v, want %v", dry.Written, want)
 	}
-	if strings.Join(dry.CRLF, ",") != "win.md" || dry.Scanned != 6 || !dry.Changed() {
+	if dry.Scanned != 6 || !dry.Changed() {
 		t.Errorf("dry run report = %+v", dry)
 	}
 
@@ -86,7 +86,7 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 	after := snapshotDir(t, notesDir)
 	for p, c := range before {
 		switch p {
-		case ".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md":
+		case ".hidden.md", "bare.md", "scratchpad.md", "sub/lacks.md", "win.md":
 			raw, found := markdown.ReadID([]byte(after[p]))
 			id, perr := notes.ParseID(raw)
 			if !found || perr != nil {
@@ -94,7 +94,11 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 			}
 			// The only change is the one id line.
 			stripped := strings.Replace(after[p], "id: "+id.String()+"\n", "", 1)
-			if p != "sub/lacks.md" {
+			switch p {
+			case "sub/lacks.md":
+			case "win.md":
+				c = string(markdown.NormalizeFrontmatterEOL([]byte(c)))
+			default:
 				stripped = strings.TrimPrefix(stripped, "---\n---\n")
 			}
 			if stripped != c {
@@ -111,7 +115,7 @@ func TestInjectNoteIDs_DryRunThenRealRun(t *testing.T) {
 	}
 
 	again, err := InjectNoteIDs(context.Background(), notesDir, false, log)
-	if err != nil || again.Changed() || len(again.CRLF) != 1 {
+	if err != nil || again.Changed() {
 		t.Errorf("second run = %+v, %v; want nothing to write", again, err)
 	}
 }

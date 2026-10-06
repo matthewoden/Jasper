@@ -254,9 +254,7 @@ func assignIDs(claims []*claim, existing map[string]existingRow, seen map[string
 	}
 }
 
-// writeID puts the settled id into the file. A refusal (CRLF frontmatter)
-// leaves the file alone and indexes the note under an id only this index
-// knows; the next rebuild will mint another.
+// writeID puts the settled id into the file.
 //
 // The file is re-read first so a save that landed since the walk is kept, not
 // overwritten. That leaves a read-to-rename window; closing it would need the
@@ -276,11 +274,7 @@ func (x *Indexer) writeID(c *claim) {
 			}
 		}
 	}
-	updated, err := markdown.WithID(c.content, c.id.String())
-	if err != nil {
-		x.Log.Warn("indexer: not writing id into note", "path", c.meta.CanonicalRelPath, "err", err)
-		return
-	}
+	updated := markdown.WithID(c.content, c.id.String())
 	if err := fsstore.AtomicWrite(c.meta.AbsPath, updated); err != nil {
 		x.Log.Warn("indexer: id write failed; indexing under the id anyway",
 			"path", c.meta.CanonicalRelPath, "err", err)

@@ -187,6 +187,19 @@ func TestService_Update_ForcesKnownID(t *testing.T) {
 	}
 }
 
+func TestService_Update_NormalizesCRLFFrontmatter(t *testing.T) {
+	t.Parallel()
+	files := &fakeFileStore{statTime: time.Now()}
+	svc := newSvc(t, files)
+	if _, err := svc.Update(context.Background(), ScratchpadID, "---\r\ntags: []\r\n---\r\n# T\r\n", ""); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	want := "---\nid: " + ScratchpadID.String() + "\ntags: []\n---\n# T\r\n"
+	if got := string(files.lastWriteData); got != want {
+		t.Errorf("written\n got: %q\nwant: %q", got, want)
+	}
+}
+
 func TestService_Create_BroadcastsRefsChanged(t *testing.T) {
 	t.Parallel()
 	bc := &fakeBroadcaster{}

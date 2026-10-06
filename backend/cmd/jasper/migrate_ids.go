@@ -57,17 +57,12 @@ func runMigrateIDs(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	for _, p := range report.CRLF {
-		if _, err := fmt.Fprintf(out, "skipped (CRLF frontmatter): %s\n", p); err != nil {
-			return err
-		}
-	}
 	for id, paths := range report.Duplicates {
 		if _, err := fmt.Fprintf(out, "duplicate id %s: %v\n", id, paths); err != nil {
 			return err
 		}
 	}
-	_, err = fmt.Fprintf(out, "%d notes scanned, %d %s an id, %d skipped\n",
-		report.Scanned, len(report.Written), verb, len(report.CRLF))
+	_, err = fmt.Fprintf(out, "%d notes scanned, %d %s an id\n",
+		report.Scanned, len(report.Written), verb)
 	return err
 }

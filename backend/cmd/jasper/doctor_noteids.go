@@ -13,8 +13,7 @@ import (
 )
 
 // checkNoteIDs reports notes that have no durable id: ones missing an id line,
-// ones whose CRLF frontmatter the writer refuses to touch, and ids claimed by
-// more than one note.
+// and ids claimed by more than one note.
 func checkNoteIDs(dataDir string) DoctorCheck {
 	const name = "note ids"
 	notesDir := filepath.Join(dataDir, "notes")
@@ -27,9 +26,6 @@ func checkNoteIDs(dataDir string) DoctorCheck {
 	var problems []string
 	if n := len(report.Written); n > 0 {
 		problems = append(problems, fmt.Sprintf("%d missing an id (run 'jasper migrate-ids', or start the server)", n))
-	}
-	if n := len(report.CRLF); n > 0 {
-		problems = append(problems, fmt.Sprintf("%d with CRLF frontmatter (convert to LF): %s", n, strings.Join(report.CRLF, ", ")))
 	}
 	if n := len(report.Duplicates); n > 0 {
 		ids := make([]string, 0, n)
