@@ -281,6 +281,29 @@ func TestNoGetTransport(t *testing.T) {
 	}
 }
 
+func TestIntrospectionIsOff(t *testing.T) {
+	f := newFixture(t)
+	for _, q := range []string{
+		"{ __schema { types { name } } }",
+		"{ _service { sdl } __schema { types { name } } }",
+		`{ __type(name: "Note") { name } }`,
+	} {
+		body, _ := json.Marshal(map[string]any{"query": q})
+		resp, err := http.Post(f.ts.URL+"/graphql", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if !bytes.Contains(raw, []byte("introspection disabled")) {
+			t.Errorf("%s was answered: %s", q, raw)
+		}
+	}
+	if sdl := f.query(t, "{ _service { sdl } }", nil); sdl["_service"] == nil {
+		t.Errorf("federation _service query stopped answering: %+v", sdl)
+	}
+}
+
 func TestEvents(t *testing.T) {
 	events := graphql.NewEvents(nil)
 	ch, unsubscribe := events.Subscribe()
