@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/matthewoden/jasper/backend/internal/notes"
@@ -42,7 +43,7 @@ func (s *Server) PostItemsBatch(
 		return PostItemsBatch400JSONResponse(newError("invalid_request", "request body required")), nil
 	}
 	if len(req.Body.Ids) > itemsBatchMax {
-		return PostItemsBatch400JSONResponse(newError("invalid_request", "at most 200 ids per request")), nil
+		return PostItemsBatch400JSONResponse(newError("invalid_request", fmt.Sprintf("at most %d ids per request", itemsBatchMax))), nil
 	}
 	items := make([]Item, 0, len(req.Body.Ids))
 	for _, raw := range req.Body.Ids {
