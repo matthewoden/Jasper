@@ -11,10 +11,12 @@ import (
 	"go.abhg.dev/goldmark/frontmatter"
 	"go.abhg.dev/goldmark/wikilink"
 	"gopkg.in/yaml.v3"
+
+	"github.com/matthewoden/jasper/backend/internal/markdown"
 )
 
 func rewriteTagsArray(content []byte, oldName, newName string) []byte {
-	fmStart, fmEnd, yamlBody, ok := extractFrontmatterRange(content)
+	yamlBody, fenceEnd, ok := markdown.FrontmatterYAML(content)
 	if !ok {
 		return content
 	}
@@ -76,34 +78,11 @@ func rewriteTagsArray(content []byte, oldName, newName string) []byte {
 	newYAML = bytes.TrimRight(newYAML, "\n")
 
 	var out bytes.Buffer
-	out.Write(content[:fmStart])
 	out.WriteString("---\n")
 	out.Write(newYAML)
 	out.WriteString("\n---")
-	out.Write(content[fmEnd:])
+	out.Write(content[fenceEnd:])
 	return out.Bytes()
-}
-
-func extractFrontmatterRange(content []byte) (fmStart, fmEnd int, yamlBody []byte, ok bool) {
-	openFence := []byte("---\n")
-	if !bytes.HasPrefix(content, openFence) {
-		return 0, 0, nil, false
-	}
-	fmStart = 0
-	afterOpen := len(openFence)
-
-	rest := content[afterOpen:]
-	closeFence := []byte("\n---")
-	idx := bytes.Index(rest, closeFence)
-	if idx < 0 {
-		return 0, 0, nil, false
-	}
-
-	yamlBody = rest[:idx]
-
-	fmEnd = afterOpen + idx + 4
-	ok = true
-	return
 }
 
 // RewriteWikilinksAST rewrites [[old]] and [[old|alias]] case-insensitively,

@@ -46,6 +46,16 @@ func frontmatterClose(content []byte) (int, bool) {
 	return 0, false
 }
 
+// FrontmatterYAML returns the bytes between the fences and the offset just
+// past the closing "---", which leaves that line's newline to the body.
+func FrontmatterYAML(content []byte) (yamlBody []byte, fenceEnd int, ok bool) {
+	closeAt, ok := frontmatterClose(content)
+	if !ok {
+		return nil, 0, false
+	}
+	return content[len("---\n"):closeAt], closeAt + len("---"), true
+}
+
 // InjectFrontmatterScaffold prepends the canonical scaffold unless one is
 // already present, so re-running the one-time migration is a safe no-op.
 // Byte-identical to NewNoteContent for empty input.

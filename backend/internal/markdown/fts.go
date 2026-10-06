@@ -1,29 +1,16 @@
 package markdown
 
-import (
-	"bytes"
-	"strings"
-)
+import "strings"
 
 // ExtractBodyForFTS strips leading frontmatter so "tags: [foo]" cannot pollute
 // body matches. Unclosed frontmatter is left in place — better to over-index
 // than to drop content.
 func ExtractBodyForFTS(content []byte) string {
-	if !bytes.HasPrefix(content, []byte("---")) {
+	_, fenceEnd, ok := FrontmatterYAML(content)
+	if !ok {
 		return string(content)
 	}
-
-	rest := content[3:]
-	idx := bytes.Index(rest, []byte("\n---"))
-	if idx == -1 {
-		return string(content)
-	}
-
-	body := rest[idx+4:]
-
-	if len(body) > 0 && (body[0] == '\n' || body[0] == '\r') {
-		body = body[1:]
-	}
+	body := content[fenceEnd:]
 	return strings.TrimLeft(string(body), "\n\r")
 }
 
