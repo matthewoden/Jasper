@@ -109,6 +109,24 @@ describe("findWikiLinkAt", () => {
     expect(result?.rawTitle).toBe("Foo");
   });
 
+  it("resolves [[Foo#Bar]] against the title Foo; rawTitle drops the fragment", () => {
+    setResolvedTitlesSnapshot(new Set(["foo"]), new Map([["foo", "uuid-foo"]]));
+    const view = makeView("see [[Foo#Bar|alias]] here", 0);
+    views.push(view);
+    const result = findWikiLinkAt(view, 6);
+    expect(result?.rawTitle).toBe("Foo");
+    expect(result?.isResolved).toBe(true);
+    expect(result?.targetId).toBe("uuid-foo");
+  });
+
+  it("keeps a # inside a reference target", () => {
+    const view = makeView("see [[gh:issue/12#3]] here", 0);
+    views.push(view);
+    const result = findWikiLinkAt(view, 6);
+    expect(result?.rawTitle).toBe("gh:issue/12#3");
+    expect(result?.isRef).toBe(true);
+  });
+
   it("returns null for pos at the start of a line before the wikilink", () => {
     const doc = "prefix [[Foo]] suffix";
     setResolvedTitlesSnapshot(new Set(["foo"]), new Map());

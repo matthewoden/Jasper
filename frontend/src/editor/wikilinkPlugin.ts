@@ -23,7 +23,7 @@ import {
 } from "@codemirror/view";
 import { StateEffect } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
+import { getResolvedTitlesSnapshot, wikilinkTitle } from "./wikilinkResolver";
 import { chipModel, flushWantedItems, isRefTarget, RefChipWidget, refItemsResolved, wantItem } from "./refChip";
 
 
@@ -161,8 +161,9 @@ const wikilinkMatcher = new MatchDecorator({
     }
 
     const displayText = alias ?? rawTitle;
+    const title = wikilinkTitle(rawTitle);
     const { titles, idMap } = getResolvedTitlesSnapshot();
-    const lower = rawTitle.normalize("NFC").toLowerCase();
+    const lower = title.normalize("NFC").toLowerCase();
     const resolved = titles.has(lower);
     const targetId = idMap?.get(lower) ?? null;
 
@@ -170,7 +171,7 @@ const wikilinkMatcher = new MatchDecorator({
       from,
       to,
       Decoration.replace({
-        widget: new WikiLinkWidget(displayText, resolved, targetId, rawTitle),
+        widget: new WikiLinkWidget(displayText, resolved, targetId, title),
       }),
     );
   },

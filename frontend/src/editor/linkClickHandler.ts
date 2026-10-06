@@ -13,7 +13,7 @@ import { EditorView } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 
 import { isExternalLikeUrl, ensureProtocol } from "./linkUrl";
-import { getResolvedTitlesSnapshot } from "./wikilinkResolver";
+import { getResolvedTitlesSnapshot, wikilinkTitle } from "./wikilinkResolver";
 import { WIKILINK_RE } from "./wikilinkPlugin";
 import { blobIdOfRef, isRefTarget, noteIdOfRef } from "./refChip";
 import { blobUrl } from "./blobEmbedPlugin";
@@ -93,11 +93,12 @@ export function findWikiLinkAt(
         const targetId = noteIdOfRef(rawTitle);
         return { rawTitle, isResolved: targetId !== null, targetId, isRef: true };
       }
+      const title = wikilinkTitle(rawTitle);
       const { titles, idMap } = getResolvedTitlesSnapshot();
-      const lower = rawTitle.normalize("NFC").toLowerCase();
+      const lower = title.normalize("NFC").toLowerCase();
       const resolved = titles.has(lower);
       return {
-        rawTitle,
+        rawTitle: title,
         isResolved: resolved,
         targetId: idMap?.get(lower) ?? null,
         isRef: false,
