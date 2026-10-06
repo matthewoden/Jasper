@@ -1622,7 +1622,7 @@ test.describe("08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", () => {
       const notesLoadedOk: string[] = []; // note ids the server actually served (200)
       page.on("response", (resp) => {
         const m = new URL(resp.url()).pathname.match(
-          /\/api\/v1\/notes\/([a-f0-9-]+)$/,
+          /\/api\/v1\/notes\/([0-9A-HJKMNP-TV-Z]{26})$/,
         );
         if (!m) return;
         if (resp.status() === 404) notes404.push(resp.url());
@@ -1644,16 +1644,20 @@ test.describe("08-22 tree row + ACL refresh (@r4-9-r4-12-r4-13)", () => {
         { timeout: 15_000 },
       );
 
-      await page.waitForTimeout(1_500);
-
-      const afterNoteId = await page.evaluate(
-        () => window.localStorage.getItem("jasper.tree.activeNoteId"),
-      );
-      // activeNoteId is persisted as a JSON string ("<uuid>" or "null"/null).
-      const parsedAfter =
-        afterNoteId === null || afterNoteId === "null"
-          ? null
-          : afterNoteId.replace(/^"|"$/g, "");
+      const activeAfter = async (): Promise<string | null> => {
+        const raw = await page.evaluate(
+          () => window.localStorage.getItem("jasper.tree.activeNoteId"),
+        );
+        // activeNoteId is persisted as a JSON string ("<id>" or "null"/null).
+        return raw === null || raw === "null" ? null : raw.replace(/^"|"$/g, "");
+      };
+      await expect
+        .poll(async () => {
+          const id = await activeAfter();
+          return id === null || notesLoadedOk.includes(id);
+        }, { timeout: 10_000 })
+        .toBe(true);
+      const parsedAfter = await activeAfter();
 
       // v1.2 redesign (phase 18) replaced the single-open-note model with a
       // per-vault persisted tab store. jasper.tree.activeNoteId is now a DERIVED
