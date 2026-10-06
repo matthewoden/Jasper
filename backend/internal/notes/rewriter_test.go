@@ -236,3 +236,24 @@ func TestRewriteTagsArray_PreservesIDLine(t *testing.T) {
 		}
 	}
 }
+
+func TestRewriteWikilinksAST_KeepsFragment(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"see [[Old Title#Section]]", "see [[New Title#Section]]"},
+		{"see [[old title#Section|alias]]", "see [[New Title#Section|alias]]"},
+		{"see [[Old Title#]]", "see [[New Title#]]"},
+		{"see ![[Old Title#Section]]", "see ![[New Title#Section]]"},
+	}
+	for _, tt := range tests {
+		if got := RewriteWikilinksAST([]byte(tt.in), "Old Title", "New Title"); string(got) != tt.want {
+			t.Errorf("RewriteWikilinksAST(%q)\n got: %q\nwant: %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestRewriteWikilinksAST_LeavesRefTargets(t *testing.T) {
+	in := []byte("see [[file:Old#x]]")
+	if got := RewriteWikilinksAST(in, "file:Old", "New"); string(got) != string(in) {
+		t.Errorf("RewriteWikilinksAST = %q; want unchanged", got)
+	}
+}
