@@ -148,14 +148,6 @@ async function apiCreateNote(
 }
 
 /**
- * Read the visible plain-text content of the CM6 editor surface.
- * textContent collapses line breaks but is sufficient for content assertions.
- */
-async function readEditorText(page: Page): Promise<string> {
-  return (await page.locator(".cm-content").textContent()) ?? "";
-}
-
-/**
  * Open a tab in the given BrowserContext and wait for WS "connected".
  * Each context has independent sessionStorage → independent session_id.
  */
@@ -787,9 +779,10 @@ test.describe("Wiki-links (LINKS-01..08)", () => {
     await wikiLink.click();
     await page.keyboard.up("Meta");
 
-    await expect
-      .poll(() => readEditorText(page), { timeout: 8_000 })
-      .toContain("NavTarget");
+    await expect(navTargetRow).toHaveAttribute("data-active", "true", { timeout: 8_000 });
+    await expect(page.locator(".cm-content").filter({ visible: true })).toContainText("body of target", {
+      timeout: 8_000,
+    });
   });
 });
 

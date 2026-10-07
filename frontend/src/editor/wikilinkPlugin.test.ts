@@ -98,7 +98,7 @@ describe("wikilinkPlugin", () => {
     expect(decos[0].widget?.rawTitle).toBe("Foo");
   });
 
-  it("[[Foo#Bar]] off-cursor with 'foo' resolved → resolved widget showing the full target", () => {
+  it("[[Foo#Bar]] off-cursor with 'foo' resolved → resolved widget showing 'Foo > Bar', as Obsidian does", () => {
     const doc = "see [[Foo#Bar]] for more\nsome text on line 2";
     const cursorPos = doc.indexOf("\nsome") + 1;
     const view = makeView(doc, cursorPos, new Set(["foo"]));
@@ -107,8 +107,16 @@ describe("wikilinkPlugin", () => {
     const decos = collectWikilinkDecos(view);
     expect(decos.length).toBe(1);
     expect(decos[0].widget?.isResolved).toBe(true);
-    expect(decos[0].widget?.displayText).toBe("Foo#Bar");
+    expect(decos[0].widget?.displayText).toBe("Foo > Bar");
     expect(decos[0].widget?.rawTitle).toBe("Foo");
+  });
+
+  it("[[Foo#Bar|alias]] shows the alias, not the fragment", () => {
+    const doc = "see [[Foo#Bar|the bar]] here\nline 2";
+    const view = makeView(doc, doc.indexOf("\nline") + 1, new Set(["foo"]));
+    views.push(view);
+
+    expect(collectWikilinkDecos(view)[0].widget?.displayText).toBe("the bar");
   });
 
   it("P2: [[Foo]] off-cursor, 'foo' NOT in resolvedTitles → cm-wiki-link-pending widget", () => {

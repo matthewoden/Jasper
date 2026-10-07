@@ -2,13 +2,32 @@
  * wikilinkResolver.test.ts — Unit tests for the wiki-link title resolution module.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveWikilinkTitle, getResolvedTitlesSnapshot, setResolvedTitlesSnapshot } from "./wikilinkResolver";
+import {
+  resolveWikilinkTitle,
+  getResolvedTitlesSnapshot,
+  setResolvedTitlesSnapshot,
+  wikilinkDisplay,
+} from "./wikilinkResolver";
 
 
 vi.mock("../lib/useFileTree", () => ({
   useFileTree: vi.fn(),
 }));
 
+
+describe("wikilinkDisplay", () => {
+  it.each([
+    ["Foo", "Foo"],
+    ["Foo#Bar", "Foo > Bar"],
+    ["Foo#Bar#Baz", "Foo > Bar > Baz"],
+    ["Foo#^block-1", "Foo > ^block-1"],
+    ["#Bar", "Bar"],
+    ["Foo#", "Foo"],
+    ["#", "#"],
+  ])("%s → %s", (target, want) => {
+    expect(wikilinkDisplay(target)).toBe(want);
+  });
+});
 
 describe("resolveWikilinkTitle", () => {
   it("R4: returns resolved=true if the lowercase title is in the set", () => {
