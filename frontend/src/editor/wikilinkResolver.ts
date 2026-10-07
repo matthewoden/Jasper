@@ -94,6 +94,12 @@ export function wikilinkTitle(target: string): string {
 }
 
 
+/** How a title link shows without an alias: `Foo > Bar` for `Foo#Bar`, as Obsidian does. */
+export function wikilinkDisplay(target: string): string {
+  return target.split("#").filter((part) => part !== "").join(" > ") || target;
+}
+
+
 export interface WikilinkResolution {
   resolved: boolean;
   targetId: string | null;
