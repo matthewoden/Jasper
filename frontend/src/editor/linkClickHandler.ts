@@ -18,6 +18,7 @@ import { WIKILINK_RE } from "./wikilinkPlugin";
 import { blobIdOfRef, isRefTarget, noteIdOfRef } from "./refChip";
 import { blobUrl } from "./blobEmbedPlugin";
 import { postNotes } from "../lib/treeApi";
+import { broadcastRefresh } from "../lib/useFileTree";
 
 
 interface WikilinkCallbacks {
@@ -128,6 +129,7 @@ export async function createNoteFromPendingLink(
       error?.message ?? "createNoteFromPendingLink: unknown error",
     );
   }
+  await broadcastRefresh();
   return data.id;
 }
 

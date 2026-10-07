@@ -98,7 +98,8 @@ import { mentionCompletionSource } from "../editor/mentionAutocomplete";
 import { blobEmbedPlugin } from "../editor/blobEmbedPlugin";
 import { useTagBrowser } from "../lib/useTagBrowser";
 import { useTreeStore } from "../lib/useTreeStore";
-import { useFileTree } from "../lib/useFileTree";
+import { usePaneStore } from "../lib/usePaneStore";
+import { broadcastRefresh, useFileTree } from "../lib/useFileTree";
 import { postNotes } from "../lib/treeApi";
 import { extractHeadings, type HeadingInfo } from "../editor/outlineExtract";
 import { getNoteFolder } from "../lib/treeNoteLookup";
@@ -287,7 +288,6 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
       }
     }, [titleSet, idMap]);
 
-    const setActiveNote = useTreeStore((s) => s.setActiveNote);
     const setActiveTagFilter = useTreeStore((s) => s.setActiveTagFilter);
     const setTagBrowserExpanded = useTreeStore((s) => s.setTagBrowserExpanded);
     const { tree } = useFileTree();
@@ -303,13 +303,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
     const noteIdRef = useRef<string | null>(noteId);
     noteIdRef.current = noteId;
 
-    const wikilinkCbRef = useRef({ noteId, setActiveNote, tree });
-    wikilinkCbRef.current = { noteId, setActiveNote, tree };
+    const wikilinkCbRef = useRef({ noteId, tree });
+    wikilinkCbRef.current = { noteId, tree };
 
     useEffect(() => {
       setWikilinkHandlerCallbacks({
         setActiveNoteId: (id: string) => {
-          wikilinkCbRef.current.setActiveNote(id);
+          usePaneStore.getState().openInActivePane(id);
         },
         getCurrentSourceFolder: () => {
           const { noteId: currentNoteId, tree: t } = wikilinkCbRef.current;
@@ -332,7 +332,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, Props>(
                 "createNoteAndNavigate: unknown error",
             );
           }
-          wikilinkCbRef.current.setActiveNote(data.id);
+          await broadcastRefresh();
+          usePaneStore.getState().openInActivePane(data.id);
         },
         getCurrentSourceFolder: () => {
           const { noteId: currentNoteId, tree: t } = wikilinkCbRef.current;
