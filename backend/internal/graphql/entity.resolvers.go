@@ -18,8 +18,11 @@ func (r *entityResolver) FindBlobByID(ctx context.Context, id string) (*model.Bl
 	if err != nil {
 		return nil, err
 	}
-	blob, _ := item.(*model.Blob)
-	return blob, nil
+	if blob, ok := item.(*model.Blob); ok {
+		return blob, nil
+	}
+	ref := r.canonicalRef(id)
+	return &model.Blob{ID: ref, Kind: model.ItemKindBlob, Status: model.ItemStatusUnknown, Title: ref, Paths: []string{}}, nil
 }
 
 // FindNoteByID is the resolver for the findNoteByID field.
@@ -28,8 +31,15 @@ func (r *entityResolver) FindNoteByID(ctx context.Context, id string) (*model.No
 	if err != nil {
 		return nil, err
 	}
-	note, _ := item.(*model.Note)
-	return note, nil
+	if note, ok := item.(*model.Note); ok {
+		return note, nil
+	}
+	// A representation is the router's claim that the id exists, so an id
+	// Jasper does not know is an UNKNOWN stub, never null: null breaks the
+	// non-null title and takes the caller's whole items(ids) element with
+	// it. jasperItem still answers null; there the caller asked, not asserted.
+	ref := r.canonicalRef(id)
+	return &model.Note{ID: ref, Kind: model.ItemKindNote, Status: model.ItemStatusUnknown, Title: ref}, nil
 }
 
 // Entity returns generated.EntityResolver implementation.
