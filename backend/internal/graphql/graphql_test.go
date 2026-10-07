@@ -271,15 +271,28 @@ func TestFederationServiceAndEntities(t *testing.T) {
 		}
 	}
 
-	data = f.query(t, `query($reps: [_Any!]!) { _entities(representations: $reps) { ... on Note { id title } ... on Blob { id } } }`, map[string]any{
+	// A representation the router hands over is a claim that the id exists
+	// (the shell minted it from the kinds registry), so an unknown one is an
+	// UNKNOWN stub, never null: null would violate the non-null title and
+	// take the caller's whole items(ids) element with it.
+	unknownNote := notes.RefForNote(notes.NewID())
+	unknownBlob := "jasper:blob/sha256-" + strings.Repeat("0", 64)
+	data = f.query(t, `query($reps: [_Any!]!) { _entities(representations: $reps) { ... on Note { id title status } ... on Blob { id title status } } }`, map[string]any{
 		"reps": []map[string]any{
 			{"__typename": "Note", "id": notes.RefForNote(alpha)},
-			{"__typename": "Note", "id": notes.RefForNote(notes.NewID())},
+			{"__typename": "Note", "id": unknownNote},
+			{"__typename": "Blob", "id": unknownBlob},
 		},
 	})
 	ents := data["_entities"].([]any)
-	if len(ents) != 2 || ents[0].(map[string]any)["title"] != "Alpha" || ents[1] != nil {
-		t.Errorf("_entities = %v", ents)
+	if len(ents) != 3 || ents[0].(map[string]any)["title"] != "Alpha" {
+		t.Fatalf("_entities = %v", ents)
+	}
+	for i, want := range []string{unknownNote, unknownBlob} {
+		ent, _ := ents[i+1].(map[string]any)
+		if ent == nil || ent["status"] != "UNKNOWN" || ent["title"] != want || ent["id"] != want {
+			t.Errorf("_entities[%d] = %v, want UNKNOWN stub for %s", i+1, ents[i+1], want)
+		}
 	}
 }
 
